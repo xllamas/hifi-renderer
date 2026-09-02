@@ -157,6 +157,14 @@ class DacCapabilities {
   List<int> get pcmBitDepths =>
       (formats.where((f) => f.isPcm).map((f) => f.bits).toSet().toList()..sort());
 
+  /// The app targets USB Audio Class 2.0 only. UAC1 is a 1998-era spec, capped
+  /// at 24/96 over full-speed USB, and essentially absent from DACs anyone would
+  /// pair with a bit-perfect renderer. Supporting it would mean a second rate
+  /// negotiation path (rates live in the descriptors rather than behind a clock
+  /// entity) and a second endpoint model, for hardware that is not out there.
+  /// UAC1 devices are still *identified* so the app can say so plainly.
+  bool get isSupported => uacVersion == '2.0';
+
   bool get supportsDsd => formats.any((f) => f.format == 'DSD');
   bool get isAsync => formats.any((f) => f.sync == 'async');
   bool get hasFeedback => formats.any((f) => f.hasFeedback);
@@ -172,6 +180,22 @@ class DacCapabilities {
   /// Plain-language notes. These are the things a datasheet tends not to say.
   List<CapabilityNote> get notes {
     final out = <CapabilityNote>[];
+
+    if (!isSupported) {
+      out.add(CapabilityNote(
+        severity: NoteSeverity.important,
+        title: uacVersion == '1.0'
+            ? 'This DAC uses USB Audio Class 1.0'
+            : 'USB Audio Class version not recognised',
+        detail: uacVersion == '1.0'
+            ? 'This app supports USB Audio Class 2.0 only. UAC 1.0 is limited to '
+                '24-bit/96 kHz and is not supported here, so this DAC cannot be '
+                'used for bit-perfect playback.'
+            : 'The device did not report a USB Audio Class version this app '
+                'recognises, so it cannot be used for bit-perfect playback.',
+      ));
+      return out;
+    }
 
     if (!volumeHostControllable) {
       out.add(CapabilityNote(

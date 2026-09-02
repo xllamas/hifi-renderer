@@ -56,6 +56,23 @@ class DacCapabilitiesScreen extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         _identity(context, c),
+        if (!c.isSupported) ...[
+          const SizedBox(height: 12),
+          Card(
+            color: Colors.amber.withValues(alpha: 0.15),
+            child: const Padding(
+              padding: EdgeInsets.all(12),
+              child: Row(children: [
+                Icon(Icons.block, color: Colors.amberAccent),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text('Not usable for bit-perfect playback',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ]),
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         _whatItSupports(context, c),
         const SizedBox(height: 20),
