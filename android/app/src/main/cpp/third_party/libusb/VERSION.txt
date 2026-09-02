@@ -1,0 +1,3 @@
+libusb 1.0.28 (https://github.com/libusb/libusb), LGPL-2.1-or-later.
+Vendored: only the sources libusb's own android/jni/libusb.mk builds.
+config.h is libusb's official android/config.h, unmodified.
