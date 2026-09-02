@@ -42,13 +42,20 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        ndk {
-            // armeabi-v7a is mandatory, not optional: minSdk 26 puts 32-bit-only
-            // phones in scope, and those are exactly the "unused old phone" target.
-            // x86_64 is for emulator work on the Oboe fallback path only -- the
-            // emulator cannot pass through USB audio.
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-        }
+        // Deliberately NO ndk.abiFilters here.
+        //
+        // Flutter's Gradle plugin already derives the ABI set from
+        // --target-platform, defaulting to exactly what we want:
+        // arm64-v8a, armeabi-v7a (32-bit phones are in the target population)
+        // and x86_64 (emulator, Oboe fallback path only -- an emulator cannot
+        // pass through USB audio). Setting ndk.abiFilters here is not just
+        // redundant, it is a hard conflict: it makes `flutter build apk
+        // --split-per-abi` fail with "Conflicting configuration ... in ndk
+        // abiFilters cannot be present when splits abi filters are set".
+        //
+        // To build a single-ABI APK, use Flutter's own mechanism:
+        //   flutter build apk --debug --target-platform android-arm
+        //   flutter build apk --release --split-per-abi
 
         externalNativeBuild {
             cmake {
