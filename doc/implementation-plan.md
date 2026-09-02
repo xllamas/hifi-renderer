@@ -46,6 +46,32 @@ only ever exercise the Oboe path).
 Note: `/Users/xavier/StudioProjects` is a symlink to `/Volumes/DevEnvironments/StudioProjects` —
 same directory, not two copies. Work in the `/Volumes/...` path.
 
+### Design rule: capability-driven, and honest about it
+
+Two rules that override convenience everywhere in this codebase:
+
+1. **Never branch on VID/PID.** Every decision — alt-setting choice, bit depth,
+   sample rate, whether volume is offered at all — comes from what was parsed from
+   the attached device at runtime. The reference DAC is one sample, not the spec.
+2. **Degrade gracefully and say so.** When a DAC cannot do something, the app does
+   the best available thing *and tells the user what it did and why*.
+
+Rule 2 has a concrete, user-visible form: a **DAC capabilities screen** in the
+configuration section, showing what the connected hardware actually supports —
+measured from its own descriptors, not from its documentation.
+
+This is not a developer diagnostic dressed up as a feature. The reference AL400's
+documentation never mentions that the host cannot set its volume, and that gap cost
+real hours of fruitless configuration before the probe revealed it. Manufacturer
+documentation is routinely silent on exactly the properties that determine whether
+the app can do what the user is asking of it. The app can measure them in
+milliseconds, so it should, and it should say so in plain language.
+
+The capability model is therefore **structured data** (`probeUsbAudioDevice()` emits
+JSON), consumed by three layers with different needs: the audio engine picks an
+alt-setting from it, the settings screen renders it as prose, and logcat gets a dump
+for support. Facts live in the parser; wording lives in the UI.
+
 ### Consequence of targeting a device population
 
 Two things stop being fixed facts and become runtime-detected variables:

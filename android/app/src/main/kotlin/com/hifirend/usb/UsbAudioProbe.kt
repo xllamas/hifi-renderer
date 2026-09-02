@@ -29,28 +29,22 @@ class UsbAudioProbe(private val context: Context) {
 
     private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
-    /** Every attached device, annotated with whether it looks like a DAC. */
-    fun listDevices(): String = buildString {
-        val devices = usbManager.deviceList.values
-        appendLine("attached USB devices: ${devices.size}")
-        if (devices.isEmpty()) {
-            appendLine("  (none -- check the OTG cable and that the DAC is powered)")
+    private fun jsonString(s: String?): String {
+        if (s == null) return "null"
+        val b = StringBuilder("\"")
+        for (c in s) {
+            when {
+                c == '"' -> b.append("\\\"")
+                c == '\\' -> b.append("\\\\")
+                c.code < 0x20 -> b.append("\\u%04x".format(c.code))
+                else -> b.append(c)
+            }
         }
-        for (d in devices) {
-            appendLine(describe(d))
-        }
+        return b.append('"').toString()
     }
 
-    private fun describe(d: UsbDevice): String = buildString {
-        appendLine("  %04x:%04x  %s %s".format(d.vendorId, d.productId,
-            d.manufacturerName ?: "?", d.productName ?: "?"))
-        appendLine("    class=${d.deviceClass} interfaces=${d.interfaceCount} audio=${isAudioDevice(d)}")
-        for (i in 0 until d.interfaceCount) {
-            val itf = d.getInterface(i)
-            appendLine("    if=${itf.id} alt=${itf.alternateSetting} " +
-                "class=${itf.interfaceClass} sub=${itf.interfaceSubclass} eps=${itf.endpointCount}")
-        }
-    }
+    private fun failure(code: String, message: String): String =
+        """{"ok":false,"error":${jsonString(code)},"message":${jsonString(message)}}"""
 
     fun isAudioDevice(d: UsbDevice): Boolean {
         if (d.deviceClass == UsbConstants.USB_CLASS_AUDIO) return true
@@ -67,18 +61,23 @@ class UsbAudioProbe(private val context: Context) {
      * we do not already hold it; the user sees a system dialog.
      */
     suspend fun probe(): String {
+        val attached = usbManager.deviceList.size
         val device = findAudioDevice()
-            ?: return listDevices() + "\nno USB audio device found"
+            ?: return failure("no_device",
+                if (attached == 0) "No USB device detected. Check the OTG cable and that the DAC is powered."
+                else "$attached USB device(s) attached, but none advertises the USB audio class.")
 
         if (!usbManager.hasPermission(device)) {
             Log.i(TAG, "requesting USB permission for ${device.deviceName}")
             if (!requestPermission(device)) {
-                return listDevices() + "\nUSB permission denied by user"
+                return failure("permission_denied",
+                    "Permission is required to talk to the DAC directly.")
             }
         }
 
         val connection = usbManager.openDevice(device)
-            ?: return listDevices() + "\nopenDevice failed (permission or device gone)"
+            ?: return failure("open_failed",
+                "Could not open the device. It may have been unplugged, or another app holds it.")
 
         // The AudioControl interface must be taken away from the kernel's
         // snd-usb-audio driver before class control transfers will work --
@@ -97,13 +96,9 @@ class UsbAudioProbe(private val context: Context) {
         }
 
         return try {
-            val report = NativeBridge.probeUsbDevice(connection.fileDescriptor)
-            buildString {
-                append(listDevices())
-                appendLine("AudioControl claimed: $claimed" +
-                    if (!claimed) " (clock rate query will fail)" else "")
-                append(report)
-            }
+            val dac = NativeBridge.probeUsbDevice(connection.fileDescriptor)
+            // Envelope adds what only the Android layer knows.
+            """{"ok":true,"claimedAudioControl":$claimed,"attachedDevices":$attached,"dac":$dac}"""
         } finally {
             // Release so the kernel driver can rebind; otherwise the DAC stays
             // detached from system audio after a probe.

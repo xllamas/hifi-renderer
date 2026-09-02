@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'screens/dac_capabilities_screen.dart';
+import 'usb/dac_capabilities.dart';
+
 void main() => runApp(const HifiRendApp());
 
 class HifiRendApp extends StatelessWidget {
@@ -10,24 +13,24 @@ class HifiRendApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'HiFi Renderer',
         theme: ThemeData.dark(useMaterial3: true),
-        home: const DiagnosticsScreen(),
+        home: const HomeScreen(),
       );
 }
 
-/// USB diagnostics. Kept permanently past M1: it is the only way to debug a
-/// user's DAC that we do not physically have.
-class DiagnosticsScreen extends StatefulWidget {
-  const DiagnosticsScreen({super.key});
+/// Placeholder for the now-playing screen (M5). For now it carries the entry
+/// point into the DAC capability view, which is the M1 deliverable.
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
+class _HomeScreenState extends State<HomeScreen> {
   static const _channel = MethodChannel('com.hifirend/renderer');
 
   String _build = 'checking...';
-  String _usb = 'not probed yet';
+  DacCapabilities? _caps;
   bool _probing = false;
 
   @override
@@ -35,75 +38,70 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     super.initState();
     _invoke('selfTest').then((v) {
       if (mounted) setState(() => _build = v);
-      // Once USB permission has been granted the probe raises no dialog, so
-      // run it automatically -- each rebuild otherwise costs a manual tap.
-      _probeUsb();
+      _probe();
     });
   }
 
   Future<String> _invoke(String method) async {
     try {
-      return await _channel.invokeMethod<String>(method) ?? 'no response';
+      return await _channel.invokeMethod<String>(method) ?? '';
     } on PlatformException catch (e) {
-      return 'platform error: ${e.message}';
+      return '{"ok":false,"error":"platform","message":"${e.message}"}';
     } on MissingPluginException {
-      return 'channel not registered';
+      return '{"ok":false,"error":"no_channel","message":"channel not registered"}';
     }
   }
 
-  Future<void> _probeUsb() async {
+  Future<void> _probe() async {
+    setState(() => _probing = true);
+    final raw = await _invoke('probeUsb');
+    if (!mounted) return;
     setState(() {
-      _probing = true;
-      _usb = 'probing (accept the USB permission dialog)...';
+      _caps = DacCapabilities.parse(raw);
+      _probing = false;
     });
-    final r = await _invoke('probeUsb');
-    if (mounted) {
-      setState(() {
-        _usb = r;
-        _probing = false;
-      });
-    }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('HiFi Renderer — USB diagnostics')),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: _probing ? null : _probeUsb,
-          icon: _probing
-              ? const SizedBox(
-                  width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.usb),
-          label: Text(_probing ? 'Probing' : 'Probe DAC'),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _section('Build', _build),
-            const SizedBox(height: 16),
-            _section('USB Audio Class capabilities', _usb),
-            const SizedBox(height: 80),
-          ],
-        ),
-      );
-
-  Widget _section(String title, String body) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) {
+    final c = _caps;
+    return Scaffold(
+      appBar: AppBar(title: const Text('HiFi Renderer')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 6),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white10,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: SelectableText(
-              body,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.4),
+          const Text('Renderer not running yet — M1 build.',
+              style: TextStyle(color: Colors.white60)),
+          const SizedBox(height: 24),
+          Card(
+            child: ListTile(
+              leading: Icon(
+                c != null && c.ok ? Icons.usb : Icons.usb_off,
+                color: c != null && c.ok ? Colors.greenAccent : Colors.white38,
+              ),
+              title: Text(c != null && c.ok ? c.displayName : 'No DAC connected'),
+              subtitle: Text(_probing
+                  ? 'Probing…'
+                  : c != null && c.ok
+                      ? 'USB Audio Class ${c.uacVersion} — tap for details'
+                      : c?.errorMessage ?? 'Tap to probe'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => DacCapabilitiesScreen(
+                  caps: _caps,
+                  loading: _probing,
+                  onRefresh: _probe,
+                ),
+              )),
             ),
           ),
+          const SizedBox(height: 24),
+          Text('Build', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+          SelectableText(_build,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
         ],
-      );
+      ),
+    );
+  }
 }
