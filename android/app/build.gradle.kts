@@ -75,6 +75,9 @@ android {
 
 dependencies {
     implementation("com.google.oboe:oboe:1.9.3")
+    // USB permission is an async user dialog; the probe does blocking control
+    // transfers. Both need to be off the UI thread.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 }
 
 flutter {

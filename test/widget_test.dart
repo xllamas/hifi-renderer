@@ -14,20 +14,37 @@ void main() {
 
   testWidgets('shows the native self-test result', (tester) async {
     messenger.setMockMethodCallHandler(channel, (call) async {
-      expect(call.method, 'selfTest');
-      return 'abi=arm64-v8a libusb=1.0.28 oboe=OK bits=64';
+      if (call.method == 'selfTest') {
+        return 'abi=arm64-v8a libusb=1.0.28 oboe=OK bits=64';
+      }
+      return null;
     });
 
     await tester.pumpWidget(const HifiRendApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('HiFi Renderer'), findsOneWidget);
     expect(find.textContaining('libusb=1.0.28'), findsOneWidget);
+    expect(find.text('not probed yet'), findsOneWidget);
   });
 
-  testWidgets('reports a native failure instead of throwing', (tester) async {
-    // The path taken on a device where libhifirend.so fails to load -- the UI
-    // must surface it, because on unknown hardware this is the only diagnostic.
+  testWidgets('renders the USB probe report', (tester) async {
+    messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
+          'selfTest' => 'abi=arm64-v8a libusb=1.0.28 oboe=OK bits=64',
+          'probeUsb' => 'UAC version   : 2.0\nvolume control: none found',
+          _ => null,
+        });
+
+    await tester.pumpWidget(const HifiRendApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Probe DAC'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('UAC version   : 2.0'), findsOneWidget);
+  });
+
+  testWidgets('surfaces a native failure instead of throwing', (tester) async {
+    // The path on a device where libhifirend.so fails to load.
     messenger.setMockMethodCallHandler(channel, (call) async {
       throw PlatformException(code: 'ERR', message: 'native library failed to load');
     });

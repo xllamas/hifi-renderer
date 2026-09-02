@@ -9,6 +9,8 @@
 #include <libusb.h>
 #include <oboe/Oboe.h>
 
+#include "usb/UacProbe.h"
+
 #define LOG_TAG "hifirend"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 
@@ -48,4 +50,9 @@ std::string selfTest() {
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_hifirend_NativeBridge_nativeSelfTest(JNIEnv *env, jobject /* this */) {
     return env->NewStringUTF(selfTest().c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hifirend_NativeBridge_nativeProbeUsbDevice(JNIEnv *env, jobject /* this */, jint fd) {
+    return env->NewStringUTF(probeUsbAudioDevice(static_cast<int>(fd)).c_str());
 }

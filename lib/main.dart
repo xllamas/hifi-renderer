@@ -10,61 +10,100 @@ class HifiRendApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'HiFi Renderer',
         theme: ThemeData.dark(useMaterial3: true),
-        home: const SkeletonScreen(),
+        home: const DiagnosticsScreen(),
       );
 }
 
-/// M0 placeholder. Replaced by the now-playing screen in M5; it exists only to
-/// confirm on-device that Dart reaches Kotlin reaches libhifirend.so.
-class SkeletonScreen extends StatefulWidget {
-  const SkeletonScreen({super.key});
+/// USB diagnostics. Kept permanently past M1: it is the only way to debug a
+/// user's DAC that we do not physically have.
+class DiagnosticsScreen extends StatefulWidget {
+  const DiagnosticsScreen({super.key});
 
   @override
-  State<SkeletonScreen> createState() => _SkeletonScreenState();
+  State<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
 }
 
-class _SkeletonScreenState extends State<SkeletonScreen> {
+class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   static const _channel = MethodChannel('com.hifirend/renderer');
-  String _status = 'checking...';
+
+  String _build = 'checking...';
+  String _usb = 'not probed yet';
+  bool _probing = false;
 
   @override
   void initState() {
     super.initState();
-    _runSelfTest();
+    _invoke('selfTest').then((v) {
+      if (mounted) setState(() => _build = v);
+      // Once USB permission has been granted the probe raises no dialog, so
+      // run it automatically -- each rebuild otherwise costs a manual tap.
+      _probeUsb();
+    });
   }
 
-  Future<void> _runSelfTest() async {
-    String status;
+  Future<String> _invoke(String method) async {
     try {
-      status = await _channel.invokeMethod<String>('selfTest') ?? 'no response';
+      return await _channel.invokeMethod<String>(method) ?? 'no response';
     } on PlatformException catch (e) {
-      status = 'platform error: ${e.message}';
+      return 'platform error: ${e.message}';
     } on MissingPluginException {
-      status = 'channel not registered';
+      return 'channel not registered';
     }
-    if (mounted) setState(() => _status = status);
+  }
+
+  Future<void> _probeUsb() async {
+    setState(() {
+      _probing = true;
+      _usb = 'probing (accept the USB permission dialog)...';
+    });
+    final r = await _invoke('probeUsb');
+    if (mounted) {
+      setState(() {
+        _usb = r;
+        _probing = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('HiFi Renderer', style: TextStyle(fontSize: 28)),
-                const SizedBox(height: 8),
-                const Text('M0 skeleton', style: TextStyle(color: Colors.white54)),
-                const SizedBox(height: 32),
-                SelectableText(
-                  _status,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-                ),
-              ],
+        appBar: AppBar(title: const Text('HiFi Renderer — USB diagnostics')),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _probing ? null : _probeUsb,
+          icon: _probing
+              ? const SizedBox(
+                  width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.usb),
+          label: Text(_probing ? 'Probing' : 'Probe DAC'),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            _section('Build', _build),
+            const SizedBox(height: 16),
+            _section('USB Audio Class capabilities', _usb),
+            const SizedBox(height: 80),
+          ],
+        ),
+      );
+
+  Widget _section(String title, String body) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white10,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SelectableText(
+              body,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.4),
             ),
           ),
-        ),
+        ],
       );
 }

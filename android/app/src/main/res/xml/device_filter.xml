@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Match by USB audio class, never by VID/PID: the app must work with DACs
+     we do not own. Class 1 = Audio; subclass 1/2 = AudioControl/AudioStreaming. -->
+<resources>
+    <usb-device class="1" subclass="1" />
+    <usb-device class="1" subclass="2" />
+</resources>

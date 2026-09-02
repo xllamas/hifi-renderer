@@ -21,6 +21,15 @@ object NativeBridge {
 
     private external fun nativeSelfTest(): String
 
+    private external fun nativeProbeUsbDevice(fd: Int): String
+
     /** ABI, libusb version and Oboe link status, or the load failure. */
     fun selfTest(): String = loadError?.let { "native library failed to load: $it" } ?: nativeSelfTest()
+
+    /**
+     * Runs the UAC capability probe over an open usbfs descriptor. The fd stays
+     * owned by the caller's UsbDeviceConnection; native only wraps it.
+     */
+    fun probeUsbDevice(fd: Int): String =
+        loadError?.let { "native library failed to load: $it" } ?: nativeProbeUsbDevice(fd)
 }

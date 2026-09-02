@@ -8,6 +8,7 @@ add_subdirectory(third_party/libusb)
 
 add_library(hifirend SHARED
     hifirend.cpp
+    usb/UacProbe.cpp
 )
 
 target_include_directories(hifirend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
