@@ -9,6 +9,7 @@ add_subdirectory(third_party/libusb)
 add_library(hifirend SHARED
     hifirend.cpp
     Player.cpp
+    StreamPlayer.cpp
     usb/UacProbe.cpp
     usb/UacCapabilities.cpp
     usb/UsbSink.cpp

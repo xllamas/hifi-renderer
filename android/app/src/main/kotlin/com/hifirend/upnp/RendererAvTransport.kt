@@ -27,11 +27,20 @@ private const val TAG = "hifirend"
  * is M4. Every command is logged so real controllers' actual call sequences can
  * be observed rather than guessed at — they differ from each other considerably.
  */
+/** What AVTransport needs from the audio engine. */
+interface PlaybackController {
+    /** Returns a JSON result; failures are reported, not thrown. */
+    fun play(uri: String): String
+    fun stop()
+    fun positionSeconds(): Int
+}
+
 class RendererAvTransport(
     private val queue: PlaylistQueue,
-    /** Elapsed seconds from the audio engine; null until M4 wires it. */
-    private val positionProvider: (() -> Int)? = null,
+    private val playback: PlaybackController? = null,
 ) : AbstractAVTransportService() {
+
+    private val positionProvider: (() -> Int)? = playback?.let { { it.positionSeconds() } }
 
     @Volatile
     var transportState: TransportState = TransportState.NO_MEDIA_PRESENT
@@ -97,17 +106,35 @@ class RendererAvTransport(
 
     override fun stop(instanceId: UnsignedIntegerFourBytes?) {
         Log.i(TAG, "AVTransport.Stop")
+        playback?.stop()
         transportState = TransportState.STOPPED
     }
 
     override fun play(instanceId: UnsignedIntegerFourBytes?, speed: String?) {
-        Log.i(TAG, "AVTransport.Play speed=$speed current=${queue.current?.uri}")
-        transportState = if (queue.current == null) TransportState.NO_MEDIA_PRESENT
-                         else TransportState.PLAYING
+        val uri = queue.current?.uri
+        Log.i(TAG, "AVTransport.Play speed=$speed current=$uri")
+        if (uri == null) {
+            transportState = TransportState.NO_MEDIA_PRESENT
+            return
+        }
+        val result = playback?.play(uri)
+        if (result != null && !result.contains("\"ok\":true")) {
+            // Report the failure through the transport state rather than
+            // throwing: a SOAP fault here shows the controller a bare "501
+            // Action Failed" with no explanation of what went wrong.
+            Log.e(TAG, "AVTransport.Play failed: $result")
+            transportState = TransportState.STOPPED
+            return
+        }
+        transportState = TransportState.PLAYING
     }
 
     override fun pause(instanceId: UnsignedIntegerFourBytes?) {
+        // A true pause would hold the isochronous stream open and stop feeding
+        // it; for now this stops, so resuming restarts the track. Proper pause
+        // belongs with the transport rework that also brings gapless.
         Log.i(TAG, "AVTransport.Pause")
+        playback?.stop()
         transportState = TransportState.PAUSED_PLAYBACK
     }
 

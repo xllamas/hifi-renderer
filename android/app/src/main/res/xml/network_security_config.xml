@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DLNA/UPnP is a cleartext protocol by design: device descriptions, SOAP
+  control, GENA eventing and the media streams themselves are all plain HTTP
+  over the local network, and the specification has no TLS at all. Android
+  blocks cleartext by default from targetSdk 28, which silently breaks every
+  fetch with "Cleartext HTTP traffic not permitted".
+
+  Media servers can sit on any LAN address, so this cannot be narrowed to a
+  domain list. It is scoped as tightly as the protocol allows: cleartext is
+  permitted, but the app only ever fetches URLs handed to it by a controller
+  it is already speaking UPnP to.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

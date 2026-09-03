@@ -29,6 +29,13 @@ object NativeBridge {
 
     private external fun nativePlaybackStatus(): String
 
+    private external fun nativeStartStream(fd: Int): String
+    private external fun nativePushStreamData(data: ByteArray, len: Int): Boolean
+    private external fun nativeEndStream()
+    private external fun nativeStopStream()
+    private external fun nativeStreamStatus(): String
+    private external fun nativeStreamPositionSeconds(): Int
+
     /** ABI, libusb version and Oboe link status, or the load failure. */
     fun selfTest(): String = loadError?.let { "native library failed to load: $it" } ?: nativeSelfTest()
 
@@ -50,4 +57,20 @@ object NativeBridge {
 
     fun playbackStatus(): String =
         loadError?.let { """{"running":false}""" } ?: nativePlaybackStatus()
+
+    /** Opens the DAC and starts a decoder waiting for bytes. */
+    fun startStream(fd: Int): String =
+        loadError?.let { """{"ok":false,"message":"native library failed to load"}""" }
+            ?: nativeStartStream(fd)
+
+    fun pushStreamData(data: ByteArray, len: Int): Boolean =
+        if (isLoaded) nativePushStreamData(data, len) else false
+
+    fun endStream() { if (isLoaded) nativeEndStream() }
+    fun stopStream() { if (isLoaded) nativeStopStream() }
+
+    fun streamStatus(): String =
+        loadError?.let { """{"running":false}""" } ?: nativeStreamStatus()
+
+    fun streamPositionSeconds(): Int = if (isLoaded) nativeStreamPositionSeconds() else 0
 }

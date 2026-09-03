@@ -2,6 +2,7 @@ package com.hifirend.upnp
 
 import android.content.Context
 import android.util.Log
+import com.hifirend.usb.HttpStreamPlayback
 import org.jupnp.android.AndroidUpnpServiceImpl
 import org.jupnp.binding.annotations.AnnotationLocalServiceBinder
 import org.jupnp.model.DefaultServiceManager
@@ -40,6 +41,19 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
 
     val queue = PlaylistQueue()
     private var avTransport: RendererAvTransport? = null
+    private val playback by lazy { HttpStreamPlayback(applicationContext) }
+
+    /** Bridges AVTransport commands to the USB audio engine. */
+    private val controller = object : PlaybackController {
+        override fun play(uri: String): String = playback.play(uri)
+        override fun stop() = playback.stop()
+        override fun positionSeconds(): Int = playback.positionSeconds()
+    }
+
+    override fun onDestroy() {
+        playback.stop()
+        super.onDestroy()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -83,7 +97,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         @Suppress("UNCHECKED_CAST")
         val avService =
             binder.read(RendererAvTransport::class.java) as LocalService<RendererAvTransport>
-        val av = RendererAvTransport(queue)
+        val av = RendererAvTransport(queue, controller)
         avTransport = av
         // The manager creates its own instance by default; supply ours so the
         // queue and (from M4) the audio engine share one object.
