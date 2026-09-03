@@ -10,6 +10,9 @@ add_library(hifirend SHARED
     hifirend.cpp
     Player.cpp
     StreamPlayer.cpp
+    decode/Decoder.cpp
+    decode/FlacDecoder.cpp
+    decode/Mp3Decoder.cpp
     usb/UacProbe.cpp
     usb/UacCapabilities.cpp
     usb/UsbSink.cpp

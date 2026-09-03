@@ -8,8 +8,10 @@ cannot normally act as a hi-fi source. This app bypasses the Android audio stack
 entirely and streams to the DAC over raw USB, at the source file's native sample
 rate and bit depth.
 
-> **Status: early development.** M0 (project skeleton) and M1 (USB capability
-> probe) are complete. There is no audio playback yet.
+> **Status: early development.** The renderer is discoverable, plays FLAC, MP3
+> and AAC bit-perfectly to a USB DAC, and supports transport control, playlists
+> and seeking. Not yet done: gapless transitions, the no-DAC fallback, the
+> home-screen widget and boot-start.
 
 ## How it works
 
@@ -26,6 +28,21 @@ C++ engine      ── decoders → ring buffer → USB isochronous sink (libusb
                                           └ Oboe fallback (not bit-perfect)
 USB DAC
 ```
+
+## Formats
+
+| Format | Decoder | Notes |
+|---|---|---|
+| FLAC | dr_flac (native) | The main case; lossless throughout |
+| WAV / LPCM | dr_wav (native) | No decode step at all |
+| MP3 | minimp3 (native) | Lossy source, but never resampled |
+| AAC / M4A | Android MediaCodec | See below |
+| Anything else the platform knows | Android MediaCodec | Opus, Vorbis, ALAC where supported |
+
+AAC uses the platform decoder rather than a bundled one. That costs nothing in
+fidelity: MediaCodec is a *decoder*, not the system mixer, so its PCM output
+still reaches the DAC untouched at the source's own sample rate. Routing through
+`AudioTrack` would resample; decoding does not.
 
 ## Compatibility
 

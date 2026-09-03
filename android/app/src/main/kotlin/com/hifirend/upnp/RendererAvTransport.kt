@@ -32,7 +32,7 @@ private const val TAG = "hifirend"
 /** What AVTransport needs from the audio engine. */
 interface PlaybackController {
     /** Returns a JSON result; failures are reported, not thrown. */
-    fun play(uri: String): String
+    fun play(uri: String, mimeType: String?): String
     fun stop()
     fun pause()
     fun resume()
@@ -161,7 +161,7 @@ class RendererAvTransport(
         val next = queue.advance()
         if (next != null) {
             Log.i(TAG, "auto-advancing to ${next.uri}")
-            val result = playback?.play(next.uri)
+            val result = playback?.play(next.uri, next.track.mimeType)
             transportState = if (result != null && !result.contains("\"ok\":true")) {
                 Log.e(TAG, "auto-advance failed: $result")
                 TransportState.STOPPED
@@ -190,7 +190,7 @@ class RendererAvTransport(
             transportState = TransportState.NO_MEDIA_PRESENT
             return
         }
-        val result = playback?.play(uri)
+        val result = playback?.play(uri, queue.current?.track?.mimeType)
         if (result != null && !result.contains("\"ok\":true")) {
             // Report the failure through the transport state rather than
             // throwing: a SOAP fault here shows the controller a bare "501

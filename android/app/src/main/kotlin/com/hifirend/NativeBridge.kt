@@ -29,7 +29,7 @@ object NativeBridge {
 
     private external fun nativePlaybackStatus(): String
 
-    private external fun nativeStartStream(fd: Int, seekSeconds: Int, relaxed: Boolean): String
+    private external fun nativeStartStream(fd: Int, seekSeconds: Int, relaxed: Boolean, mime: String): String
     private external fun nativePushStreamData(data: ByteArray, len: Int): Boolean
     private external fun nativeEndStream()
     private external fun nativeStopStream()
@@ -37,6 +37,9 @@ object NativeBridge {
     private external fun nativeStreamPositionSeconds(): Int
     private external fun nativeSetStreamPaused(paused: Boolean)
     private external fun nativeStreamFinished(): Boolean
+    private external fun nativeStartPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int): String
+    private external fun nativePushPcm(data: ByteArray, len: Int): Boolean
+    private external fun nativePcmEndOfStream()
 
     /** ABI, libusb version and Oboe link status, or the load failure. */
     fun selfTest(): String = loadError?.let { "native library failed to load: $it" } ?: nativeSelfTest()
@@ -61,9 +64,14 @@ object NativeBridge {
         loadError?.let { """{"running":false}""" } ?: nativePlaybackStatus()
 
     /** Opens the DAC and starts a decoder waiting for bytes. */
-    fun startStream(fd: Int, seekSeconds: Int = 0, relaxed: Boolean = false): String =
+    fun startStream(
+        fd: Int,
+        seekSeconds: Int = 0,
+        relaxed: Boolean = false,
+        mime: String = "",
+    ): String =
         loadError?.let { """{"ok":false,"message":"native library failed to load"}""" }
-            ?: nativeStartStream(fd, seekSeconds, relaxed)
+            ?: nativeStartStream(fd, seekSeconds, relaxed, mime)
 
     fun pushStreamData(data: ByteArray, len: Int): Boolean =
         if (isLoaded) nativePushStreamData(data, len) else false
@@ -80,4 +88,14 @@ object NativeBridge {
 
     /** True once the track reached its natural end rather than being stopped. */
     fun streamFinished(): Boolean = if (isLoaded) nativeStreamFinished() else false
+
+    /** Opens the DAC for PCM decoded by the platform (MediaCodec). */
+    fun startPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int): String =
+        loadError?.let { """{"ok":false,"message":"native library failed to load"}""" }
+            ?: nativeStartPcmStream(fd, rate, channels, seekSeconds)
+
+    fun pushPcm(data: ByteArray, len: Int): Boolean =
+        if (isLoaded) nativePushPcm(data, len) else false
+
+    fun pcmEndOfStream() { if (isLoaded) nativePcmEndOfStream() }
 }

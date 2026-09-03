@@ -53,7 +53,8 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
 
     /** Bridges AVTransport commands to the USB audio engine. */
     private val controller = object : PlaybackController {
-        override fun play(uri: String): String = playback.play(uri)
+        override fun play(uri: String, mimeType: String?): String =
+            playback.play(uri, mimeHint = mimeType ?: "")
         override fun stop() = playback.stop()
         override fun pause() = playback.pause()
         override fun resume() = playback.resume()

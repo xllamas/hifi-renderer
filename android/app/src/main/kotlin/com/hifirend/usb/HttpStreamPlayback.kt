@@ -30,6 +30,22 @@ class HttpStreamPlayback(private val context: Context) {
     private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
     private var connection: UsbDeviceConnection? = null
     private val fetching = AtomicBoolean(false)
+    private val aac = AacDecoder()
+
+    /**
+     * True for formats the native decoders do not handle, which go through
+     * MediaCodec instead. Kept as a deny-list rather than an allow-list: an
+     * unknown format is more likely to be something the platform can decode
+     * than something dr_flac or minimp3 can.
+     */
+    private fun usePlatformDecoder(mime: String): Boolean {
+        val m = mime.lowercase()
+        if (m.contains("flac")) return false
+        if (m.contains("mpeg") || m.contains("mp3")) return false
+        if (m.contains("wav") || m.contains("l16") || m.contains("l24")) return false
+        return m.contains("aac") || m.contains("mp4") || m.contains("m4a") ||
+               m.contains("ogg") || m.contains("opus") || m.contains("vorbis")
+    }
 
     @Volatile
     var currentUri: String? = null
@@ -57,6 +73,10 @@ class HttpStreamPlayback(private val context: Context) {
 
     @Volatile
     private var audioStart: Long = 0
+
+    /** From the server's Content-Type, used when the controller sent no DIDL. */
+    @Volatile
+    private var lastKnownMime: String = ""
 
     /**
      * Fetches and caches the FLAC header, and finds where audio actually
@@ -136,7 +156,7 @@ class HttpStreamPlayback(private val context: Context) {
             .toLong().coerceIn(audioStart, len - 1)
         Log.i(TAG, "seek to ${seconds}s -> byte $offset of $len (audio from $audioStart, ${dur}s)")
         return play(uri, seekSeconds = seconds, rangeStart = offset,
-                    durationSeconds = dur, header = header)
+                    durationSeconds = dur, header = header, mimeHint = lastKnownMime)
     }
 
     fun play(
@@ -145,6 +165,7 @@ class HttpStreamPlayback(private val context: Context) {
         rangeStart: Long = 0,
         durationSeconds: Int = 0,
         header: ByteArray? = null,
+        mimeHint: String = "",
     ): String {
         stop()
 
@@ -167,7 +188,29 @@ class HttpStreamPlayback(private val context: Context) {
         if (durationSeconds > 0) trackDurationSeconds = durationSeconds
         // The cached header is prepended below, so the decoder always sees a
         // well-formed stream and never needs relaxed (headerless) mode.
-        val started = NativeBridge.startStream(conn.fileDescriptor, seekSeconds, relaxed = false)
+        // The decoder is chosen from the MIME type. The controller's DIDL is
+        // the better source -- it describes the file, whereas a server's
+        // Content-Type is often a generic octet-stream.
+        val mime = mimeHint.ifBlank { lastKnownMime }
+
+        if (usePlatformDecoder(mime)) {
+            // MediaCodec fetches the URL itself, so the HTTP pipe is unused here.
+            currentUri = uri
+            var failure: String? = null
+            val ok = aac.start(uri, conn.fileDescriptor, seekSeconds) { failure = it }
+            if (!ok) {
+                stop()
+                return """{"ok":false,"message":"${(failure ?: "platform decoder failed").replace("\"", "\\\"")}"}"""
+            }
+            fetching.set(true)
+            startWatcher()
+            Log.i(TAG, "stream: $uri via MediaCodec ($mime)")
+            return """{"ok":true,"uri":"${uri.replace("\"", "\\\"")}","decoder":"platform"}"""
+        }
+
+        val started = NativeBridge.startStream(
+            conn.fileDescriptor, seekSeconds, relaxed = false, mime = mime
+        )
         if (!started.contains("\"ok\":true")) {
             stop()
             return started
@@ -210,6 +253,8 @@ class HttpStreamPlayback(private val context: Context) {
             } else {
                 conn.contentLengthLong
             }
+            conn.contentType?.substringBefore(';')?.trim()?.takeIf { it.isNotEmpty() }
+                ?.let { lastKnownMime = it }
             Log.i(TAG, "stream: HTTP $code, type=${conn.contentType}, " +
                 "len=${conn.contentLengthLong}, total=$contentLength, range=$rangeStart")
 
@@ -271,6 +316,7 @@ class HttpStreamPlayback(private val context: Context) {
 
     fun stop() {
         fetching.set(false)
+        aac.stop()
         NativeBridge.stopStream()
         connection?.close()
         connection = null

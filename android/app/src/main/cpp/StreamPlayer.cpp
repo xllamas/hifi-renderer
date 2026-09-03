@@ -15,17 +15,17 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <algorithm>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
-#define DR_FLAC_IMPLEMENTATION
-#define DR_FLAC_NO_STDIO
-#include "third_party/dr_libs/dr_flac.h"
-
 #include "NetworkStream.h"
+#include "decode/Decoder.h"
+#include "decode/FlacDecoder.h"
+#include "decode/Mp3Decoder.h"
 #include "usb/UsbSink.h"
 
 #define LOG_TAG "hifirend"
@@ -57,11 +57,13 @@ public:
      * @param relaxed true when the stream starts mid-file and therefore has no
      *        FLAC header, so the decoder must scan for a frame boundary.
      */
-    std::string start(int fd, int seekSeconds, bool relaxed) {
+    std::string start(int fd, int seekSeconds, bool relaxed, const std::string &mime) {
         std::lock_guard<std::mutex> lock(mutex_);
         stopLocked();
         positionBase_.store(seekSeconds);
         relaxed_ = relaxed;
+        format_ = formatFromMime(mime);
+        mime_ = mime;
 
         stream_ = std::make_unique<NetworkStream>();
         sink_ = std::make_unique<UsbSink>();
@@ -79,6 +81,97 @@ public:
         rate_.store(0);
         decoder_ = std::thread(&StreamPlayer::decodeLoop, this);
         return "{\"ok\":true}";
+    }
+
+    /**
+     * Opens the DAC for PCM that is decoded elsewhere.
+     *
+     * AAC is decoded by Android's MediaCodec rather than natively: it avoids
+     * bundling an AAC decoder, and MediaCodec is a *decoder*, not the system
+     * mixer, so its PCM output still reaches the DAC untouched. The samples
+     * arrive here as 16-bit little-endian and are widened the same way every
+     * other source is.
+     */
+    std::string startPcm(int fd, uint32_t rate, int channels, int seekSeconds) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stopLocked();
+
+        sink_ = std::make_unique<UsbSink>();
+        std::string err;
+        if (!sink_->open(fd, &err)) {
+            sink_.reset();
+            return "{\"ok\":false,\"message\":\"" + esc(err) + "\"}";
+        }
+        if (!sink_->configure(rate, 16, channels, &err)) {
+            sink_.reset();
+            return "{\"ok\":false,\"message\":\"" + esc(err) + "\"}";
+        }
+
+        pcmMode_ = true;
+        pcmChannels_ = channels;
+        pcmStarted_ = false;
+        positionBase_.store(seekSeconds);
+        framesDecoded_.store(0);
+        rate_.store(rate);
+        finished_.store(false);
+        error_.clear();
+        running_.store(true);
+        LOGI("pcm: %u Hz %dch from MediaCodec", rate, channels);
+        return "{\"ok\":true}";
+    }
+
+    /** 16-bit little-endian interleaved PCM from the platform decoder. */
+    bool pushPcm(const uint8_t *data, size_t n) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!sink_ || !running_.load()) return false;
+
+        const int subslot = sink_->deviceSubslot();
+        const int shiftDown = 32 - (subslot * 8);
+        const size_t samples = n / 2;
+        pcmScratch_.resize(samples * subslot);
+        uint8_t *out = pcmScratch_.data();
+        for (size_t i = 0; i < samples; i++) {
+            const int16_t s16 = static_cast<int16_t>(data[i * 2] | (data[i * 2 + 1] << 8));
+            const uint32_t v = (static_cast<uint32_t>(static_cast<int32_t>(s16) << 16)) >> shiftDown;
+            for (int b = 0; b < subslot; b++) {
+                *out++ = static_cast<uint8_t>((v >> (8 * b)) & 0xFF);
+            }
+        }
+        framesDecoded_.fetch_add(samples / std::max(pcmChannels_, 1), std::memory_order_relaxed);
+
+        size_t toWrite = pcmScratch_.size(), written = 0;
+        while (written < toWrite && running_.load()) {
+            written += sink_->write(pcmScratch_.data() + written, toWrite - written);
+            if (written < toWrite) usleep(1000);
+        }
+
+        // Same pre-roll rule as every other path: fill before opening the
+        // stream, or the track starts with a burst of silence.
+        if (!pcmStarted_ && sink_->ringAvailable() >= sink_->ringSpace()) {
+            std::string err;
+            if (sink_->start(&err)) {
+                pcmStarted_ = true;
+                LOGI("pcm: stream started after %zu bytes pre-roll", sink_->ringAvailable());
+            } else {
+                error_ = err;
+                LOGE("pcm start failed: %s", err.c_str());
+                running_.store(false);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** MediaCodec reached the end of the track. */
+    void pcmEndOfStream() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!sink_) return;
+        if (!pcmStarted_) {   // very short track: never hit the pre-roll mark
+            std::string err;
+            if (sink_->start(&err)) pcmStarted_ = true;
+        }
+        while (running_.load() && sink_->ringAvailable() > 0) usleep(5000);
+        finished_.store(true, std::memory_order_release);
     }
 
     bool push(const uint8_t *data, size_t n) {
@@ -144,51 +237,55 @@ private:
             sink_.reset();
         }
         stream_.reset();
-    }
-
-    static size_t onRead(void *user, void *out, size_t bytes) {
-        return static_cast<NetworkStream *>(user)->read(static_cast<uint8_t *>(out), bytes);
-    }
-
-    // Live network bytes cannot be rewound. Seeking is handled by re-requesting
-    // with an HTTP byte range on the Kotlin side, not here.
-    static drflac_bool32 onSeek(void *, int, drflac_seek_origin) { return DRFLAC_FALSE; }
-
-    static drflac_bool32 onTell(void *user, drflac_int64 *cursor) {
-        *cursor = static_cast<drflac_int64>(static_cast<NetworkStream *>(user)->consumed());
-        return DRFLAC_TRUE;
+        pcmMode_ = false;
+        pcmStarted_ = false;
     }
 
     void decodeLoop() {
         setpriority(PRIO_PROCESS, 0, -16);
 
         // Blocks until enough of the stream has arrived to read the headers.
-        // A stream that begins mid-file has no header, so the decoder has to
-        // find the next frame boundary itself.
-        drflac *flac = relaxed_
-            ? drflac_open_relaxed(&StreamPlayer::onRead, &StreamPlayer::onSeek,
-                                  &StreamPlayer::onTell, drflac_container_native,
-                                  stream_.get(), nullptr)
-            : drflac_open(&StreamPlayer::onRead, &StreamPlayer::onSeek,
-                          &StreamPlayer::onTell, stream_.get(), nullptr);
-        if (flac == nullptr) {
-            error_ = "not a decodable FLAC stream";
-            LOGE("decode: drflac_open failed");
+        // Formats differ in how they announce themselves: FLAC has a global
+        // header, MP3 carries one per frame. The decoder handles that; this
+        // only has to pick the right one. An unknown or generic MIME type is
+        // tried as FLAC first, because that is what a hi-fi source almost
+        // always is, then MP3.
+        std::unique_ptr<Decoder> decoder;
+        std::string err;
+        if (format_ == SourceFormat::Mp3) {
+            decoder = std::make_unique<Mp3Decoder>();
+            if (!decoder->open(stream_.get(), &err)) decoder.reset();
+        } else if (format_ == SourceFormat::Flac) {
+            decoder = std::make_unique<FlacDecoder>(relaxed_);
+            if (!decoder->open(stream_.get(), &err)) decoder.reset();
+        } else {
+            LOGI("stream: MIME '%s' not recognised, trying FLAC", mime_.c_str());
+            decoder = std::make_unique<FlacDecoder>(relaxed_);
+            if (!decoder->open(stream_.get(), &err)) {
+                // The FLAC attempt consumed the head of the stream, so MP3
+                // cannot be tried on the same bytes. Report clearly instead of
+                // failing obscurely.
+                decoder.reset();
+                err = "unsupported or unrecognised audio format (" + mime_ + ")";
+            }
+        }
+
+        if (!decoder) {
+            error_ = err;
+            LOGE("decode: %s", err.c_str());
             running_.store(false);
             return;
         }
 
-        const uint32_t rate = flac->sampleRate;
-        const int channels = flac->channels;
-        const int bits = flac->bitsPerSample;
+        const uint32_t rate = decoder->sampleRate();
+        const int channels = decoder->channels();
+        const int bits = decoder->bitsPerSample();
         rate_.store(rate);
-        LOGI("stream: FLAC %u Hz %d-bit %dch", rate, bits, channels);
+        LOGI("stream: %s %u Hz %d-bit %dch", formatName(format_), rate, bits, channels);
 
-        std::string err;
         if (!sink_->configure(rate, bits, channels, &err)) {
             error_ = err;
             LOGE("decode: %s", err.c_str());
-            drflac_close(flac);
             running_.store(false);
             return;
         }
@@ -196,13 +293,13 @@ private:
         const int subslot = sink_->deviceSubslot();
         const int shiftDown = 32 - (subslot * 8);
         constexpr int kChunk = 4096;
-        std::vector<drflac_int32> pcm(static_cast<size_t>(kChunk) * channels);
+        std::vector<int32_t> pcm(static_cast<size_t>(kChunk) * channels);
         std::vector<uint8_t> wire(static_cast<size_t>(kChunk) * channels * subslot);
 
         // Decode one chunk and hand it to the sink, shared by the pre-roll and
         // the main loop.
         auto decodeChunk = [&]() -> bool {
-            drflac_uint64 got = drflac_read_pcm_frames_s32(flac, kChunk, pcm.data());
+            uint64_t got = decoder->read(pcm.data(), kChunk);
             if (got == 0) return false;
             framesDecoded_.fetch_add(got, std::memory_order_relaxed);
             const size_t samples = static_cast<size_t>(got) * channels;
@@ -233,7 +330,6 @@ private:
         if (!sink_->start(&err)) {
             error_ = err;
             LOGE("decode: %s", err.c_str());
-            drflac_close(flac);
             running_.store(false);
             return;
         }
@@ -258,7 +354,7 @@ private:
         // to know the track finished so it can send the next one.
         if (running_.load()) finished_.store(true, std::memory_order_release);
 
-        drflac_close(flac);
+        decoder->close();
         LOGI("stream finished: %llu frames decoded",
              static_cast<unsigned long long>(framesDecoded_.load()));
     }
@@ -273,6 +369,12 @@ private:
     std::atomic<bool> finished_{false};
     std::atomic<uint32_t> positionBase_{0};
     bool relaxed_ = false;
+    SourceFormat format_ = SourceFormat::Unknown;
+    std::string mime_;
+    bool pcmMode_ = false;
+    bool pcmStarted_ = false;
+    int pcmChannels_ = 2;
+    std::vector<uint8_t> pcmScratch_;
     std::string error_;
 };
 
@@ -282,11 +384,13 @@ extern "C" {
 
 JNIEXPORT jstring JNICALL
 Java_com_hifirend_NativeBridge_nativeStartStream(JNIEnv *env, jobject, jint fd,
-                                                 jint seekSeconds, jboolean relaxed) {
-    return env->NewStringUTF(
-        StreamPlayer::instance()
-            .start(static_cast<int>(fd), static_cast<int>(seekSeconds), relaxed == JNI_TRUE)
-            .c_str());
+                                                 jint seekSeconds, jboolean relaxed,
+                                                 jstring mime) {
+    const char *m = mime ? env->GetStringUTFChars(mime, nullptr) : "";
+    std::string result = StreamPlayer::instance().start(
+        static_cast<int>(fd), static_cast<int>(seekSeconds), relaxed == JNI_TRUE, m);
+    if (mime) env->ReleaseStringUTFChars(mime, m);
+    return env->NewStringUTF(result.c_str());
 }
 
 JNIEXPORT jboolean JNICALL
@@ -297,6 +401,30 @@ Java_com_hifirend_NativeBridge_nativePushStreamData(JNIEnv *env, jobject,
                                             static_cast<size_t>(len));
     env->ReleaseByteArrayElements(data, p, JNI_ABORT);
     return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_hifirend_NativeBridge_nativeStartPcmStream(JNIEnv *env, jobject, jint fd, jint rate,
+                                                    jint channels, jint seekSeconds) {
+    return env->NewStringUTF(
+        StreamPlayer::instance()
+            .startPcm(static_cast<int>(fd), static_cast<uint32_t>(rate),
+                      static_cast<int>(channels), static_cast<int>(seekSeconds))
+            .c_str());
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_hifirend_NativeBridge_nativePushPcm(JNIEnv *env, jobject, jbyteArray data, jint len) {
+    jbyte *p = env->GetByteArrayElements(data, nullptr);
+    bool ok = StreamPlayer::instance().pushPcm(reinterpret_cast<uint8_t *>(p),
+                                               static_cast<size_t>(len));
+    env->ReleaseByteArrayElements(data, p, JNI_ABORT);
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_hifirend_NativeBridge_nativePcmEndOfStream(JNIEnv *, jobject) {
+    StreamPlayer::instance().pcmEndOfStream();
 }
 
 JNIEXPORT void JNICALL
