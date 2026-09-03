@@ -47,6 +47,8 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     private val controller = object : PlaybackController {
         override fun play(uri: String): String = playback.play(uri)
         override fun stop() = playback.stop()
+        override fun pause() = playback.pause()
+        override fun resume() = playback.resume()
         override fun positionSeconds(): Int = playback.positionSeconds()
     }
 
@@ -99,6 +101,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             binder.read(RendererAvTransport::class.java) as LocalService<RendererAvTransport>
         val av = RendererAvTransport(queue, controller)
         avTransport = av
+        playback.onTrackFinished = { av.onTrackFinished() }
         // The manager creates its own instance by default; supply ours so the
         // queue and (from M4) the audio engine share one object.
         avService.manager = object : LastChangeAwareServiceManager<RendererAvTransport>(

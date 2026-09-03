@@ -32,6 +32,8 @@ interface PlaybackController {
     /** Returns a JSON result; failures are reported, not thrown. */
     fun play(uri: String): String
     fun stop()
+    fun pause()
+    fun resume()
     fun positionSeconds(): Int
 }
 
@@ -110,7 +112,40 @@ class RendererAvTransport(
         transportState = TransportState.STOPPED
     }
 
+    /**
+     * A track reached its natural end. If the controller queued a next track we
+     * play it ourselves, which is what keeps the queue going after the
+     * controller disconnects. Otherwise report STOPPED so a polling controller
+     * knows to send the next one -- staying PLAYING forever is why playlists
+     * appeared to stall.
+     */
+    fun onTrackFinished() {
+        val next = queue.advance()
+        if (next != null) {
+            Log.i(TAG, "auto-advancing to ${next.uri}")
+            val result = playback?.play(next.uri)
+            transportState = if (result != null && !result.contains("\"ok\":true")) {
+                Log.e(TAG, "auto-advance failed: $result")
+                TransportState.STOPPED
+            } else {
+                TransportState.PLAYING
+            }
+        } else {
+            Log.i(TAG, "queue exhausted; reporting STOPPED")
+            transportState = TransportState.STOPPED
+        }
+    }
+
     override fun play(instanceId: UnsignedIntegerFourBytes?, speed: String?) {
+        // Resuming from pause must continue, not restart: the stream is still
+        // open and holding its position.
+        if (transportState == TransportState.PAUSED_PLAYBACK) {
+            Log.i(TAG, "AVTransport.Play (resume)")
+            playback?.resume()
+            transportState = TransportState.PLAYING
+            return
+        }
+
         val uri = queue.current?.uri
         Log.i(TAG, "AVTransport.Play speed=$speed current=$uri")
         if (uri == null) {
@@ -130,11 +165,8 @@ class RendererAvTransport(
     }
 
     override fun pause(instanceId: UnsignedIntegerFourBytes?) {
-        // A true pause would hold the isochronous stream open and stop feeding
-        // it; for now this stops, so resuming restarts the track. Proper pause
-        // belongs with the transport rework that also brings gapless.
         Log.i(TAG, "AVTransport.Pause")
-        playback?.stop()
+        playback?.pause()
         transportState = TransportState.PAUSED_PLAYBACK
     }
 

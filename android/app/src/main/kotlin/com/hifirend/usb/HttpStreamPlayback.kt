@@ -35,6 +35,16 @@ class HttpStreamPlayback(private val context: Context) {
     var currentUri: String? = null
         private set
 
+    /**
+     * Called on the watcher thread when a track reaches its natural end.
+     * Controllers poll GetTransportInfo, so if the renderer keeps reporting
+     * PLAYING after a track finishes they never advance the playlist.
+     */
+    @Volatile
+    var onTrackFinished: (() -> Unit)? = null
+
+    private var watcher: Thread? = null
+
     fun play(uri: String): String {
         stop()
 
@@ -63,6 +73,7 @@ class HttpStreamPlayback(private val context: Context) {
         currentUri = uri
         fetching.set(true)
         thread(name = "http-fetch", isDaemon = true) { fetch(uri) }
+        startWatcher()
         Log.i(TAG, "stream: fetching $uri")
         return """{"ok":true,"uri":"${uri.replace("\"", "\\\"")}"}"""
     }
@@ -108,6 +119,32 @@ class HttpStreamPlayback(private val context: Context) {
             runCatching { stream?.close() }
             runCatching { conn?.disconnect() }
             NativeBridge.endStream()
+        }
+    }
+
+    /** Real pause: the stream stays open and keeps its place. */
+    fun pause() = NativeBridge.setStreamPaused(true)
+
+    fun resume() = NativeBridge.setStreamPaused(false)
+
+    /**
+     * Watches for the track ending. The decoder runs ahead of the DAC, so
+     * "fetch complete" is not "playback complete" -- only the native engine
+     * knows when the last sample has actually gone out.
+     */
+    private fun startWatcher() {
+        watcher = thread(name = "track-watcher", isDaemon = true) {
+            while (fetching.get()) {
+                Thread.sleep(400)
+                if (!fetching.get()) return@thread
+                if (NativeBridge.streamFinished()) {
+                    Log.i(TAG, "track finished: $currentUri")
+                    fetching.set(false)
+                    runCatching { onTrackFinished?.invoke() }
+                        .onFailure { Log.e(TAG, "onTrackFinished threw: ${it.message}") }
+                    return@thread
+                }
+            }
         }
     }
 

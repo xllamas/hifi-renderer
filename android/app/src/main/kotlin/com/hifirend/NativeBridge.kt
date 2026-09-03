@@ -35,6 +35,8 @@ object NativeBridge {
     private external fun nativeStopStream()
     private external fun nativeStreamStatus(): String
     private external fun nativeStreamPositionSeconds(): Int
+    private external fun nativeSetStreamPaused(paused: Boolean)
+    private external fun nativeStreamFinished(): Boolean
 
     /** ABI, libusb version and Oboe link status, or the load failure. */
     fun selfTest(): String = loadError?.let { "native library failed to load: $it" } ?: nativeSelfTest()
@@ -73,4 +75,9 @@ object NativeBridge {
         loadError?.let { """{"running":false}""" } ?: nativeStreamStatus()
 
     fun streamPositionSeconds(): Int = if (isLoaded) nativeStreamPositionSeconds() else 0
+
+    fun setStreamPaused(paused: Boolean) { if (isLoaded) nativeSetStreamPaused(paused) }
+
+    /** True once the track reached its natural end rather than being stopped. */
+    fun streamFinished(): Boolean = if (isLoaded) nativeStreamFinished() else false
 }

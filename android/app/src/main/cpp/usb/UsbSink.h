@@ -59,6 +59,16 @@ public:
     size_t ringSpace() const { return ring_ ? ring_->space() : 0; }
     size_t ringAvailable() const { return ring_ ? ring_->available() : 0; }
 
+    /**
+     * Pause emits silence without draining the ring, so everything upstream
+     * stalls naturally: the decoder blocks on a full ring, the HTTP fetch
+     * blocks on a full network buffer, and nothing loses its place. Keeping the
+     * isochronous stream open also avoids re-negotiating the alt-setting on
+     * resume, which the DAC would render as a click.
+     */
+    void setPaused(bool paused) { paused_.store(paused, std::memory_order_release); }
+    bool paused() const { return paused_.load(std::memory_order_acquire); }
+
     const SinkStats &stats() const { return stats_; }
     uint32_t rate() const { return rate_; }
     int deviceBits() const { return alt_ ? alt_->bits : 0; }
@@ -106,6 +116,7 @@ private:
     double packetAccum_ = 0.0;
 
     std::atomic<bool> running_{false};
+    std::atomic<bool> paused_{false};
     std::atomic<int> inFlight_{0};
     std::thread eventThread_;
     // Logging happens here, never on the event thread: __android_log_print can

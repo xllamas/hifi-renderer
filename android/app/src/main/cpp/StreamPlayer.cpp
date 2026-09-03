@@ -65,6 +65,7 @@ public:
         }
 
         error_.clear();
+        finished_.store(false);
         running_.store(true);
         framesDecoded_.store(0);
         rate_.store(0);
@@ -81,6 +82,14 @@ public:
         }
         return s->write(data, n);
     }
+
+    void setPaused(bool paused) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (sink_) sink_->setPaused(paused);
+    }
+
+    /** True once the track played to its natural end, as opposed to being stopped. */
+    bool finished() const { return finished_.load(std::memory_order_acquire); }
 
     void endOfStream() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -103,6 +112,7 @@ public:
         s += ",\"framesDecoded\":" + std::to_string(framesDecoded_.load());
         s += ",\"positionSeconds\":" +
              std::to_string(r ? framesDecoded_.load() / r : 0);
+        s += ",\"finished\":" + std::string(finished_.load() ? "true" : "false");
         s += ",\"error\":\"" + esc(error_) + "\"";
         s += "}";
         return s;
@@ -225,8 +235,14 @@ private:
             if (!decodeChunk()) break;   // end of stream
         }
 
-        // Let the tail reach the DAC before tearing the stream down.
+        // Let the tail reach the DAC before tearing the stream down, otherwise
+        // the last fraction of a second is cut off.
         while (running_.load() && sink_->ringAvailable() > 0) usleep(5000);
+
+        // Distinguish reaching the end from being stopped: the controller needs
+        // to know the track finished so it can send the next one.
+        if (running_.load()) finished_.store(true, std::memory_order_release);
+
         drflac_close(flac);
         LOGI("stream finished: %llu frames decoded",
              static_cast<unsigned long long>(framesDecoded_.load()));
@@ -239,6 +255,7 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<uint64_t> framesDecoded_{0};
     std::atomic<uint32_t> rate_{0};
+    std::atomic<bool> finished_{false};
     std::string error_;
 };
 
@@ -259,6 +276,16 @@ Java_com_hifirend_NativeBridge_nativePushStreamData(JNIEnv *env, jobject,
                                             static_cast<size_t>(len));
     env->ReleaseByteArrayElements(data, p, JNI_ABORT);
     return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_hifirend_NativeBridge_nativeSetStreamPaused(JNIEnv *, jobject, jboolean paused) {
+    StreamPlayer::instance().setPaused(paused == JNI_TRUE);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_hifirend_NativeBridge_nativeStreamFinished(JNIEnv *, jobject) {
+    return StreamPlayer::instance().finished() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL

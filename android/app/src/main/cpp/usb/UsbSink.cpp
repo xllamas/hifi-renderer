@@ -182,6 +182,15 @@ void UsbSink::fillTransfer(libusb_transfer *t) {
         int want = frames * bytesPerFrame_;
         if (want > maxPacket) want = (maxPacket / bytesPerFrame_) * bytesPerFrame_;
 
+        // While paused, emit silence and leave the ring untouched. This is not
+        // an underrun -- counting it as one would bury real faults in noise.
+        if (paused_.load(std::memory_order_acquire)) {
+            memset(buf + offset, 0, static_cast<size_t>(want));
+            t->iso_packet_desc[p].length = static_cast<unsigned int>(want);
+            offset += want;
+            continue;
+        }
+
         size_t got = ring_->read(buf + offset, static_cast<size_t>(want));
         if (got < static_cast<size_t>(want)) {
             // Underrun: emit silence rather than a short packet. A short packet
@@ -423,12 +432,13 @@ void UsbSink::close() {
 std::string UsbSink::statusJson() const {
     const uint32_t fb = stats_.feedbackRateMilliHz.load();
     return sfmt(
-        "{\"running\":%s,\"rate\":%u,\"altSetting\":%d,\"deviceBits\":%d,"
+        "{\"running\":%s,\"paused\":%s,\"rate\":%u,\"altSetting\":%d,\"deviceBits\":%d,"
         "\"subslot\":%d,\"bytesPerFrame\":%d,\"framesSubmitted\":%llu,"
         "\"underruns\":%llu,\"transferErrors\":%llu,\"measuredRateHz\":%.1f,"
         "\"feedbackAccepted\":%u,\"feedbackRejected\":%u,"
         "\"packetErrors\":%llu,\"packetsSubmitted\":%llu,\"ringFillPercent\":%d}",
-        running_.load() ? "true" : "false", rate_, altSetting(), deviceBits(),
+        running_.load() ? "true" : "false",
+        paused_.load() ? "true" : "false", rate_, altSetting(), deviceBits(),
         deviceSubslot(), bytesPerFrame_,
         static_cast<unsigned long long>(stats_.framesSubmitted.load()),
         static_cast<unsigned long long>(stats_.underruns.load()),
