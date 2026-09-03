@@ -1,5 +1,7 @@
 package com.hifirend
 
+import android.os.Bundle
+import android.view.WindowManager
 import com.hifirend.usb.UsbAudioProbe
 import com.hifirend.usb.UsbPlayback
 import io.flutter.embedding.android.FlutterActivity
@@ -12,6 +14,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : FlutterActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // The spec requires the renderer to prevent Android sleeping. Full
+        // screen-off/on policy is M6; this is the part playback depends on,
+        // because a suspended process cannot service 125 us USB deadlines.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

@@ -3,6 +3,10 @@
          which is the entire point of this app. -->
     <uses-feature android:name="android.hardware.usb.host" android:required="true" />
 
+    <!-- Playback must survive the screen turning off: a suspended process
+         cannot meet isochronous deadlines. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:label="hifirend"
         android:name="${applicationName}"

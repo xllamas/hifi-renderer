@@ -4,6 +4,7 @@ import android.content.Context
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
+import android.os.PowerManager
 import android.util.Log
 import com.hifirend.NativeBridge
 
@@ -19,7 +20,12 @@ private const val TAG = "hifirend"
 class UsbPlayback(private val context: Context) {
 
     private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+    private val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
     private var connection: UsbDeviceConnection? = null
+
+    // Held only while streaming. Without it the CPU can idle mid-transfer and
+    // the DAC starves -- the isochronous engine has no way to catch up.
+    private var wakeLock: PowerManager.WakeLock? = null
 
     fun play(path: String, loop: Boolean): String {
         stop()
@@ -46,6 +52,11 @@ class UsbPlayback(private val context: Context) {
         }
 
         connection = conn
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK, "hifirend:playback").apply {
+            setReferenceCounted(false)
+            acquire(4 * 60 * 60 * 1000L)  // bounded so a leak cannot drain the battery
+        }
         val result = NativeBridge.playWav(conn.fileDescriptor, path, loop)
         if (!result.contains("\"ok\":true")) stop()
         return result
@@ -55,6 +66,8 @@ class UsbPlayback(private val context: Context) {
         NativeBridge.stopPlayback()
         connection?.close()
         connection = null
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
     }
 
     fun status(): String = NativeBridge.playbackStatus()
