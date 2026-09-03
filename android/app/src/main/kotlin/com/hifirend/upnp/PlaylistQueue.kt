@@ -4,7 +4,11 @@ import android.util.Log
 
 private const val TAG = "hifirend"
 
-data class QueueItem(val uri: String, val metaData: String?)
+data class QueueItem(
+    val uri: String,
+    val metaData: String?,
+    val track: TrackMetadata = TrackMetadata.parse(metaData),
+)
 
 /**
  * The local queue behind AVTransport.

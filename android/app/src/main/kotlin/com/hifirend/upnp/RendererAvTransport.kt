@@ -29,6 +29,8 @@ private const val TAG = "hifirend"
  */
 class RendererAvTransport(
     private val queue: PlaylistQueue,
+    /** Elapsed seconds from the audio engine; null until M4 wires it. */
+    private val positionProvider: (() -> Int)? = null,
 ) : AbstractAVTransportService() {
 
     @Volatile
@@ -54,7 +56,7 @@ class RendererAvTransport(
             c?.uri ?: "",
             c?.metaData ?: "",
             UnsignedIntegerFourBytes(if (c == null) 0 else 1),
-            "00:00:00",
+            c?.track?.upnpDuration ?: "00:00:00",
             StorageMedium.NETWORK,
         )
     }
@@ -62,9 +64,29 @@ class RendererAvTransport(
     override fun getTransportInfo(instanceId: UnsignedIntegerFourBytes?): TransportInfo =
         TransportInfo(transportState, TransportStatus.OK, "1")
 
+    /**
+     * Controllers poll this continuously — BubbleUPnP made 143 AVTransport
+     * calls in one short test — so it must be cheap and must report a real
+     * duration, or the controller's progress bar looks broken even when
+     * playback is fine. [positionProvider] is supplied by the audio engine in
+     * M4; until then elapsed time is reported as zero rather than faked.
+     */
     override fun getPositionInfo(instanceId: UnsignedIntegerFourBytes?): PositionInfo {
-        val c = queue.current
-        return PositionInfo(1, c?.metaData ?: "", c?.uri ?: "")
+        val c = queue.current ?: return PositionInfo()
+        val duration = c.track.upnpDuration
+        val elapsedSeconds = positionProvider?.invoke() ?: 0
+        val elapsed = "%d:%02d:%02d".format(
+            elapsedSeconds / 3600, (elapsedSeconds % 3600) / 60, elapsedSeconds % 60
+        )
+        // Use the 8-argument constructor. The 5-argument one skips
+        // trackMetaData, so metadata silently lands in trackURI and the URI in
+        // relTime -- the controller then shows XML where the track name goes.
+        // relCount/absCount are Int.MAX_VALUE, the UPnP convention for
+        // "counter not implemented".
+        return PositionInfo(
+            1L, duration, c.metaData ?: "", c.uri,
+            elapsed, elapsed, Int.MAX_VALUE, Int.MAX_VALUE,
+        )
     }
 
     override fun getDeviceCapabilities(instanceId: UnsignedIntegerFourBytes?): DeviceCapabilities =
