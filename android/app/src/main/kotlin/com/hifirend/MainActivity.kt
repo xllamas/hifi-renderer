@@ -82,7 +82,12 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "playbackStatus" -> result.success(playback.status())
-                    "rendererState" -> result.success(RendererState.toJson())
+                    "rendererState" -> {
+                        // Cheap, and keeps the screen honest about the DAC even
+                        // when permission arrives after the app started.
+                        runCatching { UsbAudioProbe(applicationContext).refreshDacPresence() }
+                        result.success(RendererState.toJson())
+                    }
                     "playPause" -> result.success(RendererControl.playPause())
                     "stopPlayback2" -> result.success(RendererControl.stop())
                     "setDacVolume" -> {

@@ -59,7 +59,16 @@ class _RendererHomeState extends State<RendererHome> {
   Future<void> _refresh() async {
     try {
       final raw = await _channel.invokeMethod<String>('rendererState') ?? '{}';
-      if (mounted) setState(() => _status = RendererStatus.parse(raw));
+      if (!mounted) return;
+      final next = RendererStatus.parse(raw);
+      // A DAC that appears after startup -- or permission granted later -- must
+      // trigger a re-probe, or the capability screen stays stuck on the failed
+      // first attempt for the life of the app.
+      final gained = next.dacConnected && !_status.dacConnected;
+      setState(() => _status = next);
+      if (gained || (next.dacConnected && (_caps == null || !_caps!.ok))) {
+        _probeDac();
+      }
     } catch (_) {
       // The service may not be up yet; the idle screen is the right fallback.
     }

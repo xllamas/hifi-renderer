@@ -57,6 +57,25 @@ class UsbAudioProbe(private val context: Context) {
     fun findAudioDevice(): UsbDevice? = usbManager.deviceList.values.firstOrNull { isAudioDevice(it) }
 
     /**
+     * Refreshes the shared snapshot's view of the DAC.
+     *
+     * Presence has to be re-read rather than cached: devices come and go, and
+     * permission may be granted long after the app first looked. A stale "no
+     * DAC" is actively misleading -- it tells the user to fix a problem that
+     * does not exist while playback works perfectly.
+     */
+    fun refreshDacPresence() {
+        val device = findAudioDevice()
+        com.hifirend.RendererState.let { st ->
+            st.dacConnected = device != null && usbManager.hasPermission(device)
+            st.dacName = device?.let { d ->
+                listOfNotNull(d.manufacturerName, d.productName)
+                    .joinToString(" ").ifBlank { "USB audio device" }
+            }
+        }
+    }
+
+    /**
      * Opens the device and runs the native probe. Requests permission first if
      * we do not already hold it; the user sees a system dialog.
      */

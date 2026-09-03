@@ -279,7 +279,11 @@ private:
         } else {
             LOGI("stream: MIME '%s' not recognised, trying FLAC", mime_.c_str());
             decoder = std::make_unique<FlacDecoder>(relaxed_);
-            if (!decoder->open(stream_.get(), &err)) {
+            if (decoder->open(stream_.get(), &err)) {
+                // Report what actually decoded, not what the MIME type
+                // guessed -- this label reaches the user as the format badge.
+                format_ = SourceFormat::Flac;
+            } else {
                 // The FLAC attempt consumed the head of the stream, so MP3
                 // cannot be tried on the same bytes. Report clearly instead of
                 // failing obscurely.
