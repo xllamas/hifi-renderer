@@ -37,6 +37,8 @@ object NativeBridge {
     private external fun nativeStreamPositionSeconds(): Int
     private external fun nativeSetStreamPaused(paused: Boolean)
     private external fun nativeStreamFinished(): Boolean
+    private external fun nativeGetDacVolume(): Int
+    private external fun nativeSetDacVolume(percent: Int): Boolean
     private external fun nativeStartPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int): String
     private external fun nativePushPcm(data: ByteArray, len: Int): Boolean
     private external fun nativePcmEndOfStream()
@@ -98,4 +100,10 @@ object NativeBridge {
         if (isLoaded) nativePushPcm(data, len) else false
 
     fun pcmEndOfStream() { if (isLoaded) nativePcmEndOfStream() }
+
+    /** Volume the DAC itself reports, or -1 when it has no volume control. */
+    fun getDacVolume(): Int = if (isLoaded) nativeGetDacVolume() else -1
+
+    fun setDacVolume(percent: Int): Boolean =
+        if (isLoaded) nativeSetDacVolume(percent) else false
 }

@@ -22,6 +22,8 @@ class RendererStatus {
   final String? dacName;
   final bool dacConnected;
   final bool bitPerfect;
+  final int dacVolume;
+  final bool dacVolumeSupported;
   final int underruns;
   final String? lastError;
 
@@ -43,6 +45,8 @@ class RendererStatus {
     this.dacName,
     this.dacConnected = false,
     this.bitPerfect = false,
+    this.dacVolume = -1,
+    this.dacVolumeSupported = false,
     this.underruns = 0,
     this.lastError,
   });
@@ -68,6 +72,8 @@ class RendererStatus {
         dacName: j['dacName'] as String?,
         dacConnected: j['dacConnected'] as bool? ?? false,
         bitPerfect: j['bitPerfect'] as bool? ?? false,
+        dacVolume: (j['dacVolume'] as num?)?.toInt() ?? -1,
+        dacVolumeSupported: j['dacVolumeSupported'] as bool? ?? false,
         underruns: (j['underruns'] as num?)?.toInt() ?? 0,
         lastError: j['lastError'] as String?,
       );
@@ -78,11 +84,41 @@ class RendererStatus {
 
   bool get isPlaying => transportState == 'PLAYING';
   bool get isPaused => transportState == 'PAUSED_PLAYBACK';
+  /// True only when the DAC will actually accept a volume change. Many DACs
+  /// expose none at all, and showing a slider that does nothing is worse than
+  /// showing no slider.
+  bool get canControlVolume => dacVolumeSupported && dacVolume >= 0;
+
   bool get hasTrack => title != null || transportState != 'NO_MEDIA_PRESENT';
 
   double get progress => durationSeconds > 0
       ? (positionSeconds / durationSeconds).clamp(0.0, 1.0)
       : 0.0;
+
+  /// Local echo while a volume change is in flight to the DAC.
+  RendererStatus copyWithVolume(int volume) => RendererStatus(
+        rendererName: rendererName,
+        transportState: transportState,
+        title: title,
+        artist: artist,
+        album: album,
+        albumArtUri: albumArtUri,
+        durationSeconds: durationSeconds,
+        positionSeconds: positionSeconds,
+        formatBadge: formatBadge,
+        sourceFormat: sourceFormat,
+        sourceRate: sourceRate,
+        sourceBits: sourceBits,
+        channels: channels,
+        deviceBits: deviceBits,
+        dacName: dacName,
+        dacConnected: dacConnected,
+        bitPerfect: bitPerfect,
+        dacVolume: volume,
+        dacVolumeSupported: dacVolumeSupported,
+        underruns: underruns,
+        lastError: lastError,
+      );
 
   static String formatTime(int seconds) {
     if (seconds < 0) return '0:00';

@@ -79,6 +79,22 @@ public:
      */
     void setSourceEnded(bool ended) { sourceEnded_.store(ended, std::memory_order_release); }
 
+    /**
+     * Volume via the UAC Feature Unit.
+     *
+     * Values travel as signed 16-bit hundredths-of-a-decibel (1/256 dB in the
+     * spec's fixed-point), over a *control* transfer, so setting volume never
+     * disturbs the isochronous stream. Many DACs -- integrated amps with a
+     * physical knob especially -- expose no Feature Unit at all, which is a
+     * normal outcome and not an error.
+     */
+    bool volumeSupported() const {
+        return caps_.volumeHostControllable && caps_.featureUnitId >= 0;
+    }
+    bool readVolumeRange();
+    bool getVolumePercent(int *percent);
+    bool setVolumePercent(int percent);
+
     const SinkStats &stats() const { return stats_; }
     uint32_t rate() const { return rate_; }
     int deviceBits() const { return alt_ ? alt_->bits : 0; }
@@ -128,6 +144,9 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};
     std::atomic<bool> sourceEnded_{false};
+    // Raw device units (1/256 dB). 0x8000 means "silence" in the spec.
+    int16_t volMin_ = 0, volMax_ = 0, volRes_ = 1;
+    bool volRangeKnown_ = false;
     std::atomic<int> inFlight_{0};
     std::thread eventThread_;
     // Logging happens here, never on the event thread: __android_log_print can

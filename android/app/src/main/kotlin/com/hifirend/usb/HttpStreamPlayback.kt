@@ -314,6 +314,13 @@ class HttpStreamPlayback(private val context: Context) {
             // running USB stream is bit-perfect by construction. A fallback
             // path would have to clear this.
             RendererState.bitPerfect = j.optBoolean("running")
+            RendererState.dacVolumeSupported = j.optBoolean("volumeSupported")
+            // Read back from the hardware rather than echoing what was set: on
+            // a DAC with its own knob the two can differ.
+            if (RendererState.dacVolumeSupported) {
+                NativeBridge.getDacVolume().takeIf { it >= 0 }
+                    ?.let { RendererState.dacVolume = it }
+            }
             j.optString("error").takeIf { it.isNotBlank() }?.let { RendererState.lastError = it }
         } catch (_: Throwable) {
             // Status is telemetry; never let it disturb playback.

@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import com.hifirend.usb.UsbAudioProbe
+import com.hifirend.RendererControl
 import com.hifirend.ServiceHealth
 import com.hifirend.power.VendorAutostart
 import com.hifirend.upnp.RendererUpnpService
@@ -82,6 +83,14 @@ class MainActivity : FlutterActivity() {
                     }
                     "playbackStatus" -> result.success(playback.status())
                     "rendererState" -> result.success(RendererState.toJson())
+                    "playPause" -> result.success(RendererControl.playPause())
+                    "stopPlayback2" -> result.success(RendererControl.stop())
+                    "setDacVolume" -> {
+                        val pct = call.argument<Int>("percent") ?: 0
+                        result.success(
+                            RendererControl.transport?.setDacVolume(pct) ?: false
+                        )
+                    }
                     "setRendererName" -> {
                         val name = call.argument<String>("name")?.trim().orEmpty()
                         if (name.isEmpty()) {

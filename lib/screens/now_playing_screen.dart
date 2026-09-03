@@ -5,17 +5,25 @@ import '../renderer_state.dart';
 /// The main screen: album art, track information, and the format and
 /// resolution actually being sent to the DAC.
 ///
-/// Deliberately sparse. This is meant to be looked at from across a room on a
-/// phone that does nothing else, so the track and the format carry the screen
-/// and everything operational lives behind the settings button.
+/// Deliberately sparse. This is meant to be read from across a room on a phone
+/// that does nothing else, so the art, the track and the format carry the
+/// screen and everything operational lives behind the settings button.
+///
+/// Two layouts: portrait stacks art above the details, landscape puts art on
+/// the left and everything else on the right, which is the sensible shape when
+/// the phone is docked on its side.
 class NowPlayingScreen extends StatelessWidget {
   final RendererStatus status;
   final VoidCallback onOpenSettings;
+  final VoidCallback onPlayPause;
+  final ValueChanged<int> onVolumeChanged;
 
   const NowPlayingScreen({
     super.key,
     required this.status,
     required this.onOpenSettings,
+    required this.onPlayPause,
+    required this.onVolumeChanged,
   });
 
   @override
@@ -25,9 +33,14 @@ class NowPlayingScreen extends StatelessWidget {
       body: SafeArea(
         child: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-              child: status.hasTrack ? _playing(context) : _idle(context),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final landscape = constraints.maxWidth > constraints.maxHeight;
+                if (!status.hasTrack) return _idle(context);
+                return landscape
+                    ? _landscape(context, constraints)
+                    : _portrait(context, constraints);
+              },
             ),
             Positioned(
               top: 4,
@@ -50,10 +63,8 @@ class NowPlayingScreen extends StatelessWidget {
           children: [
             Icon(Icons.speaker, size: 64, color: Colors.white.withValues(alpha: 0.18)),
             const SizedBox(height: 24),
-            Text(
-              status.rendererName,
-              style: const TextStyle(fontSize: 22, color: Colors.white70),
-            ),
+            Text(status.rendererName,
+                style: const TextStyle(fontSize: 22, color: Colors.white70)),
             const SizedBox(height: 8),
             Text(
               status.dacConnected
@@ -65,75 +76,129 @@ class NowPlayingScreen extends StatelessWidget {
         ),
       );
 
-  Widget _playing(BuildContext context) => Column(
+  // Half the previous edge margin, so the art can be noticeably larger.
+  static const _edge = 14.0;
+
+  Widget _portrait(BuildContext context, BoxConstraints c) {
+    // Art fills the width less the margins, capped so it cannot crowd out the
+    // text and controls on short screens.
+    final art = (c.maxWidth - _edge * 2).clamp(0.0, c.maxHeight * 0.52);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: _edge, vertical: 12),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Spacer(flex: 1),
-          Center(child: _art()),
-          const SizedBox(height: 32),
-          Text(
-            status.title ?? 'Unknown track',
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-                fontSize: 26, fontWeight: FontWeight.w600, color: Colors.white),
-          ),
-          if (status.artist != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              status.artist!,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 18, color: Colors.white70),
-            ),
-          ],
-          if (status.album != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              status.album!,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 15, color: Colors.white38),
-            ),
-          ],
+          const Spacer(),
+          Center(child: _art(art)),
           const SizedBox(height: 28),
+          _titleBlock(centred: true),
+          const SizedBox(height: 22),
           _progress(),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
+          _controls(centred: true),
+          if (status.canControlVolume) ...[
+            const SizedBox(height: 4),
+            _volume(),
+          ],
+          const SizedBox(height: 16),
           Center(child: _formatBadge()),
-          const Spacer(flex: 1),
+          const Spacer(),
         ],
-      );
-
-  Widget _art() {
-    const size = 260.0;
-    final uri = status.albumArtUri;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: uri == null
-            ? _artPlaceholder()
-            : Image.network(
-                uri,
-                fit: BoxFit.cover,
-                // Album art comes from a media server that may be slow, gone,
-                // or serving something that is not an image. None of that
-                // should disturb the screen.
-                errorBuilder: (_, _, _) => _artPlaceholder(),
-                loadingBuilder: (context, child, progress) =>
-                    progress == null ? child : _artPlaceholder(),
-              ),
       ),
     );
   }
 
+  Widget _landscape(BuildContext context, BoxConstraints c) {
+    final art = (c.maxHeight - _edge * 2).clamp(0.0, c.maxWidth * 0.45);
+    return Padding(
+      padding: const EdgeInsets.all(_edge),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _art(art),
+          const SizedBox(width: 24),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _titleBlock(centred: false),
+                const SizedBox(height: 20),
+                _progress(),
+                const SizedBox(height: 8),
+                _controls(centred: false),
+                if (status.canControlVolume) ...[
+                  const SizedBox(height: 4),
+                  _volume(),
+                ],
+                const SizedBox(height: 14),
+                _formatBadge(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _titleBlock({required bool centred}) {
+    final align = centred ? TextAlign.center : TextAlign.start;
+    final cross = centred ? CrossAxisAlignment.center : CrossAxisAlignment.start;
+    return Column(
+      crossAxisAlignment: cross,
+      children: [
+        Text(
+          status.title ?? 'Unknown track',
+          textAlign: align,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+              fontSize: 26, fontWeight: FontWeight.w600, color: Colors.white),
+        ),
+        if (status.artist != null) ...[
+          const SizedBox(height: 6),
+          Text(status.artist!,
+              textAlign: align,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 18, color: Colors.white70)),
+        ],
+        if (status.album != null) ...[
+          const SizedBox(height: 3),
+          Text(status.album!,
+              textAlign: align,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 15, color: Colors.white38)),
+        ],
+      ],
+    );
+  }
+
+  Widget _art(double size) => ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: status.albumArtUri == null
+              ? _artPlaceholder()
+              : Image.network(
+                  status.albumArtUri!,
+                  fit: BoxFit.cover,
+                  // Art comes from a media server that may be slow, gone, or
+                  // serving something that is not an image. None of that should
+                  // disturb the screen.
+                  errorBuilder: (_, _, _) => _artPlaceholder(),
+                  loadingBuilder: (context, child, progress) =>
+                      progress == null ? child : _artPlaceholder(),
+                ),
+        ),
+      );
+
   Widget _artPlaceholder() => Container(
         color: Colors.white10,
-        child: Icon(Icons.album, size: 88, color: Colors.white.withValues(alpha: 0.15)),
+        child: Icon(Icons.album,
+            size: 88, color: Colors.white.withValues(alpha: 0.15)),
       );
 
   Widget _progress() {
@@ -149,16 +214,12 @@ class NowPlayingScreen extends StatelessWidget {
             valueColor: const AlwaysStoppedAnimation(Colors.white54),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(RendererStatus.formatTime(status.positionSeconds),
                 style: const TextStyle(fontSize: 12, color: Colors.white38)),
-            Text(
-              status.isPaused ? 'Paused' : '',
-              style: const TextStyle(fontSize: 12, color: Colors.white54),
-            ),
             Text(
               hasDuration ? RendererStatus.formatTime(status.durationSeconds) : '',
               style: const TextStyle(fontSize: 12, color: Colors.white38),
@@ -169,7 +230,43 @@ class NowPlayingScreen extends StatelessWidget {
     );
   }
 
-  /// Format and resolution, plus whether the samples are reaching the DAC
+  Widget _controls({required bool centred}) => Row(
+        mainAxisAlignment:
+            centred ? MainAxisAlignment.center : MainAxisAlignment.start,
+        children: [
+          IconButton.filledTonal(
+            onPressed: onPlayPause,
+            iconSize: 34,
+            padding: const EdgeInsets.all(12),
+            icon: Icon(status.isPlaying ? Icons.pause : Icons.play_arrow),
+            tooltip: status.isPlaying ? 'Pause' : 'Play',
+          ),
+        ],
+      );
+
+  /// Only shown when the DAC actually accepts volume changes. A slider that
+  /// silently does nothing is worse than no slider — which is exactly the
+  /// confusion this app exists to spare people.
+  Widget _volume() => Row(
+        children: [
+          const Icon(Icons.volume_down, size: 18, color: Colors.white38),
+          Expanded(
+            child: Slider(
+              value: status.dacVolume.clamp(0, 100).toDouble(),
+              max: 100,
+              onChanged: (v) => onVolumeChanged(v.round()),
+            ),
+          ),
+          SizedBox(
+            width: 34,
+            child: Text('${status.dacVolume}',
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontSize: 12, color: Colors.white54)),
+          ),
+        ],
+      );
+
+  /// Format and resolution, plus whether samples are reaching the DAC
   /// untouched — the thing this app exists to guarantee.
   Widget _formatBadge() {
     final badge = status.formatBadge;
@@ -183,15 +280,13 @@ class NowPlayingScreen extends StatelessWidget {
             border: Border.all(color: Colors.white24),
             borderRadius: BorderRadius.circular(4),
           ),
-          child: Text(
-            badge,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 13,
-              color: Colors.white70,
-              letterSpacing: 0.5,
-            ),
-          ),
+          child: Text(badge,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: Colors.white70,
+                letterSpacing: 0.5,
+              )),
         ),
         if (status.bitPerfect) ...[
           const SizedBox(width: 10),

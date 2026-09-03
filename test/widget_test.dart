@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -28,7 +29,8 @@ const _playing = '''
 "durationSeconds":235,"positionSeconds":42,"formatBadge":"FLAC 16/44.1",
 "sourceFormat":"FLAC","sourceRate":44100,"sourceBits":16,"channels":2,
 "deviceBits":24,"altSetting":2,"dacName":"SMSL","dacConnected":true,
-"bitPerfect":true,"underruns":0,"lastError":null}
+"bitPerfect":true,"dacVolume":-1,"dacVolumeSupported":false,
+"underruns":0,"lastError":null}
 ''';
 
 void main() {
@@ -40,6 +42,19 @@ void main() {
       expect(s.formatBadge, 'FLAC 16/44.1');
       expect(s.bitPerfect, isTrue);
       expect(s.progress, closeTo(42 / 235, 0.001));
+    });
+
+    test('hides volume control when the DAC has none', () {
+      final s = RendererStatus.parse(_playing);
+      expect(s.dacVolumeSupported, isFalse);
+      expect(s.canControlVolume, isFalse);
+    });
+
+    test('offers volume control when the DAC reports a level', () {
+      final s = RendererStatus.parse(
+          '{"transportState":"PLAYING","dacVolume":55,"dacVolumeSupported":true}');
+      expect(s.canControlVolume, isTrue);
+      expect(s.dacVolume, 55);
     });
 
     test('formats times with and without hours', () {
@@ -96,6 +111,49 @@ void main() {
       expect(find.text('A Tribe Called Quest'), findsOneWidget);
       expect(find.text('FLAC 16/44.1'), findsOneWidget);
       expect(find.text('bit-perfect'), findsOneWidget);
+      // Play/pause is always available; the AL400 has no volume control, so no
+      // slider should be offered.
+      expect(find.byIcon(Icons.pause), findsOneWidget);
+      expect(find.byType(Slider), findsNothing);
+    });
+
+    testWidgets('shows a volume slider only when the DAC supports it', (tester) async {
+      messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
+            'rendererState' =>
+              '{"rendererName":"R","transportState":"PLAYING","title":"T",'
+                  '"formatBadge":"FLAC 16/44.1","dacVolume":40,'
+                  '"dacVolumeSupported":true,"bitPerfect":true}',
+            'probeUsb' => _al400,
+            _ => null,
+          });
+
+      await tester.pumpWidget(const HifiRendApp());
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.byType(Slider), findsOneWidget);
+      expect(find.text('40'), findsOneWidget);
+    });
+
+    testWidgets('lays out horizontally in landscape', (tester) async {
+      tester.view.physicalSize = const Size(2400, 1080);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
+            'rendererState' => _playing,
+            'probeUsb' => _al400,
+            _ => null,
+          });
+
+      await tester.pumpWidget(const HifiRendApp());
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // Art and details side by side: the art's centre must sit left of the
+      // title's centre.
+      final art = tester.getCenter(find.byType(ClipRRect).first);
+      final title = tester.getCenter(find.text('Excursions'));
+      expect(art.dx, lessThan(title.dx));
+      expect(find.text('FLAC 16/44.1'), findsOneWidget);
     });
 
     testWidgets('idle state names the renderer without crashing', (tester) async {

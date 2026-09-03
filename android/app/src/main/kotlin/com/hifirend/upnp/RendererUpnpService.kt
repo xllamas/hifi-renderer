@@ -6,6 +6,8 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import androidx.core.app.ServiceCompat
+import com.hifirend.NativeBridge
+import com.hifirend.RendererControl
 import com.hifirend.ServiceHealth
 import com.hifirend.power.ScreenPolicy
 import com.hifirend.usb.HttpStreamPlayback
@@ -134,6 +136,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     }
 
     override fun onDestroy() {
+        RendererControl.transport = null
         screenPolicy.shutdown()
         eventFlusher?.shutdownNow()
         playback.stop()
@@ -206,6 +209,20 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             binder.read(RendererAvTransport::class.java) as LocalService<RendererAvTransport>
         val av = RendererAvTransport(queue, controller)
         avTransport = av
+
+        // The screen drives the renderer through the same transport the network
+        // controllers use, so both produce identical state and events.
+        RendererControl.transport = object : RendererControl.TransportCommands {
+            override fun play() = av.play(null, "1")
+            override fun pause() = av.pause(null)
+            override fun stop() = av.stop(null)
+            override fun dacVolume(): Int? = NativeBridge.getDacVolume().takeIf { it >= 0 }
+            override fun setDacVolume(percent: Int): Boolean {
+                val ok = NativeBridge.setDacVolume(percent)
+                if (ok) com.hifirend.RendererState.dacVolume = percent
+                return ok
+            }
+        }
         playback.onTrackFinished = { av.onTrackFinished() }
         // The manager creates its own instance by default; supply ours so the
         // queue and (from M4) the audio engine share one object.

@@ -74,9 +74,23 @@ class _RendererHomeState extends State<RendererHome> {
     }
   }
 
+  Future<void> _playPause() async {
+    await _channel.invokeMethod('playPause');
+    _refresh();
+  }
+
+  Future<void> _setVolume(int percent) async {
+    // Optimistic: the poll corrects it from the hardware a moment later, which
+    // matters on a DAC whose own knob can move independently.
+    setState(() => _status = _status.copyWithVolume(percent));
+    await _channel.invokeMethod('setDacVolume', {'percent': percent});
+  }
+
   @override
   Widget build(BuildContext context) => NowPlayingScreen(
         status: _status,
+        onPlayPause: _playPause,
+        onVolumeChanged: _setVolume,
         onOpenSettings: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => SettingsScreen(
             status: _status,

@@ -29,7 +29,12 @@ constexpr int kMicroframesPerSecond = 8000;   // high speed
 constexpr int kFramesPerSecondFull = 1000;    // full speed
 
 constexpr uint8_t kReqCur = 0x01;
+constexpr uint8_t kReqRange = 0x02;   // UAC2: min/max/res in one reply
+constexpr uint8_t kReqMin = 0x02;     // UAC1
+constexpr uint8_t kReqMax = 0x03;     // UAC1
+constexpr uint8_t kReqRes = 0x04;     // UAC1
 constexpr uint8_t kCsSamFreqControl = 0x01;
+constexpr uint8_t kFuVolumeControl = 0x02;
 
 std::string sfmt(const char *f, ...) {
     char buf[512];
@@ -434,6 +439,89 @@ void UsbSink::close() {
     alt_ = nullptr;
 }
 
+bool UsbSink::readVolumeRange() {
+    if (!volumeSupported() || handle_ == nullptr) return false;
+    if (volRangeKnown_) return true;
+
+    const uint16_t wValue = static_cast<uint16_t>(kFuVolumeControl << 8);  // channel 0 = master
+    const uint16_t wIndex =
+        static_cast<uint16_t>((caps_.featureUnitId << 8) | caps_.audioControlInterface);
+    const uint8_t in = LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE;
+
+    if (caps_.isUac2()) {
+        // UAC2 returns a RANGE block: count, then (min,max,res) triples.
+        uint8_t buf[64];
+        int n = libusb_control_transfer(handle_, in, kReqRange, wValue, wIndex,
+                                        buf, sizeof(buf), 1000);
+        if (n < 8) return false;
+        volMin_ = static_cast<int16_t>(buf[2] | (buf[3] << 8));
+        volMax_ = static_cast<int16_t>(buf[4] | (buf[5] << 8));
+        volRes_ = static_cast<int16_t>(buf[6] | (buf[7] << 8));
+    } else {
+        uint8_t b[2];
+        if (libusb_control_transfer(handle_, in, kReqMin, wValue, wIndex, b, 2, 1000) != 2)
+            return false;
+        volMin_ = static_cast<int16_t>(b[0] | (b[1] << 8));
+        if (libusb_control_transfer(handle_, in, kReqMax, wValue, wIndex, b, 2, 1000) != 2)
+            return false;
+        volMax_ = static_cast<int16_t>(b[0] | (b[1] << 8));
+        if (libusb_control_transfer(handle_, in, kReqRes, wValue, wIndex, b, 2, 1000) == 2)
+            volRes_ = static_cast<int16_t>(b[0] | (b[1] << 8));
+    }
+    if (volRes_ <= 0) volRes_ = 1;
+    if (volMax_ <= volMin_) return false;
+    volRangeKnown_ = true;
+    LOGI("volume: range %.1f dB .. %.1f dB, step %.2f dB",
+         volMin_ / 256.0, volMax_ / 256.0, volRes_ / 256.0);
+    return true;
+}
+
+bool UsbSink::getVolumePercent(int *percent) {
+    if (!readVolumeRange()) return false;
+    uint8_t b[2];
+    int n = libusb_control_transfer(
+        handle_, LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
+        kReqCur, static_cast<uint16_t>(kFuVolumeControl << 8),
+        static_cast<uint16_t>((caps_.featureUnitId << 8) | caps_.audioControlInterface),
+        b, 2, 1000);
+    if (n != 2) return false;
+    const int16_t cur = static_cast<int16_t>(b[0] | (b[1] << 8));
+    *percent = static_cast<int>(
+        (static_cast<double>(cur - volMin_) / (volMax_ - volMin_)) * 100.0 + 0.5);
+    if (*percent < 0) *percent = 0;
+    if (*percent > 100) *percent = 100;
+    return true;
+}
+
+bool UsbSink::setVolumePercent(int percent) {
+    if (!readVolumeRange()) return false;
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+
+    // Interpolate in the device's own dB range and snap to its step, rather
+    // than assuming a linear 0-100 scale the hardware never agreed to.
+    double raw = volMin_ + (volMax_ - volMin_) * (percent / 100.0);
+    int16_t value = static_cast<int16_t>(raw);
+    if (volRes_ > 1) {
+        const int steps = static_cast<int>((value - volMin_) / volRes_);
+        value = static_cast<int16_t>(volMin_ + steps * volRes_);
+    }
+
+    uint8_t b[2] = {static_cast<uint8_t>(value & 0xFF),
+                    static_cast<uint8_t>((value >> 8) & 0xFF)};
+    int n = libusb_control_transfer(
+        handle_, LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
+        kReqCur, static_cast<uint16_t>(kFuVolumeControl << 8),
+        static_cast<uint16_t>((caps_.featureUnitId << 8) | caps_.audioControlInterface),
+        b, 2, 1000);
+    if (n != 2) {
+        LOGE("volume: SET_CUR failed (%d)", n);
+        return false;
+    }
+    LOGI("volume: set %d%% (%.1f dB)", percent, value / 256.0);
+    return true;
+}
+
 std::string UsbSink::statusJson() const {
     const uint32_t fb = stats_.feedbackRateMilliHz.load();
     return sfmt(
@@ -441,7 +529,8 @@ std::string UsbSink::statusJson() const {
         "\"subslot\":%d,\"bytesPerFrame\":%d,\"framesSubmitted\":%llu,"
         "\"underruns\":%llu,\"transferErrors\":%llu,\"measuredRateHz\":%.1f,"
         "\"feedbackAccepted\":%u,\"feedbackRejected\":%u,"
-        "\"packetErrors\":%llu,\"packetsSubmitted\":%llu,\"ringFillPercent\":%d}",
+        "\"packetErrors\":%llu,\"packetsSubmitted\":%llu,"
+        "\"volumeSupported\":%s,\"ringFillPercent\":%d}",
         running_.load() ? "true" : "false",
         paused_.load() ? "true" : "false", rate_, altSetting(), deviceBits(),
         deviceSubslot(), bytesPerFrame_,
@@ -451,5 +540,6 @@ std::string UsbSink::statusJson() const {
         fb / 1000.0, feedbackAccepted_.load(), feedbackRejected_.load(),
         static_cast<unsigned long long>(stats_.packetErrors.load()),
         static_cast<unsigned long long>(stats_.packetsSubmitted.load()),
+        volumeSupported() ? "true" : "false",
         ring_ ? static_cast<int>(ring_->available() * 100 / std::max<size_t>(ring_->capacity(), 1)) : 0);
 }

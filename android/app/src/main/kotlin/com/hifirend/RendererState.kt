@@ -42,6 +42,10 @@ object RendererState {
      */
     @Volatile var bitPerfect: Boolean = false
 
+    /** Percent as reported by the DAC, or -1 when it exposes no volume control. */
+    @Volatile var dacVolume: Int = -1
+    @Volatile var dacVolumeSupported: Boolean = false
+
     @Volatile var underruns: Long = 0
     @Volatile var lastError: String? = null
 
@@ -86,6 +90,8 @@ object RendererState {
         append(",\"dacName\":").append(q(dacName))
         append(",\"dacConnected\":").append(dacConnected)
         append(",\"bitPerfect\":").append(bitPerfect)
+        append(",\"dacVolume\":").append(dacVolume)
+        append(",\"dacVolumeSupported\":").append(dacVolumeSupported)
         append(",\"underruns\":").append(underruns)
         append(",\"lastError\":").append(q(lastError))
         append("}")

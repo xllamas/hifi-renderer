@@ -189,6 +189,16 @@ public:
         return s->write(data, n);
     }
 
+    bool getVolume(int *percent) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return sink_ && sink_->getVolumePercent(percent);
+    }
+
+    bool setVolume(int percent) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return sink_ && sink_->setVolumePercent(percent);
+    }
+
     void setPaused(bool paused) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (sink_) sink_->setPaused(paused);
@@ -449,6 +459,17 @@ Java_com_hifirend_NativeBridge_nativePcmEndOfStream(JNIEnv *, jobject) {
 JNIEXPORT void JNICALL
 Java_com_hifirend_NativeBridge_nativeSetStreamPaused(JNIEnv *, jobject, jboolean paused) {
     StreamPlayer::instance().setPaused(paused == JNI_TRUE);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_hifirend_NativeBridge_nativeGetDacVolume(JNIEnv *, jobject) {
+    int pct = -1;
+    return StreamPlayer::instance().getVolume(&pct) ? static_cast<jint>(pct) : -1;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_hifirend_NativeBridge_nativeSetDacVolume(JNIEnv *, jobject, jint percent) {
+    return StreamPlayer::instance().setVolume(static_cast<int>(percent)) ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL
