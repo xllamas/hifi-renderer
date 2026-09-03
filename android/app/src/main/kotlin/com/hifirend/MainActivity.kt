@@ -1,8 +1,10 @@
 package com.hifirend
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import com.hifirend.usb.UsbAudioProbe
+import com.hifirend.upnp.RendererUpnpService
 import com.hifirend.usb.UsbPlayback
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -21,6 +23,11 @@ class MainActivity : FlutterActivity() {
         // screen-off/on policy is M6; this is the part playback depends on,
         // because a suspended process cannot service 125 us USB deadlines.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // The spec wants the renderer always active, so it comes up with the
+        // app rather than waiting to be switched on. Promotion to a foreground
+        // service that survives the UI and starts at boot is M6.
+        startService(Intent(this, RendererUpnpService::class.java))
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -57,6 +64,14 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "playbackStatus" -> result.success(playback.status())
+                    "startUpnp" -> {
+                        startService(Intent(this, RendererUpnpService::class.java))
+                        result.success(true)
+                    }
+                    "stopUpnp" -> {
+                        stopService(Intent(this, RendererUpnpService::class.java))
+                        result.success(true)
+                    }
                     "listTestFiles" -> result.success(
                         (externalCacheDir?.listFiles()
                             ?.filter { it.name.endsWith(".wav") }

@@ -7,6 +7,13 @@
          cannot meet isochronous deadlines. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- The renderer is a UPnP device: it answers SSDP multicast searches and
+         serves its own description and SOAP endpoints over HTTP. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
     <application
         android:label="hifirend"
         android:name="${applicationName}"
@@ -41,6 +48,10 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter"/>
         </activity>
+
+        <service
+            android:name=".upnp.RendererUpnpService"
+            android:exported="false" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
