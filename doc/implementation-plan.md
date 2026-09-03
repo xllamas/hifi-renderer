@@ -314,6 +314,51 @@ user cannot easily determine.
 
 ---
 
+## Status (2026-09-03)
+
+Working end to end on the reference hardware: a DLNA controller discovers the
+renderer, sends a track, and it plays bit-perfectly to the USB DAC.
+
+| Milestone | State |
+|---|---|
+| M0 skeleton | ✅ |
+| M1 USB capability probe | ✅ — second device still untested |
+| M2 bit-perfect playback | ✅ — 30 min soak, zero dropouts |
+| M3 DLNA renderer | ✅ — discovery, transport, DIDL, LastChange eventing |
+| M4 full audio path | ✅ FLAC/WAV/MP3/AAC, seek, volume · ❌ gapless, Oboe fallback |
+| M5 UI | ✅ now-playing, settings, DAC capabilities · ❌ first-run onboarding |
+| M6 appliance | ✅ foreground service, boot start, wake locks, vendor autostart |
+| M7 widget | ❌ not started |
+| M8 DAC verification | ❌ specified, not built |
+
+### Verified on hardware
+
+- 30 minutes continuous at 96 kHz/24-bit: 14.8 M isochronous packets, zero
+  errors, rate held to ±0.002%.
+- FLAC, MP3 and AAC from a real controller (BubbleUPnP proxying Tidal), mixed
+  playlists, auto-advance across a sample-rate change, pause/resume, seek.
+- Survives `am kill`; starts at boot once MIUI autostart is granted.
+
+### Known gaps
+
+- **Only one DAC has ever been tested.** The parser, the alt-setting choice and
+  the capability screen all make promises about hardware we do not own.
+- **DAC volume is unverified.** The AL400 has no Feature Unit, so the UAC
+  volume read/write path has never executed. Written from the spec only.
+- **Gapless is absent.** There is a real gap between tracks; unavoidable across
+  a rate change, but not within one.
+- **No fallback without a DAC.** Playback simply fails; the plan calls for an
+  Oboe path clearly marked as not bit-perfect.
+- **USB permission prompts on every replug** on MIUI, which offers no "use by
+  default" checkbox. Expected to behave better on stock Android — worth
+  confirming before documenting compatibility.
+
+### Next up
+
+M7 (4×2 widget), gapless, the Oboe fallback, first-run onboarding, and M8.
+
+---
+
 ## Milestones
 
 Ordered so the riskiest unknown is resolved first, and so everything after M1 is testable without
