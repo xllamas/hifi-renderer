@@ -1,9 +1,12 @@
 package com.hifirend
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import com.hifirend.usb.UsbAudioProbe
+import com.hifirend.ServiceHealth
+import com.hifirend.power.VendorAutostart
 import com.hifirend.upnp.RendererUpnpService
 import com.hifirend.usb.UsbPlayback
 import io.flutter.embedding.android.FlutterActivity
@@ -19,10 +22,24 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // The spec requires the renderer to prevent Android sleeping. Full
-        // screen-off/on policy is M6; this is the part playback depends on,
-        // because a suspended process cannot service 125 us USB deadlines.
+        // Keep the panel lit while in use; ScreenPolicy clears this after the
+        // idle timeout so a renderer left alone for hours does not burn the
+        // display. The CPU is held awake separately by the playback wake lock.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Allow the service to bring this up to wake the screen when playback
+        // starts. setShowWhenLocked/setTurnScreenOn is the supported route from
+        // API 27; below that the deprecated window flags are the only option.
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
 
         // The spec wants the renderer always active, so it comes up with the
         // app rather than waiting to be switched on. Promotion to a foreground
@@ -64,6 +81,20 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "playbackStatus" -> result.success(playback.status())
+                    "applianceStatus" -> {
+                        val health = ServiceHealth(applicationContext)
+                        result.success(
+                            """{"health":${health.toJson()},""" +
+                            ""","manufacturer":"${VendorAutostart.manufacturer()}"""" +
+                            ""","hasVendorSettings":${VendorAutostart.hasVendorSettings(this)}""" +
+                            ""","ignoringBatteryOptimizations":${
+                                VendorAutostart.isIgnoringBatteryOptimizations(this)}}"""
+                        )
+                    }
+                    "openVendorAutostart" ->
+                        result.success(VendorAutostart.open(this) ?: "")
+                    "requestBatteryExemption" ->
+                        result.success(VendorAutostart.requestIgnoreBatteryOptimizations(this))
                     "startUpnp" -> {
                         startService(Intent(this, RendererUpnpService::class.java))
                         result.success(true)

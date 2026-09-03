@@ -2,6 +2,12 @@ package com.hifirend.upnp
 
 import android.content.Context
 import android.util.Log
+import android.app.Service
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import androidx.core.app.ServiceCompat
+import com.hifirend.ServiceHealth
+import com.hifirend.power.ScreenPolicy
 import com.hifirend.usb.HttpStreamPlayback
 import org.jupnp.android.AndroidUpnpServiceImpl
 import org.jupnp.binding.annotations.AnnotationLocalServiceBinder
@@ -53,9 +59,17 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
 
     /** Bridges AVTransport commands to the USB audio engine. */
     private val controller = object : PlaybackController {
-        override fun play(uri: String, mimeType: String?): String =
-            playback.play(uri, mimeHint = mimeType ?: "")
-        override fun stop() = playback.stop()
+        override fun play(uri: String, mimeType: String?): String {
+            // Playback starting is exactly when the spec wants the screen back.
+            screenPolicy.wakeForPlayback()
+            val result = playback.play(uri, mimeHint = mimeType ?: "")
+            refreshNotification(playing = result.contains("\"ok\":true"))
+            return result
+        }
+        override fun stop() {
+            playback.stop()
+            refreshNotification(playing = false)
+        }
         override fun pause() = playback.pause()
         override fun resume() = playback.resume()
         override fun seek(uri: String, seconds: Int, durationSeconds: Int): String =
@@ -83,14 +97,71 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         Log.i(TAG, "LastChange event flusher started")
     }
 
+    /** Rebuilds the notification from whatever the queue currently holds. */
+    fun refreshNotification(playing: Boolean) {
+        val t = queue.current?.track
+        val title = t?.title ?: friendlyName()
+        val subtitle = listOfNotNull(t?.artist, t?.album).joinToString(" — ")
+            .ifBlank { if (playing) "Playing" else null }
+        updateNotification(title, subtitle, playing)
+    }
+
+    /**
+     * Updates the notification as the track changes, so the renderer shows what
+     * it is playing while the app is closed.
+     */
+    fun updateNotification(title: String?, subtitle: String?, playing: Boolean) =
+        startForegroundSafely(title, subtitle, playing)
+
+    private fun startForegroundSafely(title: String?, subtitle: String?, playing: Boolean) {
+        val notification = RendererNotification.build(
+            this, friendlyName(), title, subtitle, playing
+        )
+        try {
+            ServiceCompat.startForeground(
+                this,
+                RendererNotification.NOTIFICATION_ID,
+                notification,
+                if (android.os.Build.VERSION.SDK_INT >= 29)
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0,
+            )
+        } catch (e: Throwable) {
+            // Android 12+ can refuse a foreground start from the background, and
+            // vendors add their own restrictions. The renderer still works while
+            // the app is open, so this is reported rather than fatal.
+            Log.e(TAG, "foreground start refused: ${e::class.java.simpleName}: ${e.message}")
+        }
+    }
+
     override fun onDestroy() {
+        screenPolicy.shutdown()
         eventFlusher?.shutdownNow()
         playback.stop()
+        health.recordServiceStop()
         super.onDestroy()
+    }
+
+    private val health by lazy { ServiceHealth(applicationContext) }
+    val screenPolicy by lazy { ScreenPolicy(applicationContext) }
+
+    /**
+     * START_STICKY so Android brings the renderer back if it is killed for
+     * memory. That is the difference between an appliance and an app.
+     */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return Service.START_STICKY
     }
 
     override fun onCreate() {
         super.onCreate()
+
+        // Become a foreground service before anything else: the renderer has to
+        // outlive the UI, and an ordinary started service is killed as soon as
+        // the app leaves the screen -- MIUI especially.
+        RendererNotification.ensureChannel(this)
+        startForegroundSafely(null, null, playing = false)
+        health.recordServiceStart()
+
         try {
             // jUPnP 3.x separates construction from startup: the base class
             // creates the UpnpService but leaves it inactive, so the registry

@@ -119,6 +119,9 @@ dependencies {
     // USB permission is an async user dialog; the probe does blocking control
     // transfers. Both need to be off the UI thread.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // NotificationCompat / ServiceCompat: foreground-service and notification
+    // rules changed repeatedly between API 26 and 34.
+    implementation("androidx.core:core-ktx:1.15.0")
 }
 
 flutter {
