@@ -21,6 +21,7 @@ class RendererStatus {
   final int deviceBits;
   final String? dacName;
   final bool dacConnected;
+  final int dacCount;
   final bool bitPerfect;
   final int dacVolume;
   final bool dacVolumeSupported;
@@ -44,6 +45,7 @@ class RendererStatus {
     this.deviceBits = 0,
     this.dacName,
     this.dacConnected = false,
+    this.dacCount = 0,
     this.bitPerfect = false,
     this.dacVolume = -1,
     this.dacVolumeSupported = false,
@@ -71,6 +73,7 @@ class RendererStatus {
         deviceBits: j['deviceBits'] as int? ?? 0,
         dacName: j['dacName'] as String?,
         dacConnected: j['dacConnected'] as bool? ?? false,
+        dacCount: (j['dacCount'] as num?)?.toInt() ?? 0,
         bitPerfect: j['bitPerfect'] as bool? ?? false,
         dacVolume: (j['dacVolume'] as num?)?.toInt() ?? -1,
         dacVolumeSupported: j['dacVolumeSupported'] as bool? ?? false,
@@ -113,6 +116,7 @@ class RendererStatus {
         deviceBits: deviceBits,
         dacName: dacName,
         dacConnected: dacConnected,
+        dacCount: dacCount,
         bitPerfect: bitPerfect,
         dacVolume: volume,
         dacVolumeSupported: dacVolumeSupported,

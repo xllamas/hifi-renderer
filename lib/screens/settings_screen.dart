@@ -32,12 +32,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _name =
       TextEditingController(text: widget.status.rendererName);
   Map<String, dynamic> _appliance = const {};
+  List<dynamic> _dacs = const [];
   bool _saved = false;
 
   @override
   void initState() {
     super.initState();
     _loadAppliance();
+    _loadDacs();
   }
 
   @override
@@ -53,6 +55,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       // Optional diagnostics; absence is not an error.
     }
+  }
+
+  Future<void> _loadDacs() async {
+    try {
+      final raw = await _channel.invokeMethod<String>('listDacs') ?? '{}';
+      final j = jsonDecode(raw) as Map<String, dynamic>;
+      if (mounted) setState(() => _dacs = (j['devices'] as List?) ?? const []);
+    } catch (_) {
+      // Listing is best-effort; the rest of the screen still works.
+    }
+  }
+
+  Future<void> _selectDac(String? key) async {
+    await _channel.invokeMethod('selectDac', {'key': key});
+    await _loadDacs();
+    widget.onRefreshCaps();
   }
 
   Future<void> _saveName() async {
@@ -109,7 +127,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 28),
           Text('Audio device', style: Theme.of(context).textTheme.titleMedium),
+          if (_dacs.length > 1) ...[
+            const SizedBox(height: 4),
+            Text(
+              '${_dacs.length} USB audio devices are attached. Choose which one '
+              'to play through; the choice is remembered across reboots.',
+              style: const TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+          ],
           const SizedBox(height: 8),
+          // Only worth showing a chooser when there is something to choose.
+          if (_dacs.length > 1)
+            RadioGroup<String>(
+              groupValue: _dacs
+                      .cast<Map<String, dynamic>>()
+                      .firstWhere((e) => e['active'] == true,
+                          orElse: () => const {'key': ''})['key'] as String? ??
+                  '',
+              onChanged: _selectDac,
+              child: Column(
+                children: _dacs.map((d) {
+                  final m = d as Map<String, dynamic>;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    child: RadioListTile<String>(
+                      value: m['key'] as String? ?? '',
+                      title: Text(m['name'] as String? ?? 'USB audio device'),
+                      subtitle: Text(
+                        '${m['vendorId']}:${m['productId']}'
+                        '${m['hasPermission'] == true ? '' : ' — permission not granted'}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
           Card(
             child: ListTile(
               leading: Icon(

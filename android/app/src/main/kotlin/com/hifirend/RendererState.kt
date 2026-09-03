@@ -35,6 +35,9 @@ object RendererState {
     @Volatile var dacName: String? = null
     @Volatile var dacConnected: Boolean = false
 
+    /** How many USB audio devices are attached; more than one needs a choice. */
+    @Volatile var dacCount: Int = 0
+
     /**
      * True only when samples reach the DAC unaltered. Lossy sources are still
      * bit-perfect in the sense that matters here -- nothing is resampled or
@@ -89,6 +92,7 @@ object RendererState {
         append(",\"altSetting\":").append(altSetting)
         append(",\"dacName\":").append(q(dacName))
         append(",\"dacConnected\":").append(dacConnected)
+        append(",\"dacCount\":").append(dacCount)
         append(",\"bitPerfect\":").append(bitPerfect)
         append(",\"dacVolume\":").append(dacVolume)
         append(",\"dacVolumeSupported\":").append(dacVolumeSupported)

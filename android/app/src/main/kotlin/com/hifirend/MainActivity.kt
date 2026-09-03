@@ -117,6 +117,14 @@ class MainActivity : FlutterActivity() {
                                 VendorAutostart.isIgnoringBatteryOptimizations(this)}}"""
                         )
                     }
+                    "listDacs" ->
+                        result.success(UsbAudioProbe(applicationContext).listAudioDevicesJson())
+                    "selectDac" -> {
+                        val key = call.argument<String>("key")
+                        UsbAudioProbe(applicationContext).preferredDeviceKey =
+                            key?.takeIf { it.isNotBlank() }
+                        result.success(true)
+                    }
                     "openVendorAutostart" ->
                         result.success(VendorAutostart.open(this) ?: "")
                     "requestBatteryExemption" ->

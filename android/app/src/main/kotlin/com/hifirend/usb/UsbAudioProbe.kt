@@ -29,6 +29,11 @@ class UsbAudioProbe(private val context: Context) {
 
     private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
 
+    private companion object {
+        const val PREFS_USB = "hifirend_usb"
+        const val KEY_PREFERRED = "preferred_dac"
+    }
+
     private fun jsonString(s: String?): String {
         if (s == null) return "null"
         val b = StringBuilder("\"")
@@ -54,7 +59,78 @@ class UsbAudioProbe(private val context: Context) {
         return false
     }
 
-    fun findAudioDevice(): UsbDevice? = usbManager.deviceList.values.firstOrNull { isAudioDevice(it) }
+    /**
+     * Every attached USB audio device, in a stable order.
+     *
+     * A renderer is rarely alone on the bus: a hub carrying power and Ethernet
+     * is the normal way to run one, and someone comparing two DACs will have
+     * both plugged in. Sorting by key keeps the list from reshuffling between
+     * reads, which would make the settings list jump around.
+     */
+    fun listAudioDevices(): List<UsbDevice> =
+        usbManager.deviceList.values.filter { isAudioDevice(it) }.sortedBy { deviceKey(it) }
+
+    /**
+     * Stable identity for a DAC across reconnects and reboots.
+     *
+     * The device node (/dev/bus/usb/001/003) is renumbered on every enumeration
+     * so it cannot be a preference key. Serial number distinguishes two
+     * identical DACs, but reading it needs permission, so vendor:product is the
+     * fallback -- imperfect only in the rare case of two of the same model.
+     */
+    fun deviceKey(d: UsbDevice): String {
+        val serial = try {
+            if (usbManager.hasPermission(d)) d.serialNumber else null
+        } catch (_: Throwable) {
+            null
+        }
+        return "%04x:%04x:%s".format(d.vendorId, d.productId, serial ?: "-")
+    }
+
+    fun describeForUi(d: UsbDevice): String =
+        listOfNotNull(d.manufacturerName, d.productName)
+            .joinToString(" ").ifBlank { "USB audio device %04x:%04x".format(d.vendorId, d.productId) }
+
+    private fun prefs() = context.getSharedPreferences(PREFS_USB, Context.MODE_PRIVATE)
+
+    var preferredDeviceKey: String?
+        get() = prefs().getString(KEY_PREFERRED, null)
+        set(value) = prefs().edit().apply {
+            if (value == null) remove(KEY_PREFERRED) else putString(KEY_PREFERRED, value)
+        }.apply()
+
+    /**
+     * The DAC to use: the one the user chose if it is present, otherwise the
+     * first available. Falling back rather than failing matters because the
+     * chosen DAC may simply be unplugged, and a renderer that refuses to play
+     * when a perfectly good DAC is attached is worse than one that adapts.
+     */
+    fun findAudioDevice(): UsbDevice? {
+        val devices = listAudioDevices()
+        if (devices.isEmpty()) return null
+        val preferred = preferredDeviceKey
+        if (preferred != null) {
+            devices.firstOrNull { deviceKey(it) == preferred }?.let { return it }
+            Log.i(TAG, "preferred DAC $preferred not attached; using ${describeForUi(devices.first())}")
+        }
+        return devices.first()
+    }
+
+    /** All audio devices as JSON, for the settings list. */
+    fun listAudioDevicesJson(): String {
+        val preferred = preferredDeviceKey
+        val active = findAudioDevice()
+        val items = listAudioDevices().joinToString(",") { d ->
+            val key = deviceKey(d)
+            """{"key":${jsonString(key)},"name":${jsonString(describeForUi(d))},""" +
+            """"vendorId":"%04x","productId":"%04x",""".format(d.vendorId, d.productId) +
+            """"hasPermission":${usbManager.hasPermission(d)},""" +
+            """"interfaces":${d.interfaceCount},""" +
+            """"preferred":${key == preferred},""" +
+            """"active":${active != null && deviceKey(active) == key}}"""
+        }
+        return """{"devices":[$items],"preferredKey":${jsonString(preferred)}}"""
+    }
 
     /**
      * Refreshes the shared snapshot's view of the DAC.
@@ -68,10 +144,8 @@ class UsbAudioProbe(private val context: Context) {
         val device = findAudioDevice()
         com.hifirend.RendererState.let { st ->
             st.dacConnected = device != null && usbManager.hasPermission(device)
-            st.dacName = device?.let { d ->
-                listOfNotNull(d.manufacturerName, d.productName)
-                    .joinToString(" ").ifBlank { "USB audio device" }
-            }
+            st.dacName = device?.let { describeForUi(it) }
+            st.dacCount = listAudioDevices().size
         }
     }
 

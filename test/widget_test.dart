@@ -44,6 +44,14 @@ void main() {
       expect(s.progress, closeTo(42 / 235, 0.001));
     });
 
+    test('reports how many DACs are attached', () {
+      final s = RendererStatus.parse(
+          '{"transportState":"PLAYING","dacConnected":true,"dacCount":2,'
+          '"dacName":"SMSL USB AUDIO"}');
+      expect(s.dacCount, 2);
+      expect(s.dacName, 'SMSL USB AUDIO');
+    });
+
     test('hides volume control when the DAC has none', () {
       final s = RendererStatus.parse(_playing);
       expect(s.dacVolumeSupported, isFalse);
