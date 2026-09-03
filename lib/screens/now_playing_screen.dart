@@ -72,6 +72,10 @@ class NowPlayingScreen extends StatelessWidget {
                   : 'No DAC connected',
               style: const TextStyle(color: Colors.white38),
             ),
+            if (status.dacConnected && status.dacName != null) ...[
+              const SizedBox(height: 18),
+              _outputDevice(),
+            ],
           ],
         ),
       );
@@ -102,6 +106,10 @@ class NowPlayingScreen extends StatelessWidget {
           ],
           const SizedBox(height: 16),
           Center(child: _formatBadge()),
+          if (status.dacName != null) ...[
+            const SizedBox(height: 10),
+            Center(child: _outputDevice()),
+          ],
           const Spacer(),
         ],
       ),
@@ -133,6 +141,10 @@ class NowPlayingScreen extends StatelessWidget {
                 ],
                 const SizedBox(height: 14),
                 _formatBadge(),
+                if (status.dacName != null) ...[
+                  const SizedBox(height: 10),
+                  _outputDevice(),
+                ],
               ],
             ),
           ),
@@ -263,6 +275,31 @@ class NowPlayingScreen extends StatelessWidget {
                 textAlign: TextAlign.right,
                 style: const TextStyle(fontSize: 12, color: Colors.white54)),
           ),
+        ],
+      );
+
+  /// Where the audio is going. On a phone that may have several USB devices
+  /// attached -- a hub, an Ethernet adapter, more than one DAC -- naming the
+  /// output is the difference between trusting the screen and guessing.
+  Widget _outputDevice() => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.usb, size: 14, color: Colors.white30),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 300),
+            child: Text(
+              status.dacName!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: Colors.white38),
+            ),
+          ),
+          if (status.dacCount > 1) ...[
+            const SizedBox(width: 6),
+            Text('(1 of ${status.dacCount})',
+                style: const TextStyle(fontSize: 11, color: Colors.white24)),
+          ],
         ],
       );
 

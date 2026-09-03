@@ -173,6 +173,16 @@ class RendererAvTransport(
      * knows to send the next one -- staying PLAYING forever is why playlists
      * appeared to stall.
      */
+    /** The DAC went away mid-playback; report it rather than pretending. */
+    fun onDeviceLost() {
+        if (transportState == TransportState.PLAYING ||
+            transportState == TransportState.PAUSED_PLAYBACK) {
+            Log.i(TAG, "device lost while $transportState; reporting STOPPED")
+            transportState = TransportState.STOPPED
+            publishState()
+        }
+    }
+
     fun onTrackFinished() {
         val next = queue.advance()
         if (next != null) {

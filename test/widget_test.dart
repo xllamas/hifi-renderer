@@ -28,7 +28,7 @@ const _playing = '''
 "artist":"A Tribe Called Quest","album":"The Low End Theory","albumArtUri":null,
 "durationSeconds":235,"positionSeconds":42,"formatBadge":"FLAC 16/44.1",
 "sourceFormat":"FLAC","sourceRate":44100,"sourceBits":16,"channels":2,
-"deviceBits":24,"altSetting":2,"dacName":"SMSL","dacConnected":true,
+"deviceBits":24,"altSetting":2,"dacName":"SMSL USB AUDIO","dacConnected":true,"dacCount":1,
 "bitPerfect":true,"dacVolume":-1,"dacVolumeSupported":false,
 "underruns":0,"lastError":null}
 ''';
@@ -123,6 +123,26 @@ void main() {
       // slider should be offered.
       expect(find.byIcon(Icons.pause), findsOneWidget);
       expect(find.byType(Slider), findsNothing);
+      // The output device must be named: with a hub, Ethernet adapter and
+      // possibly several DACs attached, "playing" is not enough information.
+      expect(find.text('SMSL USB AUDIO'), findsOneWidget);
+    });
+
+    testWidgets('idle screen names the connected DAC', (tester) async {
+      messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
+            'rendererState' =>
+              '{"rendererName":"Living Room","transportState":"NO_MEDIA_PRESENT",'
+                  '"dacConnected":true,"dacName":"SMSL USB AUDIO","dacCount":1}',
+            'probeUsb' => _al400,
+            _ => null,
+          });
+
+      await tester.pumpWidget(const HifiRendApp());
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.text('Living Room'), findsOneWidget);
+      expect(find.text('Ready — waiting for a controller'), findsOneWidget);
+      expect(find.text('SMSL USB AUDIO'), findsOneWidget);
     });
 
     testWidgets('shows a volume slider only when the DAC supports it', (tester) async {

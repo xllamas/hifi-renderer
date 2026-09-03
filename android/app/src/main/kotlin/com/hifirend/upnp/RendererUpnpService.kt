@@ -5,6 +5,9 @@ import android.util.Log
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.hardware.usb.UsbManager
 import android.net.ConnectivityManager
 import android.net.Network
 import androidx.core.app.ServiceCompat
@@ -66,6 +69,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             Thread(r, "upnp-network").apply { isDaemon = true }
         }
     @Volatile private var lastRebindAt = 0L
+    private var usbReceiver: BroadcastReceiver? = null
     private val playback by lazy { HttpStreamPlayback(applicationContext) }
 
     /** Bridges AVTransport commands to the USB audio engine. */
@@ -87,6 +91,45 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             playback.seek(uri, seconds, durationSeconds)
         override fun onTrackChanged() = playback.resetHeaderCache()
         override fun positionSeconds(): Int = playback.positionSeconds()
+    }
+
+    /**
+     * Watches the DAC coming and going.
+     *
+     * Hot-plugging is normal for this app -- people switch DACs, and a DAC on a
+     * shared hub loses power when the amp does. On detach the stream has to be
+     * torn down deliberately, otherwise the engine keeps writing to a file
+     * descriptor that no longer has a device behind it.
+     */
+    private fun startUsbWatcher() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                val probe = com.hifirend.usb.UsbAudioProbe(applicationContext)
+                when (intent.action) {
+                    UsbManager.ACTION_USB_DEVICE_DETACHED -> {
+                        Log.i(TAG, "USB device detached; stopping playback")
+                        runCatching { playback.stop() }
+                        avTransport?.let { it.onDeviceLost() }
+                    }
+                    UsbManager.ACTION_USB_DEVICE_ATTACHED ->
+                        Log.i(TAG, "USB device attached")
+                }
+                runCatching { probe.refreshDacPresence() }
+                refreshNotification(playing = false)
+            }
+        }
+        usbReceiver = receiver
+        val filter = IntentFilter().apply {
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+        // These are system broadcasts, so the receiver must be exported-safe;
+        // NOT_EXPORTED is correct because nothing else should reach it.
+        androidx.core.content.ContextCompat.registerReceiver(
+            this, receiver, filter,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        Log.i(TAG, "USB attach/detach watcher registered")
     }
 
     /**
@@ -204,6 +247,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb)
             }
         }
+        usbReceiver?.let { runCatching { unregisterReceiver(it) } }
         networkExecutor.shutdownNow()
         RendererControl.transport = null
         screenPolicy.shutdown()
@@ -246,6 +290,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             upnpService.registry.addDevice(device)
             startEventFlusher()
             startNetworkWatcher()
+            startUsbWatcher()
             Log.i(TAG, "UPnP renderer registered: ${device.details.friendlyName} udn=${device.identity.udn}")
         } catch (e: Throwable) {
             // A renderer that fails to register must not take the app down; the

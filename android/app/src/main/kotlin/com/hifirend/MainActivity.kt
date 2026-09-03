@@ -1,6 +1,7 @@
 package com.hifirend
 
 import android.content.Intent
+import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -10,6 +11,7 @@ import com.hifirend.ServiceHealth
 import com.hifirend.power.VendorAutostart
 import com.hifirend.upnp.RendererUpnpService
 import com.hifirend.usb.UsbPlayback
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -46,6 +48,27 @@ class MainActivity : FlutterActivity() {
         // app rather than waiting to be switched on. Promotion to a foreground
         // service that survives the UI and starts at boot is M6.
         startService(Intent(this, RendererUpnpService::class.java))
+        noteUsbAttachIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        noteUsbAttachIntent(intent)
+    }
+
+    /**
+     * Android launched us because a matching USB device was attached.
+     *
+     * Permission comes with this intent implicitly, and if the user ticked
+     * "use by default for this device" it arrives on every future attach with
+     * no dialog at all. That is the only route to permission surviving an
+     * unplug -- a grant from requestPermission() lasts just for the one
+     * attachment, which is why hot-plugging otherwise prompts every time.
+     */
+    private fun noteUsbAttachIntent(intent: Intent?) {
+        if (intent?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return
+        Log.i("hifirend", "USB device attached; launched with implicit permission")
+        runCatching { UsbAudioProbe(applicationContext).refreshDacPresence() }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

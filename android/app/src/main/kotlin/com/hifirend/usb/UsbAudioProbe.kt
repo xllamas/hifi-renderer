@@ -87,9 +87,24 @@ class UsbAudioProbe(private val context: Context) {
         return "%04x:%04x:%s".format(d.vendorId, d.productId, serial ?: "-")
     }
 
-    fun describeForUi(d: UsbDevice): String =
-        listOfNotNull(d.manufacturerName, d.productName)
-            .joinToString(" ").ifBlank { "USB audio device %04x:%04x".format(d.vendorId, d.productId) }
+    /**
+     * A readable name for the DAC.
+     *
+     * Many devices repeat the manufacturer inside the product string -- the
+     * reference DAC reports "SMSL" and "SMSL USB AUDIO" -- so naively joining
+     * them yields "SMSL SMSL USB AUDIO".
+     */
+    fun describeForUi(d: UsbDevice): String {
+        val maker = d.manufacturerName?.trim().orEmpty()
+        val product = d.productName?.trim().orEmpty()
+        val name = when {
+            product.isEmpty() -> maker
+            maker.isEmpty() -> product
+            product.startsWith(maker, ignoreCase = true) -> product
+            else -> "$maker $product"
+        }
+        return name.ifBlank { "USB audio device %04x:%04x".format(d.vendorId, d.productId) }
+    }
 
     private fun prefs() = context.getSharedPreferences(PREFS_USB, Context.MODE_PRIVATE)
 
