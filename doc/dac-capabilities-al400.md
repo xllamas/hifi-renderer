@@ -77,6 +77,30 @@ transfer will work — `force=true` detaches the kernel's `snd-usb-audio` driver
 Without it, the clock `GET_RANGE` fails with `LIBUSB_ERROR_IO`. The interface must
 be released afterwards or the DAC stays detached from system audio.
 
+## Soak test result (2026-09-03)
+
+30.9 minutes of continuous 96 kHz / 24-bit playback, release build, screen
+allowed to sleep:
+
+| Measure | Result |
+|---|---|
+| Frames | 178,049,411 |
+| Isochronous packets | 14,837,480, **0 errors** |
+| Underruns / transfer errors | **0 / 0** |
+| Feedback readings | 1,851,342 accepted, **0 rejected** |
+| Stats samples with any fault | **0 of 927** |
+| Reported rate | 95998.0 – 96000.0 Hz (**±0.002%**, ~20 ppm) |
+
+The rate spread is the most informative number: ±2 ppm-scale deviation around
+nominal is the DAC's own crystal being tracked by the feedback loop. Neither
+pinned rigidly to nominal (which would mean feedback was being ignored) nor
+drifting (the ratchet bug). This is what a correct asynchronous endpoint looks
+like.
+
+This also confirmed the playback wake lock: the run survived well past the
+phone's 5-minute screen timeout, which had previously been expected to suspend
+the process.
+
 ## Platform note
 
 `adb shell dumpsys usb` **crashes** on this bus with `IllegalArgumentException` in

@@ -331,7 +331,7 @@ sync type and Feature Unit volume presence — for the AL400 **and** for at leas
 compliant device (any UAC gadget, a USB headset, or a cheap dongle DAC) to prove it is not
 single-device code.
 
-**M2 — Bit-perfect playback of a local WAV.** UsbSink, iso transfer pool, feedback endpoint handling,
+**M2 — Bit-perfect playback of a local WAV. ✅ COMPLETE.** UsbSink, iso transfer pool, feedback endpoint handling,
 `dr_wav`. No DLNA, no UI. *Done when:* a 44.1/16 and a 96/24 WAV play through the AL400 with no
 dropouts for 10+ minutes and the DAC's own display reports the correct native rate — the real proof of
 bit-perfect, since a resampled stream would show a fixed 48 kHz.
@@ -369,8 +369,18 @@ still sound fine:
 3. Null test: play a known WAV, capture the DAC's analogue out (or a loopback if available), confirm
    bit-identical/near-null against the source.
 
-**Dropouts.** 30-minute continuous playback at 192 kHz with the screen off and the phone otherwise
-idle; instrument the native engine to count ring-buffer underruns and log them.
+**Dropouts.** 30-minute continuous playback with the screen off and the phone otherwise idle;
+instrument the native engine to count underruns and log them.
+
+> **PASSED 2026-09-03** at 96 kHz/24-bit: 30.9 min, 14,837,480 isochronous packets with zero
+> errors, zero underruns, 1,851,342 feedback readings with none rejected, and rate held within
+> ±0.002%. Full figures in `doc/dac-capabilities-al400.md`.
+>
+> Two lessons for future instrumentation. **Count per-packet status, not just transfer status** —
+> an isochronous transfer reports COMPLETED while packets inside it fail, so transfer-level
+> counters are blind to most real dropouts. And **never log from the libusb event thread**:
+> `__android_log_print` can block for milliseconds and causes the very dropouts it is measuring.
+> Still to do at 192 kHz, which is four times the bus bandwidth of this run.
 
 **DLNA interop.** Test against at least two controllers with different quirks — BubbleUPnP (Android)
 and one desktop controller (foobar2000 UPnP or JRiver). Verify discovery, transport controls, metadata
