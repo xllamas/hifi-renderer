@@ -256,6 +256,64 @@ so adding a vendor is a one-line change and the untestable surface stays small.
 
 ---
 
+## Feature: DAC verification
+
+Promoted from an M2 development harness to a shipped feature. The audience for
+this app is hi-fi enthusiasts, who want evidence rather than assurance — and the
+app is uniquely placed to provide it, because it already talks to the DAC
+directly and knows what the hardware claims about itself.
+
+It is the natural companion to the capabilities screen: that one reports what the
+DAC **claims**, this one verifies what it actually **does**.
+
+### Rate sweep (the core)
+
+Walk every sample rate the DAC advertises. For each one:
+
+1. Configure the stream and set the clock to that rate.
+2. Confirm the device actually locks — the feedback endpoint must report the
+   requested rate within a small tolerance. **A DAC advertising a rate it cannot
+   clock is exactly the kind of undocumented gap this feature exists to expose**,
+   and it is the same class of problem as the AL400's missing volume control.
+3. Stream a generated signal for a few seconds.
+4. Record underruns, per-packet errors, transfer errors and the measured rate.
+
+Produce a per-rate pass/fail table. Include the alt-setting and container chosen
+for each, so a user can see that (say) their 16-bit material travels in a 24-bit
+slot and why that is still bit-perfect.
+
+The report must be copyable as text: it is the single most useful thing a user on
+hardware we do not own can send us.
+
+### Sources
+
+- **Generated signals** (default). No files, no permissions, no setup — and the
+  only way to test rates the user owns no music for, such as the AL400's 705.6
+  and 768 kHz. Generate tones at an exact submultiple of the sample rate so the
+  loop point is phase-continuous and does not click.
+- **The user's own file**, via a picker, for "does my actual library play
+  cleanly". Restricted to whatever rates that material happens to contain.
+
+### Stability soak
+
+An optional extended run at one rate, surfacing the plan's 10-minute
+zero-dropout requirement as a user-facing test. This is what catches slow drift,
+thermal throttling and rare scheduler stalls, none of which a few seconds shows.
+
+### Report honestly, including what it cannot see
+
+The report covers the **digital** path only. During M2 a round of clearly audible
+glitches turned out to be analogue interference from nearby power cables, with
+every transport counter reading clean — the digital stream was perfect throughout.
+
+So when a sweep passes and the user still hears problems, the report should say
+so plainly: the data reached the DAC intact, and the fault is after conversion —
+cabling, grounding, or the amplifier. That single sentence would have saved real
+debugging time here, and it is exactly the kind of thing the app knows and the
+user cannot easily determine.
+
+---
+
 ## Milestones
 
 Ordered so the riskiest unknown is resolved first, and so everything after M1 is testable without
@@ -292,6 +350,11 @@ and the USB diagnostics screen from M1 (kept — it is the only remote-debugging
 continuation after controller disconnect, MediaSession, service self-diagnosis counters.
 
 **M7 — Widget.** 4×2 AppWidget with downscaled album art.
+
+**M8 — DAC verification feature.** Rate sweep with pass/fail report, generated
+signals plus file picker, optional stability soak, copyable report. Specified
+above. The M2 harness (`lib/screens/playback_test_screen.dart`) is the starting
+point — it already drives playback and surfaces stream health.
 
 ---
 

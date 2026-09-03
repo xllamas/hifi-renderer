@@ -61,6 +61,21 @@ so:
 > remote to the phone, but that is one-way: nothing sent from here can change its
 > volume. Use the physical control.
 
+## DAC verification
+
+The companion to the capabilities screen: that one reports what the DAC claims,
+this one verifies what it does. It sweeps every sample rate the device
+advertises, confirms it genuinely locks to each, streams a test signal, and
+reports underruns and per-packet errors — producing a pass/fail table you can
+copy and share.
+
+A DAC advertising a rate it cannot actually clock is precisely the sort of
+undocumented gap this is for.
+
+The report is explicit that it covers the digital path only. If a sweep passes
+and something still sounds wrong, the data reached the DAC intact and the problem
+lies after conversion — cabling, grounding, or the amplifier.
+
 ## Building
 
 Requires Flutter 3.41+, the Android SDK with NDK 28.2 and CMake 3.22+, and a
