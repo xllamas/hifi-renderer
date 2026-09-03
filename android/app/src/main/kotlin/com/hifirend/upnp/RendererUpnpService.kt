@@ -158,6 +158,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         // Become a foreground service before anything else: the renderer has to
         // outlive the UI, and an ordinary started service is killed as soon as
         // the app leaves the screen -- MIUI especially.
+        com.hifirend.RendererState.rendererName = friendlyName()
         RendererNotification.ensureChannel(this)
         startForegroundSafely(null, null, playing = false)
         health.recordServiceStart()

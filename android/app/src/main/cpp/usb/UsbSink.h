@@ -69,6 +69,16 @@ public:
     void setPaused(bool paused) { paused_.store(paused, std::memory_order_release); }
     bool paused() const { return paused_.load(std::memory_order_acquire); }
 
+    /**
+     * The decoder has reached the end of the source.
+     *
+     * Remaining audio still drains normally, but once the ring empties the
+     * silence that follows is not an underrun -- there is nothing left to
+     * starve on. Counting it would add hundreds of phantom faults per track and
+     * make the one number that signals real dropouts useless.
+     */
+    void setSourceEnded(bool ended) { sourceEnded_.store(ended, std::memory_order_release); }
+
     const SinkStats &stats() const { return stats_; }
     uint32_t rate() const { return rate_; }
     int deviceBits() const { return alt_ ? alt_->bits : 0; }
@@ -117,6 +127,7 @@ private:
 
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};
+    std::atomic<bool> sourceEnded_{false};
     std::atomic<int> inFlight_{0};
     std::thread eventThread_;
     // Logging happens here, never on the event thread: __android_log_print can

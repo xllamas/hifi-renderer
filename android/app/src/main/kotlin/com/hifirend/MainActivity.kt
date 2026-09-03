@@ -81,6 +81,18 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "playbackStatus" -> result.success(playback.status())
+                    "rendererState" -> result.success(RendererState.toJson())
+                    "setRendererName" -> {
+                        val name = call.argument<String>("name")?.trim().orEmpty()
+                        if (name.isEmpty()) {
+                            result.success(false)
+                        } else {
+                            getSharedPreferences("hifirend_upnp", MODE_PRIVATE)
+                                .edit().putString("friendly_name", name).apply()
+                            RendererState.rendererName = name
+                            result.success(true)
+                        }
+                    }
                     "applianceStatus" -> {
                         val health = ServiceHealth(applicationContext)
                         result.success(

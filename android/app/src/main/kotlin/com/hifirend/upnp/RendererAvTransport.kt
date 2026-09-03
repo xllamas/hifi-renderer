@@ -65,6 +65,22 @@ class RendererAvTransport(
      * jUPnP only accumulates here -- the service flushes with fireLastChange().
      */
     private fun publishState() {
+        // Mirror into the process-wide snapshot the UI reads. Doing it here
+        // keeps one source of truth: whatever controllers are told, the screen
+        // shows.
+        com.hifirend.RendererState.let { st ->
+            st.transportState = transportState.name
+            queue.current?.track?.let { t ->
+                st.title = t.title
+                st.artist = t.artist
+                st.album = t.album
+                st.albumArtUri = t.albumArtUri
+                st.durationSeconds = t.durationSeconds
+            }
+            if (queue.current == null) st.clearTrack()
+            st.positionSeconds = playback?.positionSeconds() ?: 0
+        }
+
         try {
             val c = queue.current
             val values = mutableListOf<org.jupnp.support.lastchange.EventedValue<*>>(
@@ -169,7 +185,12 @@ class RendererAvTransport(
                 TransportState.PLAYING
             }
         } else {
-            Log.i(TAG, "queue exhausted; reporting STOPPED")
+            // Tear the engine down, not just the state. Leaving the sink
+            // running on an empty ring makes it emit silence forever and count
+            // an underrun per packet -- tens of thousands within a minute,
+            // which also buries any real fault in noise.
+            Log.i(TAG, "queue exhausted; stopping engine and reporting STOPPED")
+            playback?.stop()
             transportState = TransportState.STOPPED
         }
     }

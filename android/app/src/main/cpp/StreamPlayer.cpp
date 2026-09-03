@@ -109,6 +109,9 @@ public:
 
         pcmMode_ = true;
         pcmChannels_ = channels;
+        sourceBits_ = 16;
+        sourceChannels_ = channels;
+        format_ = SourceFormat::Pcm;
         pcmStarted_ = false;
         positionBase_.store(seekSeconds);
         framesDecoded_.store(0);
@@ -170,7 +173,9 @@ public:
             std::string err;
             if (sink_->start(&err)) pcmStarted_ = true;
         }
+        sink_->setSourceEnded(true);
         while (running_.load() && sink_->ringAvailable() > 0) usleep(5000);
+        sink_->setPaused(true);
         finished_.store(true, std::memory_order_release);
     }
 
@@ -213,6 +218,9 @@ public:
         s += ",\"framesDecoded\":" + std::to_string(framesDecoded_.load());
         s += ",\"positionSeconds\":" +
              std::to_string(positionBase_.load() + (r ? framesDecoded_.load() / r : 0));
+        s += ",\"sourceFormat\":\"" + std::string(formatName(format_)) + "\"";
+        s += ",\"sourceBits\":" + std::to_string(sourceBits_);
+        s += ",\"channels\":" + std::to_string(sourceChannels_);
         s += ",\"finished\":" + std::string(finished_.load() ? "true" : "false");
         s += ",\"error\":\"" + esc(error_) + "\"";
         s += "}";
@@ -281,6 +289,8 @@ private:
         const int channels = decoder->channels();
         const int bits = decoder->bitsPerSample();
         rate_.store(rate);
+        sourceBits_ = bits;
+        sourceChannels_ = channels;
         LOGI("stream: %s %u Hz %d-bit %dch", formatName(format_), rate, bits, channels);
 
         if (!sink_->configure(rate, bits, channels, &err)) {
@@ -347,12 +357,19 @@ private:
         }
 
         // Let the tail reach the DAC before tearing the stream down, otherwise
-        // the last fraction of a second is cut off.
+        // the last fraction of a second is cut off. Telling the sink the source
+        // has ended first means the silence after it is not counted as a fault.
+        sink_->setSourceEnded(true);
         while (running_.load() && sink_->ringAvailable() > 0) usleep(5000);
 
-        // Distinguish reaching the end from being stopped: the controller needs
-        // to know the track finished so it can send the next one.
-        if (running_.load()) finished_.store(true, std::memory_order_release);
+        // Park the sink before announcing the end. Between here and the
+        // controller acting there is a poll interval of silence, and without
+        // this every packet of it counts as an underrun -- hundreds per track,
+        // which makes the one number that signals real dropouts untrustworthy.
+        if (running_.load()) {
+            sink_->setPaused(true);
+            finished_.store(true, std::memory_order_release);
+        }
 
         decoder->close();
         LOGI("stream finished: %llu frames decoded",
@@ -374,6 +391,8 @@ private:
     bool pcmMode_ = false;
     bool pcmStarted_ = false;
     int pcmChannels_ = 2;
+    int sourceBits_ = 0;
+    int sourceChannels_ = 0;
     std::vector<uint8_t> pcmScratch_;
     std::string error_;
 };

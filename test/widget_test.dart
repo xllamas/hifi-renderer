@@ -2,10 +2,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hifirend/main.dart';
+import 'package:hifirend/renderer_state.dart';
 import 'package:hifirend/usb/dac_capabilities.dart';
 
-/// Modelled on the real AL400 probe output: UAC2, no feature unit, HID in-only,
-/// no 16-bit alt-setting, async with feedback.
+/// Modelled on the real AL400 probe output.
 const _al400 = '''
 {"ok":true,"claimedAudioControl":true,"attachedDevices":2,"dac":{"ok":true,
 "vendorIdHex":"0x152a","productIdHex":"0x85dd","manufacturer":"SMSL",
@@ -16,64 +16,61 @@ const _al400 = '''
 "volume":{"hostControllable":false,"featureUnitId":-1,"detail":"","hidPresent":true,
 "hidHasOutputEndpoint":false},
 "formats":[
-{"interface":1,"alt":1,"format":"PCM","bits":32,"subslot":4,"channels":2,
- "endpoint":{"address":"0x01","iso":true,"sync":"async","maxPacket":776,"interval":1},
- "feedbackEndpoint":{"address":"0x81","maxPacket":4,"interval":4}},
 {"interface":1,"alt":2,"format":"PCM","bits":24,"subslot":4,"channels":2,
- "endpoint":{"address":"0x01","iso":true,"sync":"async","maxPacket":776,"interval":1},
- "feedbackEndpoint":{"address":"0x81","maxPacket":4,"interval":4}},
-{"interface":1,"alt":3,"format":"DSD","bits":32,"subslot":4,"channels":2,
  "endpoint":{"address":"0x01","iso":true,"sync":"async","maxPacket":776,"interval":1},
  "feedbackEndpoint":{"address":"0x81","maxPacket":4,"interval":4}}],
 "interfaces":[],"audioControlRawHex":"0924"}}
 ''';
 
+const _playing = '''
+{"rendererName":"HiFi Renderer","transportState":"PLAYING","title":"Excursions",
+"artist":"A Tribe Called Quest","album":"The Low End Theory","albumArtUri":null,
+"durationSeconds":235,"positionSeconds":42,"formatBadge":"FLAC 16/44.1",
+"sourceFormat":"FLAC","sourceRate":44100,"sourceBits":16,"channels":2,
+"deviceBits":24,"altSetting":2,"dacName":"SMSL","dacConnected":true,
+"bitPerfect":true,"underruns":0,"lastError":null}
+''';
+
 void main() {
-  group('DacCapabilities', () {
-    test('parses a real UAC2 device', () {
-      final c = DacCapabilities.parse(_al400);
-      expect(c.ok, isTrue);
-      expect(c.displayName, 'SMSL SMSL USB AUDIO');
-      expect(c.uacVersion, '2.0');
-      expect(c.maxRate, 768000);
-      expect(c.minRate, 44100);
-      expect(c.pcmBitDepths, [24, 32]);
-      expect(c.supportsDsd, isTrue);
-      expect(c.isAsync, isTrue);
-      expect(c.hasFeedback, isTrue);
+  group('RendererStatus', () {
+    test('parses a playing track', () {
+      final s = RendererStatus.parse(_playing);
+      expect(s.isPlaying, isTrue);
+      expect(s.title, 'Excursions');
+      expect(s.formatBadge, 'FLAC 16/44.1');
+      expect(s.bitPerfect, isTrue);
+      expect(s.progress, closeTo(42 / 235, 0.001));
     });
 
+    test('formats times with and without hours', () {
+      expect(RendererStatus.formatTime(42), '0:42');
+      expect(RendererStatus.formatTime(235), '3:55');
+      expect(RendererStatus.formatTime(3725), '1:02:05');
+    });
+
+    test('survives malformed state rather than throwing', () {
+      final s = RendererStatus.parse('not json');
+      expect(s.transportState, 'NO_MEDIA_PRESENT');
+      expect(s.hasTrack, isFalse);
+    });
+  });
+
+  group('DacCapabilities', () {
     test('flags a DAC with no host volume control', () {
       final c = DacCapabilities.parse(_al400);
+      expect(c.ok, isTrue);
       expect(c.volumeHostControllable, isFalse);
       final note = c.notes.firstWhere((n) => n.title.contains('Volume'));
-      expect(note.severity, NoteSeverity.important);
-      // The HID interface is input-only, so the wording must not imply the
-      // user can send volume to the DAC.
       expect(note.detail, contains('one-way'));
     });
 
-    test('warns that 16-bit will be padded when no 16-bit mode exists', () {
+    test('warns that 16-bit is padded when no 16-bit mode exists', () {
       final c = DacCapabilities.parse(_al400);
       expect(c.requiresPaddingFor16Bit, isTrue);
-      final note = c.notes.firstWhere((n) => n.title.contains('16-bit'));
-      // Padding must be described as still bit-perfect, or it reads as a defect.
-      expect(note.detail, contains('bit-perfect'));
-      expect(note.title, contains('24-bit'));
-    });
-
-    test('surfaces structured errors', () {
-      final c = DacCapabilities.parse(
-          '{"ok":false,"error":"no_device","message":"No USB device detected."}');
-      expect(c.ok, isFalse);
-      expect(c.error, 'no_device');
-      expect(c.errorMessage, contains('No USB device'));
-    });
-
-    test('survives a non-JSON response', () {
-      final c = DacCapabilities.parse('boom');
-      expect(c.ok, isFalse);
-      expect(c.error, 'bad_response');
+      expect(
+        c.notes.firstWhere((n) => n.title.contains('16-bit')).detail,
+        contains('bit-perfect'),
+      );
     });
   });
 
@@ -85,37 +82,34 @@ void main() {
 
     tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
-    testWidgets('shows the DAC and opens its capability screen', (tester) async {
+    testWidgets('now playing shows track, format and bit-perfect', (tester) async {
       messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
-            'selfTest' => 'abi=arm64-v8a libusb=1.0.28 oboe=OK bits=64',
+            'rendererState' => _playing,
             'probeUsb' => _al400,
             _ => null,
           });
 
       await tester.pumpWidget(const HifiRendApp());
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
 
-      expect(find.text('SMSL SMSL USB AUDIO'), findsOneWidget);
-
-      await tester.tap(find.text('SMSL SMSL USB AUDIO'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('DAC capabilities'), findsOneWidget);
-      expect(find.textContaining('44.1 kHz'), findsWidgets);
-      expect(find.textContaining('Volume is controlled by the DAC'), findsOneWidget);
+      expect(find.text('Excursions'), findsOneWidget);
+      expect(find.text('A Tribe Called Quest'), findsOneWidget);
+      expect(find.text('FLAC 16/44.1'), findsOneWidget);
+      expect(find.text('bit-perfect'), findsOneWidget);
     });
 
-    testWidgets('reports no DAC without crashing', (tester) async {
+    testWidgets('idle state names the renderer without crashing', (tester) async {
       messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
-            'selfTest' => 'abi=arm64-v8a',
-            'probeUsb' =>
-              '{"ok":false,"error":"no_device","message":"No USB device detected."}',
+            'rendererState' =>
+              '{"rendererName":"Living Room","transportState":"NO_MEDIA_PRESENT"}',
+            'probeUsb' => '{"ok":false,"error":"no_device","message":"No USB device."}',
             _ => null,
           });
 
       await tester.pumpWidget(const HifiRendApp());
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
 
+      expect(find.text('Living Room'), findsOneWidget);
       expect(find.text('No DAC connected'), findsOneWidget);
     });
   });

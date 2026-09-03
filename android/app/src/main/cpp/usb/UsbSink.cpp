@@ -119,6 +119,7 @@ bool UsbSink::configure(uint32_t rate, int sourceBits, int channels, std::string
 
     double perFrame = static_cast<double>(rate_) /
                       (caps_.highSpeed ? kMicroframesPerSecond : kFramesPerSecondFull);
+    sourceEnded_.store(false);
     nominalQ16_ = static_cast<uint32_t>(perFrame * 65536.0);
     samplesPerFrameQ16_.store(nominalQ16_);
     packetAccum_ = 0.0;
@@ -196,7 +197,11 @@ void UsbSink::fillTransfer(libusb_transfer *t) {
             // Underrun: emit silence rather than a short packet. A short packet
             // would slew the DAC's clock recovery; silence merely costs a gap.
             memset(buf + offset + got, 0, static_cast<size_t>(want) - got);
-            stats_.underruns.fetch_add(1, std::memory_order_relaxed);
+            // Not a fault once the source has ended: there is nothing left to
+            // starve on, and counting it would swamp real dropouts.
+            if (!sourceEnded_.load(std::memory_order_acquire)) {
+                stats_.underruns.fetch_add(1, std::memory_order_relaxed);
+            }
         }
 
         t->iso_packet_desc[p].length = static_cast<unsigned int>(want);

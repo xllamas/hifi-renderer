@@ -6,6 +6,8 @@ import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
 import android.util.Log
 import com.hifirend.NativeBridge
+import com.hifirend.RendererState
+import org.json.JSONObject
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -294,6 +296,31 @@ class HttpStreamPlayback(private val context: Context) {
     fun resume() = NativeBridge.setStreamPaused(false)
 
     /**
+     * Copies engine status into the shared snapshot so the screen can show what
+     * the DAC is actually doing, rather than what was requested.
+     */
+    private fun publishEngineState() {
+        try {
+            val j = JSONObject(NativeBridge.streamStatus())
+            RendererState.sourceFormat = j.optString("sourceFormat").takeIf { it.isNotBlank() }
+            RendererState.sourceRate = j.optInt("rate")
+            RendererState.sourceBits = j.optInt("sourceBits")
+            RendererState.channels = j.optInt("channels")
+            RendererState.deviceBits = j.optInt("deviceBits")
+            RendererState.altSetting = j.optInt("altSetting", -1)
+            RendererState.underruns = j.optLong("underruns")
+            RendererState.positionSeconds = j.optInt("positionSeconds")
+            // Nothing between the decoder and the DAC alters samples, so a
+            // running USB stream is bit-perfect by construction. A fallback
+            // path would have to clear this.
+            RendererState.bitPerfect = j.optBoolean("running")
+            j.optString("error").takeIf { it.isNotBlank() }?.let { RendererState.lastError = it }
+        } catch (_: Throwable) {
+            // Status is telemetry; never let it disturb playback.
+        }
+    }
+
+    /**
      * Watches for the track ending. The decoder runs ahead of the DAC, so
      * "fetch complete" is not "playback complete" -- only the native engine
      * knows when the last sample has actually gone out.
@@ -303,6 +330,7 @@ class HttpStreamPlayback(private val context: Context) {
             while (fetching.get()) {
                 Thread.sleep(400)
                 if (!fetching.get()) return@thread
+                publishEngineState()
                 if (NativeBridge.streamFinished()) {
                     Log.i(TAG, "track finished: $currentUri")
                     fetching.set(false)
