@@ -125,16 +125,25 @@ bool UsbSink::configure(uint32_t rate, int sourceBits, int channels, std::string
     double perFrame = static_cast<double>(rate_) /
                       (caps_.highSpeed ? kMicroframesPerSecond : kFramesPerSecondFull);
     sourceEnded_.store(false);
+    stalled_.store(false);
     nominalQ16_ = static_cast<uint32_t>(perFrame * 65536.0);
     samplesPerFrameQ16_.store(nominalQ16_);
     packetAccum_ = 0.0;
     feedbackAccepted_.store(0);
     feedbackRejected_.store(0);
 
-    // ~200 ms of audio. Generous: the decoder feeds from a normal thread that
-    // Android may deschedule at will, while the USB side cannot wait.
-    ring_ = std::make_unique<RingBuffer>(
-        static_cast<size_t>(rate_) * bytesPerFrame_ / 5);
+    // Two seconds of audio, bounded so very high rates cannot run away.
+    //
+    // This is sized against the *network*, not the scheduler. At 192 kHz/24-bit
+    // the DAC drains 1.5 MB/s and a FLAC stream must sustain ~7.4 Mbps; the
+    // previous 200 ms held only 300 ms of slack and starved for a full minute
+    // before Wi-Fi caught up. Lower rates never showed it because their drain
+    // rate is a quarter of this.
+    const size_t twoSeconds = static_cast<size_t>(rate_) * bytesPerFrame_ * 2;
+    const size_t ringBytes = std::clamp<size_t>(twoSeconds, 512u * 1024, 8u * 1024 * 1024);
+    ring_ = std::make_unique<RingBuffer>(ringBytes);
+    LOGI("ring: %zu bytes = %.0f ms at %u Hz", ringBytes,
+         1000.0 * ringBytes / (static_cast<double>(rate_) * bytesPerFrame_), rate_);
 
     LOGI("configure: %u Hz, source %d-bit -> alt %u (%d-bit in %d-byte slot), "
          "%d ch, %d B/frame, %s%s",
@@ -190,7 +199,8 @@ void UsbSink::fillTransfer(libusb_transfer *t) {
 
         // While paused, emit silence and leave the ring untouched. This is not
         // an underrun -- counting it as one would bury real faults in noise.
-        if (paused_.load(std::memory_order_acquire)) {
+        if (paused_.load(std::memory_order_acquire) ||
+            stalled_.load(std::memory_order_acquire)) {
             memset(buf + offset, 0, static_cast<size_t>(want));
             t->iso_packet_desc[p].length = static_cast<unsigned int>(want);
             offset += want;
@@ -530,7 +540,7 @@ std::string UsbSink::statusJson() const {
         "\"underruns\":%llu,\"transferErrors\":%llu,\"measuredRateHz\":%.1f,"
         "\"feedbackAccepted\":%u,\"feedbackRejected\":%u,"
         "\"packetErrors\":%llu,\"packetsSubmitted\":%llu,"
-        "\"volumeSupported\":%s,\"ringFillPercent\":%d}",
+        "\"volumeSupported\":%s,\"rebuffers\":%llu,\"ringFillPercent\":%d}",
         running_.load() ? "true" : "false",
         paused_.load() ? "true" : "false", rate_, altSetting(), deviceBits(),
         deviceSubslot(), bytesPerFrame_,
@@ -541,5 +551,6 @@ std::string UsbSink::statusJson() const {
         static_cast<unsigned long long>(stats_.packetErrors.load()),
         static_cast<unsigned long long>(stats_.packetsSubmitted.load()),
         volumeSupported() ? "true" : "false",
+        static_cast<unsigned long long>(stats_.rebuffers.load()),
         ring_ ? static_cast<int>(ring_->available() * 100 / std::max<size_t>(ring_->capacity(), 1)) : 0);
 }

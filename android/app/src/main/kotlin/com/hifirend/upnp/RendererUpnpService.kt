@@ -5,6 +5,8 @@ import android.util.Log
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
 import androidx.core.app.ServiceCompat
 import com.hifirend.NativeBridge
 import com.hifirend.RendererControl
@@ -57,6 +59,13 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     // fireLastChange() is called, so it needs flushing on a timer.
     private val lastChangeManagers = mutableListOf<LastChangeAwareServiceManager<*>>()
     private var eventFlusher: ScheduledExecutorService? = null
+
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private val networkExecutor: ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "upnp-network").apply { isDaemon = true }
+        }
+    @Volatile private var lastRebindAt = 0L
     private val playback by lazy { HttpStreamPlayback(applicationContext) }
 
     /** Bridges AVTransport commands to the USB audio engine. */
@@ -78,6 +87,60 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             playback.seek(uri, seconds, durationSeconds)
         override fun onTrackChanged() = playback.resetHeaderCache()
         override fun positionSeconds(): Int = playback.positionSeconds()
+    }
+
+    /**
+     * Rebinds the UPnP router when the network changes.
+     *
+     * jUPnP enumerates interfaces once at startup and binds what it finds. On a
+     * dedicated phone that is almost always too early: the service starts at
+     * boot before Wi-Fi associates, finds no multicast-capable interface, and
+     * the renderer is silently absent from the network for the rest of the
+     * session. It also never notices a reconnect or an address change.
+     *
+     * jUPnP's own AndroidRouter watches for this using the legacy
+     * CONNECTIVITY_ACTION broadcast and NetworkInfo, neither of which is
+     * delivered reliably on modern Android, so this uses the current callback
+     * API instead.
+     */
+    private fun startNetworkWatcher() {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = rebindRouter("network available")
+            override fun onLost(network: Network) = rebindRouter("network lost")
+        }
+        networkCallback = cb
+        try {
+            cm.registerDefaultNetworkCallback(cb)
+            Log.i(TAG, "network watcher registered")
+        } catch (e: Throwable) {
+            Log.w(TAG, "network watcher unavailable: ${e.message}")
+            networkCallback = null
+        }
+    }
+
+    private fun rebindRouter(reason: String) {
+        // Connectivity callbacks arrive in bursts while an interface settles;
+        // rebinding on each one would restart the stack repeatedly.
+        val now = System.currentTimeMillis()
+        if (now - lastRebindAt < 2_000) return
+        lastRebindAt = now
+
+        networkExecutor.schedule({
+            try {
+                val router = upnpService.router
+                router.disable()
+                router.enable()
+                // Re-announce, or controllers that saw the old address keep it.
+                upnpService.registry.localDevices.forEach {
+                    runCatching { upnpService.registry.removeDevice(it) }
+                    runCatching { upnpService.registry.addDevice(it) }
+                }
+                Log.i(TAG, "router rebound after $reason")
+            } catch (e: Throwable) {
+                Log.e(TAG, "router rebind failed: ${e::class.java.simpleName}: ${e.message}")
+            }
+        }, 1500, TimeUnit.MILLISECONDS)   // let the interface settle first
     }
 
     /**
@@ -136,6 +199,12 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     }
 
     override fun onDestroy() {
+        networkCallback?.let { cb ->
+            runCatching {
+                getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb)
+            }
+        }
+        networkExecutor.shutdownNow()
         RendererControl.transport = null
         screenPolicy.shutdown()
         eventFlusher?.shutdownNow()
@@ -176,6 +245,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             val device = buildDevice()
             upnpService.registry.addDevice(device)
             startEventFlusher()
+            startNetworkWatcher()
             Log.i(TAG, "UPnP renderer registered: ${device.details.friendlyName} udn=${device.identity.udn}")
         } catch (e: Throwable) {
             // A renderer that fails to register must not take the app down; the

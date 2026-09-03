@@ -354,7 +354,28 @@ private:
             return;
         }
 
+        // Rebuffer rather than dribble. If the source falls behind, hold output
+        // silent until a healthy margin has rebuilt: one clean pause is better
+        // than a minute of broken packets, and it keeps the underrun counter
+        // meaningful.
+        const size_t ringCapacity = sink_->ringSpace() + sink_->ringAvailable();
+        const size_t lowWater = ringCapacity / 20;    // 5%
+        const size_t highWater = ringCapacity / 2;    // 50%
+        bool stalled = false;
+
         while (running_.load(std::memory_order_acquire)) {
+            const size_t buffered = sink_->ringAvailable();
+            if (!stalled && buffered < lowWater) {
+                stalled = true;
+                sink_->setStalled(true);
+                sink_->noteRebuffer();
+                LOGI("rebuffering: only %zu of %zu bytes buffered", buffered, ringCapacity);
+            } else if (stalled && buffered >= highWater) {
+                stalled = false;
+                sink_->setStalled(false);
+                LOGI("rebuffered: resuming with %zu bytes", buffered);
+            }
+
             const size_t frameBytes = static_cast<size_t>(channels) * subslot;
             if (sink_->ringSpace() < frameBytes * 256) {
                 usleep(2000);

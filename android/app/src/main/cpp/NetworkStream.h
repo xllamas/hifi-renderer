@@ -21,7 +21,9 @@
  */
 class NetworkStream {
 public:
-    explicit NetworkStream(size_t capacity = 4u * 1024 * 1024) : capacity_(capacity) {}
+    /// 8 MB is roughly nine seconds of a 192 kHz/24-bit FLAC stream, which is
+    /// the case that needs the slack; lower rates simply never fill it.
+    explicit NetworkStream(size_t capacity = 8u * 1024 * 1024) : capacity_(capacity) {}
 
     /** Producer. Returns false once the stream is closed. */
     bool write(const uint8_t *data, size_t n) {

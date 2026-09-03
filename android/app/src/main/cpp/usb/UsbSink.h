@@ -22,6 +22,7 @@ struct SinkStats {
     // to most real dropouts.
     std::atomic<uint64_t> packetErrors{0};
     std::atomic<uint64_t> packetsSubmitted{0};
+    std::atomic<uint64_t> rebuffers{0};
     std::atomic<uint32_t> feedbackRateMilliHz{0};
     std::atomic<uint32_t> lastFeedbackRaw{0};
 };
@@ -68,6 +69,19 @@ public:
      */
     void setPaused(bool paused) { paused_.store(paused, std::memory_order_release); }
     bool paused() const { return paused_.load(std::memory_order_acquire); }
+
+    /**
+     * Rebuffering: the source could not keep up and we are deliberately
+     * holding output silent until enough audio has accumulated again.
+     *
+     * Distinct from an underrun. An underrun is a fault -- audio should have
+     * been there and was not. A stall is the engine choosing one clean pause
+     * over thousands of individually broken packets, so it is counted as a
+     * rebuffer event and not as a fault.
+     */
+    void setStalled(bool stalled) { stalled_.store(stalled, std::memory_order_release); }
+    bool stalled() const { return stalled_.load(std::memory_order_acquire); }
+    void noteRebuffer() { stats_.rebuffers.fetch_add(1, std::memory_order_relaxed); }
 
     /**
      * The decoder has reached the end of the source.
@@ -144,6 +158,7 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};
     std::atomic<bool> sourceEnded_{false};
+    std::atomic<bool> stalled_{false};
     // Raw device units (1/256 dB). 0x8000 means "silence" in the spec.
     int16_t volMin_ = 0, volMax_ = 0, volRes_ = 1;
     bool volRangeKnown_ = false;
