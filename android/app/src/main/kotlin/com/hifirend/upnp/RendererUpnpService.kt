@@ -21,6 +21,9 @@ import org.jupnp.support.model.ProtocolInfo
 import org.jupnp.support.model.ProtocolInfos
 import org.jupnp.support.renderingcontrol.lastchange.RenderingControlLastChangeParser
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
 private const val TAG = "hifirend"
 private const val PREFS = "hifirend_upnp"
@@ -41,6 +44,11 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
 
     val queue = PlaylistQueue()
     private var avTransport: RendererAvTransport? = null
+
+    // jUPnP only accumulates LastChange values; the NOTIFY is sent when
+    // fireLastChange() is called, so it needs flushing on a timer.
+    private val lastChangeManagers = mutableListOf<LastChangeAwareServiceManager<*>>()
+    private var eventFlusher: ScheduledExecutorService? = null
     private val playback by lazy { HttpStreamPlayback(applicationContext) }
 
     /** Bridges AVTransport commands to the USB audio engine. */
@@ -52,7 +60,27 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         override fun positionSeconds(): Int = playback.positionSeconds()
     }
 
+    /**
+     * Flushes accumulated LastChange events. 500 ms is well inside the
+     * patience of controllers that report "Event Timeout", while still
+     * coalescing bursts of state changes into one notification.
+     */
+    private fun startEventFlusher() {
+        eventFlusher = Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "upnp-events").apply { isDaemon = true }
+        }.also { exec ->
+            exec.scheduleWithFixedDelay({
+                for (m in lastChangeManagers) {
+                    runCatching { m.fireLastChange() }
+                        .onFailure { Log.w(TAG, "fireLastChange failed: ${it.message}") }
+                }
+            }, 500, 500, TimeUnit.MILLISECONDS)
+        }
+        Log.i(TAG, "LastChange event flusher started")
+    }
+
     override fun onDestroy() {
+        eventFlusher?.shutdownNow()
         playback.stop()
         super.onDestroy()
     }
@@ -68,6 +96,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
 
             val device = buildDevice()
             upnpService.registry.addDevice(device)
+            startEventFlusher()
             Log.i(TAG, "UPnP renderer registered: ${device.details.friendlyName} udn=${device.identity.udn}")
         } catch (e: Throwable) {
             // A renderer that fails to register must not take the app down; the
@@ -104,21 +133,25 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         playback.onTrackFinished = { av.onTrackFinished() }
         // The manager creates its own instance by default; supply ours so the
         // queue and (from M4) the audio engine share one object.
-        avService.manager = object : LastChangeAwareServiceManager<RendererAvTransport>(
+        val avManager = object : LastChangeAwareServiceManager<RendererAvTransport>(
             avService, AVTransportLastChangeParser()
         ) {
             override fun createServiceInstance(): RendererAvTransport = av
         }
+        avService.manager = avManager
+        lastChangeManagers += avManager
 
         @Suppress("UNCHECKED_CAST")
         val rcService =
             binder.read(RendererRenderingControl::class.java) as LocalService<RendererRenderingControl>
         val rc = RendererRenderingControl()
-        rcService.manager = object : LastChangeAwareServiceManager<RendererRenderingControl>(
+        val rcManager = object : LastChangeAwareServiceManager<RendererRenderingControl>(
             rcService, RenderingControlLastChangeParser()
         ) {
             override fun createServiceInstance(): RendererRenderingControl = rc
         }
+        rcService.manager = rcManager
+        lastChangeManagers += rcManager
 
         @Suppress("UNCHECKED_CAST")
         val cmService =

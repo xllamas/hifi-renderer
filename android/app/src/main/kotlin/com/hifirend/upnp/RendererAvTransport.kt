@@ -2,7 +2,9 @@ package com.hifirend.upnp
 
 import android.util.Log
 import org.jupnp.model.types.UnsignedIntegerFourBytes
+import java.net.URI
 import org.jupnp.support.avtransport.AbstractAVTransportService
+import org.jupnp.support.avtransport.lastchange.AVTransportVariable
 import org.jupnp.support.model.DeviceCapabilities
 import org.jupnp.support.model.MediaInfo
 import org.jupnp.support.model.PositionInfo
@@ -46,13 +48,46 @@ class RendererAvTransport(
 
     @Volatile
     var transportState: TransportState = TransportState.NO_MEDIA_PRESENT
-        private set
+        private set(value) {
+            val changed = field != value
+            field = value
+            if (changed) publishState()
+        }
+
+    /**
+     * Push the current state into LastChange.
+     *
+     * Controllers subscribe to these events and wait for them: without any
+     * notification BubbleUPnP reports "Event Timeout" and a playlist stalls,
+     * because it learns a track ended from an event rather than by polling.
+     * jUPnP only accumulates here -- the service flushes with fireLastChange().
+     */
+    private fun publishState() {
+        try {
+            val c = queue.current
+            val values = mutableListOf<org.jupnp.support.lastchange.EventedValue<*>>(
+                AVTransportVariable.TransportState(transportState),
+                AVTransportVariable.CurrentTransportActions(getCurrentTransportActions(null)),
+            )
+            if (c != null) {
+                runCatching { values += AVTransportVariable.CurrentTrackURI(URI(c.uri)) }
+                values += AVTransportVariable.CurrentTrackMetaData(c.metaData ?: "")
+                values += AVTransportVariable.CurrentTrackDuration(c.track.upnpDuration)
+                values += AVTransportVariable.CurrentMediaDuration(c.track.upnpDuration)
+            }
+            lastChange.setEventedValue(getDefaultInstanceID(), *values.toTypedArray())
+        } catch (e: Throwable) {
+            // Eventing must never break playback.
+            Log.w(TAG, "LastChange publish failed: ${e::class.java.simpleName}: ${e.message}")
+        }
+    }
 
     override fun setAVTransportURI(instanceId: UnsignedIntegerFourBytes?, uri: String?, metaData: String?) {
         Log.i(TAG, "AVTransport.SetAVTransportURI uri=$uri")
         if (uri.isNullOrBlank()) return
         queue.setCurrent(uri, metaData)
         transportState = TransportState.STOPPED
+        publishState()
     }
 
     override fun setNextAVTransportURI(instanceId: UnsignedIntegerFourBytes?, uri: String?, metaData: String?) {
