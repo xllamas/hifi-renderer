@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'screens/dac_capabilities_screen.dart';
+import 'screens/playback_test_screen.dart';
 import 'usb/dac_capabilities.dart';
 
 void main() => runApp(const HifiRendApp());
@@ -92,6 +93,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   loading: _probing,
                   onRefresh: _probe,
                 ),
+              )),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.play_circle_outline),
+              title: const Text('Bit-perfect playback test'),
+              subtitle: const Text('M2 — play a local WAV to the DAC'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const PlaybackTestScreen(),
               )),
             ),
           ),

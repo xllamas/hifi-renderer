@@ -1,6 +1,7 @@
 package com.hifirend
 
 import com.hifirend.usb.UsbAudioProbe
+import com.hifirend.usb.UsbPlayback
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -31,12 +32,38 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(report)
                     }
+                    "playWav" -> scope.launch {
+                        val path = call.argument<String>("path") ?: ""
+                        val loop = call.argument<Boolean>("loop") ?: false
+                        val r = try {
+                            withContext(Dispatchers.IO) { playback.play(path, loop) }
+                        } catch (e: Throwable) {
+                            """{"ok":false,"message":"${e::class.java.simpleName}: ${e.message}"}"""
+                        }
+                        result.success(r)
+                    }
+                    "stopPlayback" -> scope.launch {
+                        withContext(Dispatchers.IO) { playback.stop() }
+                        result.success(null)
+                    }
+                    "playbackStatus" -> result.success(playback.status())
+                    "listTestFiles" -> result.success(
+                        (externalCacheDir?.listFiles()
+                            ?.filter { it.name.endsWith(".wav") }
+                            ?.sortedBy { it.name }
+                            ?.joinToString("\n") { it.absolutePath }) ?: "")
                     else -> result.notImplemented()
                 }
             }
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val playback by lazy { UsbPlayback(applicationContext) }
+
+    override fun onDestroy() {
+        playback.stop()
+        super.onDestroy()
+    }
 
     companion object {
         private const val CHANNEL = "com.hifirend/renderer"

@@ -1,0 +1,115 @@
+#pragma once
+
+#include <atomic>
+#include <memory>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "../RingBuffer.h"
+#include "UacCapabilities.h"
+
+struct libusb_context;
+struct libusb_device_handle;
+struct libusb_transfer;
+
+struct SinkStats {
+    std::atomic<uint64_t> framesSubmitted{0};
+    std::atomic<uint64_t> underruns{0};
+    std::atomic<uint64_t> transferErrors{0};
+    // Per-PACKET failures. An isochronous transfer can report COMPLETED overall
+    // while individual packets failed, so transfer-level status alone is blind
+    // to most real dropouts.
+    std::atomic<uint64_t> packetErrors{0};
+    std::atomic<uint64_t> packetsSubmitted{0};
+    std::atomic<uint32_t> feedbackRateMilliHz{0};
+    std::atomic<uint32_t> lastFeedbackRaw{0};
+};
+
+// Streams PCM to a USB Audio Class 2.0 device over isochronous transfers.
+//
+// This is the whole reason the project has a native layer: Android's
+// UsbDeviceConnection offers only control, bulk and interrupt transfers, and
+// USB audio streaming is isochronous. libusb reaches it via usbfs ioctls on the
+// file descriptor Android hands us.
+//
+// No sample is altered on the way through -- no resampling, no mixing, no
+// volume. Where the DAC's container is wider than the source, samples are
+// left-justified and zero-padded, which preserves their values exactly.
+class UsbSink {
+public:
+    UsbSink();
+    ~UsbSink();
+
+    // fd is owned by the caller's UsbDeviceConnection and must outlive the sink.
+    bool open(int fd, std::string *error);
+
+    const UacCapabilities &capabilities() const { return caps_; }
+
+    // Configures the stream. sourceBits selects the alt-setting; the DAC's
+    // container may be wider.
+    bool configure(uint32_t rate, int sourceBits, int channels, std::string *error);
+
+    bool start(std::string *error);
+    void stop();
+    void close();
+
+    // Producer side: returns bytes accepted, in the DAC's wire format.
+    size_t write(const uint8_t *pcm, size_t bytes) { return ring_ ? ring_->write(pcm, bytes) : 0; }
+    size_t ringSpace() const { return ring_ ? ring_->space() : 0; }
+    size_t ringAvailable() const { return ring_ ? ring_->available() : 0; }
+
+    const SinkStats &stats() const { return stats_; }
+    uint32_t rate() const { return rate_; }
+    int deviceBits() const { return alt_ ? alt_->bits : 0; }
+    int deviceSubslot() const { return alt_ ? alt_->subslot : 0; }
+    int altSetting() const { return alt_ ? alt_->alt : -1; }
+    bool running() const { return running_.load(); }
+
+    std::string statusJson() const;
+
+private:
+    static void onDataComplete(libusb_transfer *t);
+    static void onFeedbackComplete(libusb_transfer *t);
+    void fillTransfer(libusb_transfer *t);
+    void handleFeedback(libusb_transfer *t);
+    bool setSampleRate(uint32_t hz, std::string *error);
+    void eventLoop();
+    void monitorLoop();
+
+    libusb_context *ctx_ = nullptr;
+    libusb_device_handle *handle_ = nullptr;
+    UacCapabilities caps_;
+    const UacAltSetting *alt_ = nullptr;
+
+    uint32_t rate_ = 0;
+    int channels_ = 2;
+    int bytesPerFrame_ = 0;
+    bool claimedStreaming_ = false;
+
+    std::unique_ptr<RingBuffer> ring_;
+    std::vector<libusb_transfer *> transfers_;
+    libusb_transfer *feedbackTransfer_ = nullptr;
+    std::vector<uint8_t> feedbackBuf_;
+
+    // Samples per microframe in Q16.16, driven by the feedback endpoint. The
+    // fractional part is carried across packets so the long-run average matches
+    // the DAC's clock exactly rather than drifting.
+    std::atomic<uint32_t> samplesPerFrameQ16_{0};
+    // The rate implied by the configured sample rate. Feedback readings are
+    // always validated against THIS, never against the running value -- doing
+    // the latter lets each accepted reading become the new baseline, so small
+    // errors ratchet the rate upward without bound.
+    uint32_t nominalQ16_ = 0;
+    std::atomic<uint32_t> feedbackAccepted_{0};
+    std::atomic<uint32_t> feedbackRejected_{0};
+    double packetAccum_ = 0.0;
+
+    std::atomic<bool> running_{false};
+    std::atomic<int> inFlight_{0};
+    std::thread eventThread_;
+    // Logging happens here, never on the event thread: __android_log_print can
+    // block for milliseconds, which is fatal on a thread with 125 us deadlines.
+    std::thread monitorThread_;
+    SinkStats stats_;
+};

@@ -23,6 +23,12 @@ object NativeBridge {
 
     private external fun nativeProbeUsbDevice(fd: Int): String
 
+    private external fun nativePlayWav(fd: Int, path: String, loop: Boolean): String
+
+    private external fun nativeStopPlayback()
+
+    private external fun nativePlaybackStatus(): String
+
     /** ABI, libusb version and Oboe link status, or the load failure. */
     fun selfTest(): String = loadError?.let { "native library failed to load: $it" } ?: nativeSelfTest()
 
@@ -32,4 +38,16 @@ object NativeBridge {
      */
     fun probeUsbDevice(fd: Int): String =
         loadError?.let { "native library failed to load: $it" } ?: nativeProbeUsbDevice(fd)
+
+    /** Starts bit-perfect playback of a WAV file. The fd stays owned by the caller. */
+    fun playWav(fd: Int, path: String, loop: Boolean): String =
+        loadError?.let { """{"ok":false,"message":"native library failed to load: $it"}""" }
+            ?: nativePlayWav(fd, path, loop)
+
+    fun stopPlayback() {
+        if (isLoaded) nativeStopPlayback()
+    }
+
+    fun playbackStatus(): String =
+        loadError?.let { """{"running":false}""" } ?: nativePlaybackStatus()
 }
