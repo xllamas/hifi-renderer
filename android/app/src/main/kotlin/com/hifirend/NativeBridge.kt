@@ -29,7 +29,7 @@ object NativeBridge {
 
     private external fun nativePlaybackStatus(): String
 
-    private external fun nativeStartStream(fd: Int): String
+    private external fun nativeStartStream(fd: Int, seekSeconds: Int, relaxed: Boolean): String
     private external fun nativePushStreamData(data: ByteArray, len: Int): Boolean
     private external fun nativeEndStream()
     private external fun nativeStopStream()
@@ -61,9 +61,9 @@ object NativeBridge {
         loadError?.let { """{"running":false}""" } ?: nativePlaybackStatus()
 
     /** Opens the DAC and starts a decoder waiting for bytes. */
-    fun startStream(fd: Int): String =
+    fun startStream(fd: Int, seekSeconds: Int = 0, relaxed: Boolean = false): String =
         loadError?.let { """{"ok":false,"message":"native library failed to load"}""" }
-            ?: nativeStartStream(fd)
+            ?: nativeStartStream(fd, seekSeconds, relaxed)
 
     fun pushStreamData(data: ByteArray, len: Int): Boolean =
         if (isLoaded) nativePushStreamData(data, len) else false

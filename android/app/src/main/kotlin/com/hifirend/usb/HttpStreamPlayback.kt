@@ -45,7 +45,107 @@ class HttpStreamPlayback(private val context: Context) {
 
     private var watcher: Thread? = null
 
-    fun play(uri: String): String {
+    @Volatile
+    private var contentLength: Long = -1
+
+    @Volatile
+    private var trackDurationSeconds: Int = 0
+
+    /** "fLaC" + metadata blocks, cached so a seek can prepend them. */
+    @Volatile
+    private var flacHeader: ByteArray? = null
+
+    @Volatile
+    private var audioStart: Long = 0
+
+    /**
+     * Fetches and caches the FLAC header, and finds where audio actually
+     * begins.
+     *
+     * A decoder starting mid-file cannot work from frame headers alone: FLAC
+     * allows bit depth and sample rate to be encoded as "refer to STREAMINFO",
+     * so without the header the format is undeterminable and the open fails.
+     * Prepending the real header to ranged data solves that, and also keeps the
+     * byte-offset estimate honest by excluding metadata (which can be large
+     * when a file embeds album art) from the audio length.
+     */
+    private fun ensureHeader(uri: String): ByteArray? {
+        flacHeader?.let { return it }
+        return try {
+            val conn = (URL(uri).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 10_000
+                readTimeout = 15_000
+                setRequestProperty("User-Agent", "HiFiRenderer/1.0 DLNADOC/1.50")
+                setRequestProperty("Range", "bytes=0-262143")
+            }
+            val head = conn.inputStream.use { it.readBytes() }
+            conn.disconnect()
+            if (head.size < 8 || head[0] != 'f'.code.toByte() || head[1] != 'L'.code.toByte() ||
+                head[2] != 'a'.code.toByte() || head[3] != 'C'.code.toByte()) {
+                Log.w(TAG, "seek: not a native FLAC stream, cannot prepend header")
+                return null
+            }
+            var p = 4
+            while (p + 4 <= head.size) {
+                val last = (head[p].toInt() and 0x80) != 0
+                val len = ((head[p + 1].toInt() and 0xFF) shl 16) or
+                          ((head[p + 2].toInt() and 0xFF) shl 8) or
+                          (head[p + 3].toInt() and 0xFF)
+                p += 4 + len
+                if (last) break
+            }
+            if (p > head.size) {
+                Log.w(TAG, "seek: FLAC metadata larger than probe window")
+                return null
+            }
+            audioStart = p.toLong()
+            head.copyOfRange(0, p).also {
+                flacHeader = it
+                Log.i(TAG, "seek: cached ${it.size}-byte FLAC header, audio starts at $audioStart")
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "seek: header fetch failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Seeks by re-requesting the stream with an HTTP byte range.
+     *
+     * The byte offset is estimated from the time fraction, because FLAC is
+     * variable bitrate and the exact mapping lives in a seektable we do not
+     * have while streaming. The landing point is therefore approximate -- which
+     * is how DLNA renderers generally seek, since the alternative is decoding
+     * and discarding everything up to the target.
+     *
+     * Reported position uses the requested time as its base, so the controller
+     * shows what the user asked for rather than drifting by the estimate error.
+     */
+    fun seek(uri: String, seconds: Int, durationSeconds: Int): String {
+        val len = contentLength
+        val dur = if (durationSeconds > 0) durationSeconds else trackDurationSeconds
+        if (len <= 0 || dur <= 0) {
+            return """{"ok":false,"message":"Cannot seek: track length unknown."}"""
+        }
+        val header = ensureHeader(uri)
+            ?: return """{"ok":false,"message":"Cannot seek: this stream has no readable FLAC header."}"""
+
+        // Interpolate within the audio portion only; metadata is not audio.
+        val audioBytes = len - audioStart
+        val offset = (audioStart + audioBytes * (seconds.toDouble() / dur))
+            .toLong().coerceIn(audioStart, len - 1)
+        Log.i(TAG, "seek to ${seconds}s -> byte $offset of $len (audio from $audioStart, ${dur}s)")
+        return play(uri, seekSeconds = seconds, rangeStart = offset,
+                    durationSeconds = dur, header = header)
+    }
+
+    fun play(
+        uri: String,
+        seekSeconds: Int = 0,
+        rangeStart: Long = 0,
+        durationSeconds: Int = 0,
+        header: ByteArray? = null,
+    ): String {
         stop()
 
         val device = UsbAudioProbe(context).findAudioDevice()
@@ -64,7 +164,10 @@ class HttpStreamPlayback(private val context: Context) {
         }
         connection = conn
 
-        val started = NativeBridge.startStream(conn.fileDescriptor)
+        if (durationSeconds > 0) trackDurationSeconds = durationSeconds
+        // The cached header is prepended below, so the decoder always sees a
+        // well-formed stream and never needs relaxed (headerless) mode.
+        val started = NativeBridge.startStream(conn.fileDescriptor, seekSeconds, relaxed = false)
         if (!started.contains("\"ok\":true")) {
             stop()
             return started
@@ -72,13 +175,13 @@ class HttpStreamPlayback(private val context: Context) {
 
         currentUri = uri
         fetching.set(true)
-        thread(name = "http-fetch", isDaemon = true) { fetch(uri) }
+        thread(name = "http-fetch", isDaemon = true) { fetch(uri, rangeStart, header) }
         startWatcher()
         Log.i(TAG, "stream: fetching $uri")
         return """{"ok":true,"uri":"${uri.replace("\"", "\\\"")}"}"""
     }
 
-    private fun fetch(uri: String) {
+    private fun fetch(uri: String, rangeStart: Long, header: ByteArray?) {
         var stream: InputStream? = null
         var conn: HttpURLConnection? = null
         try {
@@ -90,6 +193,7 @@ class HttpStreamPlayback(private val context: Context) {
                 // a few refuse to stream without a Range header at all.
                 setRequestProperty("User-Agent", "HiFiRenderer/1.0 DLNADOC/1.50")
                 setRequestProperty("Connection", "close")
+                if (rangeStart > 0) setRequestProperty("Range", "bytes=$rangeStart-")
             }
             val code = conn.responseCode
             if (code !in 200..299) {
@@ -97,7 +201,24 @@ class HttpStreamPlayback(private val context: Context) {
                 NativeBridge.endStream()
                 return
             }
-            Log.i(TAG, "stream: HTTP $code, type=${conn.contentType}, len=${conn.contentLengthLong}")
+            // A ranged request answers 206 with only the remaining length, so
+            // the full length must come from Content-Range to stay usable for
+            // the next seek.
+            contentLength = if (rangeStart > 0) {
+                conn.getHeaderField("Content-Range")
+                    ?.substringAfter('/', "")?.toLongOrNull() ?: contentLength
+            } else {
+                conn.contentLengthLong
+            }
+            Log.i(TAG, "stream: HTTP $code, type=${conn.contentType}, " +
+                "len=${conn.contentLengthLong}, total=$contentLength, range=$rangeStart")
+
+            // Give the decoder the real header first so STREAMINFO is known,
+            // then the ranged audio. dr_flac resynchronises to the next frame.
+            if (header != null) {
+                NativeBridge.pushStreamData(header, header.size)
+                Log.i(TAG, "stream: prepended ${header.size}-byte FLAC header")
+            }
 
             stream = conn.inputStream
             val buf = ByteArray(32 * 1024)
@@ -154,6 +275,13 @@ class HttpStreamPlayback(private val context: Context) {
         connection?.close()
         connection = null
         currentUri = null
+    }
+
+    /** Called when the track changes; the cached header belongs to one file. */
+    fun resetHeaderCache() {
+        flacHeader = null
+        audioStart = 0
+        contentLength = -1
     }
 
     fun status(): String = NativeBridge.streamStatus()

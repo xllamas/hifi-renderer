@@ -51,9 +51,17 @@ public:
         return p;
     }
 
-    std::string start(int fd) {
+    /**
+     * @param seekSeconds where in the track this stream begins; the bytes are
+     *        expected to have been requested with an HTTP Range starting there.
+     * @param relaxed true when the stream starts mid-file and therefore has no
+     *        FLAC header, so the decoder must scan for a frame boundary.
+     */
+    std::string start(int fd, int seekSeconds, bool relaxed) {
         std::lock_guard<std::mutex> lock(mutex_);
         stopLocked();
+        positionBase_.store(seekSeconds);
+        relaxed_ = relaxed;
 
         stream_ = std::make_unique<NetworkStream>();
         sink_ = std::make_unique<UsbSink>();
@@ -111,7 +119,7 @@ public:
         s += ",\"bytesConsumed\":" + std::to_string(stream_ ? stream_->consumed() : 0);
         s += ",\"framesDecoded\":" + std::to_string(framesDecoded_.load());
         s += ",\"positionSeconds\":" +
-             std::to_string(r ? framesDecoded_.load() / r : 0);
+             std::to_string(positionBase_.load() + (r ? framesDecoded_.load() / r : 0));
         s += ",\"finished\":" + std::string(finished_.load() ? "true" : "false");
         s += ",\"error\":\"" + esc(error_) + "\"";
         s += "}";
@@ -121,7 +129,8 @@ public:
     /** Elapsed seconds, for AVTransport GetPositionInfo. */
     uint32_t positionSeconds() {
         const uint32_t r = rate_.load();
-        return r ? static_cast<uint32_t>(framesDecoded_.load() / r) : 0;
+        const uint32_t decoded = r ? static_cast<uint32_t>(framesDecoded_.load() / r) : 0;
+        return positionBase_.load() + decoded;
     }
 
 private:
@@ -154,8 +163,14 @@ private:
         setpriority(PRIO_PROCESS, 0, -16);
 
         // Blocks until enough of the stream has arrived to read the headers.
-        drflac *flac = drflac_open(&StreamPlayer::onRead, &StreamPlayer::onSeek,
-                                   &StreamPlayer::onTell, stream_.get(), nullptr);
+        // A stream that begins mid-file has no header, so the decoder has to
+        // find the next frame boundary itself.
+        drflac *flac = relaxed_
+            ? drflac_open_relaxed(&StreamPlayer::onRead, &StreamPlayer::onSeek,
+                                  &StreamPlayer::onTell, drflac_container_native,
+                                  stream_.get(), nullptr)
+            : drflac_open(&StreamPlayer::onRead, &StreamPlayer::onSeek,
+                          &StreamPlayer::onTell, stream_.get(), nullptr);
         if (flac == nullptr) {
             error_ = "not a decodable FLAC stream";
             LOGE("decode: drflac_open failed");
@@ -256,6 +271,8 @@ private:
     std::atomic<uint64_t> framesDecoded_{0};
     std::atomic<uint32_t> rate_{0};
     std::atomic<bool> finished_{false};
+    std::atomic<uint32_t> positionBase_{0};
+    bool relaxed_ = false;
     std::string error_;
 };
 
@@ -264,8 +281,12 @@ private:
 extern "C" {
 
 JNIEXPORT jstring JNICALL
-Java_com_hifirend_NativeBridge_nativeStartStream(JNIEnv *env, jobject, jint fd) {
-    return env->NewStringUTF(StreamPlayer::instance().start(static_cast<int>(fd)).c_str());
+Java_com_hifirend_NativeBridge_nativeStartStream(JNIEnv *env, jobject, jint fd,
+                                                 jint seekSeconds, jboolean relaxed) {
+    return env->NewStringUTF(
+        StreamPlayer::instance()
+            .start(static_cast<int>(fd), static_cast<int>(seekSeconds), relaxed == JNI_TRUE)
+            .c_str());
 }
 
 JNIEXPORT jboolean JNICALL

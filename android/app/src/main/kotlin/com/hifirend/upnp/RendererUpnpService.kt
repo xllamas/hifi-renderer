@@ -57,6 +57,9 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         override fun stop() = playback.stop()
         override fun pause() = playback.pause()
         override fun resume() = playback.resume()
+        override fun seek(uri: String, seconds: Int, durationSeconds: Int): String =
+            playback.seek(uri, seconds, durationSeconds)
+        override fun onTrackChanged() = playback.resetHeaderCache()
         override fun positionSeconds(): Int = playback.positionSeconds()
     }
 

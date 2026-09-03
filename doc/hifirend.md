@@ -33,9 +33,11 @@ The app is a simple DLNA/UPnP (and possibly other protocols) audio renderer. The
 
 * Android version and (if at all possible) iOS version.
 
-## Further Ideas
+## Further Enhancements
 
-* 
+* Other protocols: ChromeCast, AirPlay, Bluetooth, Tidal Connect?
+
+
 
 
 

@@ -36,6 +36,8 @@ interface PlaybackController {
     fun stop()
     fun pause()
     fun resume()
+    fun seek(uri: String, seconds: Int, durationSeconds: Int): String
+    fun onTrackChanged()
     fun positionSeconds(): Int
 }
 
@@ -86,6 +88,7 @@ class RendererAvTransport(
         Log.i(TAG, "AVTransport.SetAVTransportURI uri=$uri")
         if (uri.isNullOrBlank()) return
         queue.setCurrent(uri, metaData)
+        playback?.onTrackChanged()
         transportState = TransportState.STOPPED
         publishState()
     }
@@ -207,6 +210,23 @@ class RendererAvTransport(
 
     override fun seek(instanceId: UnsignedIntegerFourBytes?, unit: String?, target: String?) {
         Log.i(TAG, "AVTransport.Seek unit=$unit target=$target")
+        val c = queue.current ?: return
+        // Controllers send REL_TIME for a slider drag; ABS_TIME is equivalent
+        // for a single track. TRACK_NR is playlist navigation, not seeking.
+        val seconds = when (unit?.uppercase()) {
+            "REL_TIME", "ABS_TIME", null -> TrackMetadata.parseDuration(target)
+            else -> {
+                Log.i(TAG, "Seek unit $unit not supported")
+                return
+            }
+        }
+        val result = playback?.seek(c.uri, seconds, c.track.durationSeconds)
+        if (result != null && !result.contains("\"ok\":true")) {
+            Log.e(TAG, "Seek failed: $result")
+            return
+        }
+        transportState = TransportState.PLAYING
+        publishState()
     }
 
     override fun next(instanceId: UnsignedIntegerFourBytes?) {
