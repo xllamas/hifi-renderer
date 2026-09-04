@@ -376,6 +376,8 @@ class HttpStreamPlayback(private val context: Context) {
             // path would have to clear this.
             RendererState.bitPerfect = j.optBoolean("running")
             RendererState.dacVolumeSupported = j.optBoolean("volumeSupported")
+            j.optString("volumeReadback").takeIf { it.isNotBlank() }
+                ?.let { RendererState.dacVolumeReadback = it }
             // Read back from the hardware rather than echoing what was set: on
             // a DAC with its own knob the two can differ.
             //

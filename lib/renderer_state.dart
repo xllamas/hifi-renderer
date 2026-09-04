@@ -25,6 +25,9 @@ class RendererStatus {
   final bool bitPerfect;
   final int dacVolume;
   final bool dacVolumeSupported;
+
+  /// trusted | untrusted | unknown -- whether the DAC reports its own volume.
+  final String dacVolumeReadback;
   final int underruns;
   final String? lastError;
 
@@ -49,6 +52,7 @@ class RendererStatus {
     this.bitPerfect = false,
     this.dacVolume = -1,
     this.dacVolumeSupported = false,
+    this.dacVolumeReadback = 'unknown',
     this.underruns = 0,
     this.lastError,
   });
@@ -77,6 +81,7 @@ class RendererStatus {
         bitPerfect: j['bitPerfect'] as bool? ?? false,
         dacVolume: (j['dacVolume'] as num?)?.toInt() ?? -1,
         dacVolumeSupported: j['dacVolumeSupported'] as bool? ?? false,
+        dacVolumeReadback: j['dacVolumeReadback'] as String? ?? 'unknown',
         underruns: (j['underruns'] as num?)?.toInt() ?? 0,
         lastError: j['lastError'] as String?,
       );
@@ -91,6 +96,10 @@ class RendererStatus {
   /// expose none at all, and showing a slider that does nothing is worse than
   /// showing no slider.
   bool get canControlVolume => dacVolumeSupported && dacVolume >= 0;
+
+  /// The DAC takes a volume but will not report one, so its own knob or remote
+  /// cannot be followed and this shows the last value sent.
+  bool get volumeIsWriteOnly => canControlVolume && dacVolumeReadback == 'untrusted';
 
   bool get hasTrack => title != null || transportState != 'NO_MEDIA_PRESENT';
 
@@ -120,6 +129,7 @@ class RendererStatus {
         bitPerfect: bitPerfect,
         dacVolume: volume,
         dacVolumeSupported: dacVolumeSupported,
+        dacVolumeReadback: dacVolumeReadback,
         underruns: underruns,
         lastError: lastError,
       );

@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #define LOG_TAG "hifirend"
@@ -620,6 +621,16 @@ bool UsbSink::readVolumeRange() {
 
 bool UsbSink::getVolumePercent(int *percent) {
     if (!readVolumeRange()) return false;
+
+    // A device that does not report its own volume back has nothing useful to
+    // say here, and asking it anyway would overwrite the value the user set
+    // with whatever fixed number it returns.
+    if (volumeReadback_ == Readback::Untrusted) {
+        if (lastSetPercent_ < 0) return false;
+        *percent = lastSetPercent_;
+        return true;
+    }
+
     uint8_t b[2];
     int n = libusb_control_transfer(
         handle_, LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
@@ -672,7 +683,44 @@ bool UsbSink::setVolumePercent(int percent) {
         return false;
     }
     LOGI("volume: set %d%% (%.1f dB)", percent, value / 256.0);
+    lastSetPercent_ = percent;
+    if (volumeReadback_ == Readback::Unknown) checkVolumeReadback(value);
     return true;
+}
+
+/**
+ * Decides once whether GET_CUR can be believed, by reading back a value we
+ * just wrote.
+ *
+ * Anything within one step of what was written counts as honest -- devices are
+ * entitled to snap to their own resolution, and some report the snapped value
+ * rather than the requested one.
+ */
+void UsbSink::checkVolumeReadback(int16_t written) {
+    const uint8_t in =
+        LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE;
+    uint8_t b[2];
+    int n = libusb_control_transfer(
+        handle_, in, caps_.isUac2() ? kReqCur : kUac1GetCur,
+        static_cast<uint16_t>(kFuVolumeControl << 8),
+        static_cast<uint16_t>((caps_.featureUnitId << 8) | caps_.audioControlInterface),
+        b, 2, 1000);
+    if (n != 2) {
+        volumeReadback_ = Readback::Untrusted;
+        LOGI("volume: device does not answer GET_CUR; using the last value set");
+        return;
+    }
+    const int16_t got = static_cast<int16_t>(b[0] | (b[1] << 8));
+    const int tolerance = volRes_ > 0 ? volRes_ : 1;
+    if (std::abs(static_cast<int>(got) - static_cast<int>(written)) <= tolerance) {
+        volumeReadback_ = Readback::Trusted;
+        LOGI("volume: device reports its own volume back; polling it");
+    } else {
+        volumeReadback_ = Readback::Untrusted;
+        LOGI("volume: wrote %.1f dB, device reports %.1f dB -- readback not "
+             "trustworthy, using the last value set",
+             written / 256.0, got / 256.0);
+    }
 }
 
 std::string UsbSink::statusJson() const {
@@ -683,7 +731,8 @@ std::string UsbSink::statusJson() const {
         "\"underruns\":%llu,\"transferErrors\":%llu,\"measuredRateHz\":%.1f,"
         "\"feedbackAccepted\":%u,\"feedbackRejected\":%u,"
         "\"packetErrors\":%llu,\"packetsSubmitted\":%llu,"
-        "\"volumeSupported\":%s,\"rebuffers\":%llu,\"ringFillPercent\":%d}",
+        "\"volumeSupported\":%s,\"volumeReadback\":\"%s\","
+        "\"rebuffers\":%llu,\"ringFillPercent\":%d}",
         running_.load() ? "true" : "false",
         paused_.load() ? "true" : "false", rate_, altSetting(), deviceBits(),
         deviceSubslot(), bytesPerFrame_,
@@ -694,6 +743,8 @@ std::string UsbSink::statusJson() const {
         static_cast<unsigned long long>(stats_.packetErrors.load()),
         static_cast<unsigned long long>(stats_.packetsSubmitted.load()),
         volumeSupported() ? "true" : "false",
+        volumeReadback_ == Readback::Trusted ? "trusted"
+            : volumeReadback_ == Readback::Untrusted ? "untrusted" : "unknown",
         static_cast<unsigned long long>(stats_.rebuffers.load()),
         ring_ ? static_cast<int>(ring_->available() * 100 / std::max<size_t>(ring_->capacity(), 1)) : 0);
 }

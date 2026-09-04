@@ -259,22 +259,39 @@ class NowPlayingScreen extends StatelessWidget {
   /// Only shown when the DAC actually accepts volume changes. A slider that
   /// silently does nothing is worse than no slider — which is exactly the
   /// confusion this app exists to spare people.
-  Widget _volume() => Row(
+  Widget _volume() => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(Icons.volume_down, size: 18, color: Colors.white38),
-          Expanded(
-            child: Slider(
-              value: status.dacVolume.clamp(0, 100).toDouble(),
-              max: 100,
-              onChanged: (v) => onVolumeChanged(v.round()),
+          Row(
+            children: [
+              const Icon(Icons.volume_down, size: 18, color: Colors.white38),
+              Expanded(
+                child: Slider(
+                  value: status.dacVolume.clamp(0, 100).toDouble(),
+                  max: 100,
+                  onChanged: (v) => onVolumeChanged(v.round()),
+                ),
+              ),
+              SizedBox(
+                width: 34,
+                child: Text('${status.dacVolume}',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(fontSize: 12, color: Colors.white54)),
+              ),
+            ],
+          ),
+          // The DAC takes a volume but always reports its maximum back, so its
+          // own knob cannot be followed. Saying so is better than showing a
+          // number that quietly stops being true.
+          if (status.volumeIsWriteOnly)
+            const Padding(
+              padding: EdgeInsets.only(left: 26, right: 34),
+              child: Text(
+                'This DAC does not report its volume back, so this shows the '
+                'last value sent from here.',
+                style: TextStyle(fontSize: 11, color: Colors.white30),
+              ),
             ),
-          ),
-          SizedBox(
-            width: 34,
-            child: Text('${status.dacVolume}',
-                textAlign: TextAlign.right,
-                style: const TextStyle(fontSize: 12, color: Colors.white54)),
-          ),
         ],
       );
 

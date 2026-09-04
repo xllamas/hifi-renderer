@@ -49,6 +49,14 @@ object RendererState {
     @Volatile var dacVolume: Int = -1
     @Volatile var dacVolumeSupported: Boolean = false
 
+    /**
+     * Whether the DAC reports its own volume back: trusted | untrusted |
+     * unknown. A device that accepts a volume but always answers with its
+     * maximum cannot be polled, so its physical knob goes unnoticed -- which
+     * the screen should say rather than quietly showing a stale number.
+     */
+    @Volatile var dacVolumeReadback: String = "unknown"
+
     @Volatile var underruns: Long = 0
     @Volatile var lastError: String? = null
 
@@ -96,6 +104,7 @@ object RendererState {
         append(",\"bitPerfect\":").append(bitPerfect)
         append(",\"dacVolume\":").append(dacVolume)
         append(",\"dacVolumeSupported\":").append(dacVolumeSupported)
+        append(",\"dacVolumeReadback\":").append(q(dacVolumeReadback))
         append(",\"underruns\":").append(underruns)
         append(",\"lastError\":").append(q(lastError))
         append("}")

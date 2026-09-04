@@ -33,6 +33,51 @@ const _playing = '''
 "underruns":0,"lastError":null}
 ''';
 
+/// Modelled on the real SPACETOUCH probe output: a UAC1 headset adapter, whose
+/// interface 1 is capture-only and whose interface 2 is the playback path.
+const _uac1 = '''
+{"ok":true,"claimedAudioControl":true,"attachedDevices":2,"dac":{"ok":true,
+"vendorIdHex":"0x0666","productIdHex":"0x0880","manufacturer":"SPACETOUCH",
+"product":"USB Audio","usbVersion":"2.00","speed":"full","configurations":1,
+"uacVersion":"1.0",
+"clock":{"sourceId":-1,"selectorId":-1,"programmable":false,"currentRate":0,
+"rates":[],"error":""},
+"volume":{"hostControllable":true,"featureUnitId":10,"detail":"UAC1 feature unit",
+"hidPresent":true,"hidHasOutputEndpoint":false},
+"formats":[
+{"interface":1,"alt":1,"format":"PCM","bits":16,"subslot":2,"channels":2,
+ "rates":[44100,48000],
+ "endpoint":{"address":"0x00","iso":false,"sync":"none","maxPacket":0,"interval":0},
+ "feedbackEndpoint":null},
+{"interface":2,"alt":1,"format":"PCM","bits":16,"subslot":2,"channels":2,
+ "rates":[44100,48000],
+ "endpoint":{"address":"0x02","iso":true,"sync":"adaptive","maxPacket":600,"interval":1},
+ "feedbackEndpoint":null},
+{"interface":2,"alt":2,"format":"PCM","bits":24,"subslot":3,"channels":2,
+ "rates":[44100,48000],
+ "endpoint":{"address":"0x02","iso":true,"sync":"adaptive","maxPacket":600,"interval":1},
+ "feedbackEndpoint":null}],
+"interfaces":[],"audioControlRawHex":"0a24"}}
+''';
+
+/// A USB microphone: audio class, but nothing that can play.
+const _captureOnly = '''
+{"ok":true,"claimedAudioControl":true,"attachedDevices":1,"dac":{"ok":true,
+"vendorIdHex":"0x1111","productIdHex":"0x2222","manufacturer":"Acme",
+"product":"USB Mic","usbVersion":"1.10","speed":"full","configurations":1,
+"uacVersion":"1.0",
+"clock":{"sourceId":-1,"selectorId":-1,"programmable":false,"currentRate":0,
+"rates":[],"error":""},
+"volume":{"hostControllable":false,"featureUnitId":-1,"detail":"",
+"hidPresent":false,"hidHasOutputEndpoint":false},
+"formats":[
+{"interface":1,"alt":1,"format":"PCM","bits":16,"subslot":2,"channels":2,
+ "rates":[48000],
+ "endpoint":{"address":"0x81","iso":false,"sync":"none","maxPacket":0,"interval":0},
+ "feedbackEndpoint":null}],
+"interfaces":[],"audioControlRawHex":"0a24"}}
+''';
+
 void main() {
   group('RendererStatus', () {
     test('parses a playing track', () {
@@ -93,6 +138,48 @@ void main() {
       expect(
         c.notes.firstWhere((n) => n.title.contains('16-bit')).detail,
         contains('bit-perfect'),
+      );
+    });
+
+    test('accepts a UAC1 device rather than rejecting it on class version', () {
+      final c = DacCapabilities.parse(_uac1);
+      expect(c.ok, isTrue);
+      expect(c.uacVersion, '1.0');
+      expect(c.isSupported, isTrue);
+    });
+
+    test('takes UAC1 rates from the alt-settings, not the absent clock', () {
+      final c = DacCapabilities.parse(_uac1);
+      // UAC1 has no clock entity, so the clock list is empty on a device that
+      // plays perfectly well.
+      expect(c.rates, isEmpty);
+      expect(c.playableRates, [44100, 48000]);
+      expect(c.maxRate, 48000);
+    });
+
+    test('ignores the capture alt-setting when reporting bit depths', () {
+      final c = DacCapabilities.parse(_uac1);
+      // Interface 1 is the microphone path; only interface 2 can play.
+      expect(c.pcmBitDepths, [16, 24]);
+    });
+
+    test('notes that an adaptive device follows the phone clock', () {
+      final c = DacCapabilities.parse(_uac1);
+      expect(c.isAdaptiveOnly, isTrue);
+      expect(
+        c.notes.any((n) => n.title.contains('clock')),
+        isTrue,
+      );
+      expect(c.hasFeedback, isFalse);
+    });
+
+    test('reports a capture-only device as unusable, whatever its class', () {
+      final c = DacCapabilities.parse(_captureOnly);
+      expect(c.ok, isTrue);
+      expect(c.isSupported, isFalse);
+      expect(
+        c.notes.first.detail,
+        contains('microphone'),
       );
     });
   });

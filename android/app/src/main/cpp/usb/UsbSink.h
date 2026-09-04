@@ -133,6 +133,7 @@ private:
     void handleFeedback(libusb_transfer *t);
     bool selectAltSetting(std::string *error);
     bool setSampleRate(uint32_t hz, std::string *error);
+    void checkVolumeReadback(int16_t written);
     bool setSampleRateUac1(uint32_t hz, std::string *error);
     void eventLoop();
     void monitorLoop();
@@ -173,6 +174,22 @@ private:
     int16_t volMin_ = 0, volMax_ = 0, volRes_ = 1;
     bool volRangeKnown_ = false;
     int lastVolumeLogged_ = -2;
+
+    /**
+     * Whether the device reports its own volume back honestly.
+     *
+     * Some devices accept SET_CUR and change the volume, but answer GET_CUR
+     * with a fixed value -- the reference UAC1 dongle always says 0 dB, its
+     * maximum. Polling such a device overwrites what the user just chose with a
+     * lie, a second or two after they chose it.
+     *
+     * Detected by reading back once after a write rather than by recognising
+     * the device: nothing here may branch on VID/PID, and a device that lies
+     * about this is exactly the kind of thing the app exists to catch.
+     */
+    enum class Readback { Unknown, Trusted, Untrusted };
+    Readback volumeReadback_ = Readback::Unknown;
+    int lastSetPercent_ = -1;
     std::atomic<int> inFlight_{0};
     std::thread eventThread_;
     // Logging happens here, never on the event thread: __android_log_print can
