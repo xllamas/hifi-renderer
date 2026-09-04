@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_label">HiFi Renderer</string>
+    <string name="widget_description">Now playing, format and transport for the renderer.</string>
+    <string name="widget_art">Album art</string>
+    <string name="widget_play_pause">Play or pause</string>
+    <string name="widget_bit_perfect">Bit-perfect</string>
+</resources>

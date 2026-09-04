@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The now-playing screen is black; the widget matches it so the two read as
+     one app, and stays opaque so album art never fights the wallpaper. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FF0A0A0A" />
+    <corners android:radius="18dp" />
+</shape>

@@ -9,9 +9,9 @@ entirely and streams to the DAC over raw USB, at the source file's native sample
 rate and bit depth.
 
 > **Status: early development.** The renderer is discoverable, plays FLAC, MP3
-> and AAC bit-perfectly to a USB DAC, and supports transport control, playlists
-> and seeking. Not yet done: gapless transitions, the no-DAC fallback, the
-> home-screen widget and boot-start.
+> and AAC bit-perfectly to a USB DAC, and supports transport control, playlists,
+> seeking, boot-start and a home-screen widget. Not yet done: gapless
+> transitions, the no-DAC fallback and first-run onboarding.
 
 ## How it works
 
@@ -77,6 +77,20 @@ so:
 > This device exposes no USB volume control. It does report its own knob or
 > remote to the phone, but that is one-way: nothing sent from here can change its
 > volume. Use the physical control.
+
+## The home-screen widget
+
+A 4×2 widget carrying the same information as the now-playing screen: album art,
+title, artist and album, elapsed and total time, and the format badge with the
+bit-perfect mark. Tapping it opens the app; the play/pause button drives the same
+transport the network controllers use, and starts the renderer if it is not
+running.
+
+It is drawn by the service rather than by Flutter, and updated as the state
+changes rather than on the system's widget alarm — which has a 30-minute floor
+and would be useless for a now-playing display. On a phone dedicated to this job
+the UI process spends most of its life destroyed, so a widget that depended on it
+would go stale exactly when it is the only thing on screen.
 
 ## DAC verification
 

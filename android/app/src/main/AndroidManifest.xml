@@ -63,6 +63,21 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <!-- The 4x2 now-playing widget. Not exported: the system addresses
+             widget providers by explicit component, and the only other sender
+             is our own play/pause PendingIntent. -->
+        <receiver
+            android:name=".widget.RendererWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/renderer_widget_info" />
+        </receiver>
+
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"

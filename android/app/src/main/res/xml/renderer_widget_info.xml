@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  4x2 as the spec asks. minWidth/minHeight are the pre-Android-12 way of
+  saying that (70n - 30 dp per cell); targetCellWidth/Height say it directly
+  from API 31 and are ignored below.
+
+  updatePeriodMillis is 0 deliberately: the system's own update alarm has a
+  30-minute floor, which is useless for a now-playing display. The service
+  pushes updates instead, which is also why nothing here has to run when the
+  renderer is not.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/renderer_widget"
+    android:minHeight="110dp"
+    android:minResizeHeight="110dp"
+    android:minResizeWidth="180dp"
+    android:minWidth="250dp"
+    android:previewImage="@mipmap/ic_launcher"
+    android:previewLayout="@layout/renderer_widget"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellHeight="2"
+    android:targetCellWidth="4"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

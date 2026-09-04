@@ -16,6 +16,7 @@ import com.hifirend.RendererControl
 import com.hifirend.ServiceHealth
 import com.hifirend.power.ScreenPolicy
 import com.hifirend.usb.HttpStreamPlayback
+import com.hifirend.widget.RendererWidget
 import org.jupnp.android.AndroidUpnpServiceImpl
 import org.jupnp.binding.annotations.AnnotationLocalServiceBinder
 import org.jupnp.model.DefaultServiceManager
@@ -116,6 +117,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 }
                 runCatching { probe.refreshDacPresence() }
                 refreshNotification(playing = false)
+                runCatching { RendererWidget.refresh(applicationContext, force = true) }
             }
         }
         usbReceiver = receiver
@@ -200,6 +202,13 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                     runCatching { m.fireLastChange() }
                         .onFailure { Log.w(TAG, "fireLastChange failed: ${it.message}") }
                 }
+                // The home-screen widget is fed from the same tick: it needs
+                // the position to move, and this is the one timer the service
+                // already runs. refresh() compares what it would draw and
+                // returns without any binder traffic when nothing changed, so
+                // an idle renderer costs a string comparison twice a second.
+                runCatching { RendererWidget.refresh(applicationContext) }
+                    .onFailure { Log.w(TAG, "widget refresh failed: ${it.message}") }
             }, 500, 500, TimeUnit.MILLISECONDS)
         }
         Log.i(TAG, "LastChange event flusher started")
@@ -218,8 +227,12 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
      * Updates the notification as the track changes, so the renderer shows what
      * it is playing while the app is closed.
      */
-    fun updateNotification(title: String?, subtitle: String?, playing: Boolean) =
+    fun updateNotification(title: String?, subtitle: String?, playing: Boolean) {
         startForegroundSafely(title, subtitle, playing)
+        // Not only for promptness: if UPnP registration failed there is no
+        // event flusher, and this becomes the widget's only source of updates.
+        runCatching { RendererWidget.refresh(applicationContext) }
+    }
 
     private fun startForegroundSafely(title: String?, subtitle: String?, playing: Boolean) {
         val notification = RendererNotification.build(
@@ -253,6 +266,12 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         screenPolicy.shutdown()
         eventFlusher?.shutdownNow()
         playback.stop()
+        // The widget outlives the service. Leaving it showing a paused track
+        // that nothing can resume is the stale-state failure the whole
+        // push-from-the-service design exists to avoid.
+        com.hifirend.RendererState.transportState = "STOPPED"
+        com.hifirend.RendererState.clearTrack()
+        runCatching { RendererWidget.refresh(applicationContext, force = true) }
         health.recordServiceStop()
         super.onDestroy()
     }
@@ -291,6 +310,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             startEventFlusher()
             startNetworkWatcher()
             startUsbWatcher()
+            RendererWidget.refresh(applicationContext, force = true)
             Log.i(TAG, "UPnP renderer registered: ${device.details.friendlyName} udn=${device.identity.udn}")
         } catch (e: Throwable) {
             // A renderer that fails to register must not take the app down; the

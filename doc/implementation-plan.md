@@ -328,7 +328,7 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 | M4 full audio path | ✅ FLAC/WAV/MP3/AAC, seek, volume · ❌ gapless, Oboe fallback |
 | M5 UI | ✅ now-playing, settings, DAC capabilities · ❌ first-run onboarding |
 | M6 appliance | ✅ foreground service, boot start, wake locks, vendor autostart |
-| M7 widget | ❌ not started |
+| M7 widget | ✅ 4x2, art, transport, pushed from the service |
 | M8 DAC verification | ❌ specified, not built |
 
 ### Verified on hardware
@@ -355,7 +355,7 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 
 ### Next up
 
-M7 (4×2 widget), gapless, the Oboe fallback, first-run onboarding, and M8.
+Gapless, the Oboe fallback, first-run onboarding, and M8.
 
 ---
 
