@@ -451,6 +451,9 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 ManufacturerDetails("HiFi Renderer"),
                 ModelDetails("HiFi Renderer", "Bit-perfect USB audio renderer", "1"),
             ),
+            // Controllers list renderers by name and icon; without one this
+            // shows up as an unlabelled grey box among the TVs and speakers.
+            DeviceIcons.load(applicationContext),
             arrayOf(avService, rcService, cmService),
         )
     }
