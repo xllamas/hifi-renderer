@@ -33,6 +33,12 @@ private const val TAG = "hifirend"
 interface PlaybackController {
     /** Returns a JSON result; failures are reported, not thrown. */
     fun play(uri: String, mimeType: String?): String
+    /**
+     * Starts a track into the stream already running, so the change of track
+     * is inaudible. Only possible when the new track is the same rate, depth
+     * and channel count; the engine falls back to a normal start otherwise.
+     */
+    fun playGapless(uri: String, mimeType: String?): String
     fun stop()
     fun pause()
     fun resume()
@@ -186,6 +192,10 @@ class RendererAvTransport(
     fun onPlaybackFailed(message: String) {
         Log.e(TAG, "engine failed during playback: $message")
         com.hifirend.RendererState.lastError = message
+        // Tear the stream down. Since a gapless hand-over leaves the sink
+        // running, a failure after one would otherwise leave it playing an
+        // empty ring for ever -- silence that reports itself as playback.
+        playback?.stop()
         if (transportState == TransportState.PLAYING ||
             transportState == TransportState.PAUSED_PLAYBACK ||
             transportState == TransportState.TRANSITIONING) {
@@ -202,6 +212,35 @@ class RendererAvTransport(
             transportState = TransportState.STOPPED
             publishState()
         }
+    }
+
+    /**
+     * The decoder has run out of source while the tail is still playing.
+     *
+     * Advancing here rather than at the end is the whole of gapless: the next
+     * track is opened and decoding into the same ring while a second of the
+     * last one is still on its way to the DAC. Returns false when there is
+     * nothing to advance to, leaving the tail to play out and the normal
+     * end-of-track path to report it.
+     */
+    fun onSourceExhausted(): Boolean {
+        val next = queue.advance() ?: return false
+        Log.i(TAG, "gapless advance to ${next.uri}")
+        unplayableRate(next.track.sampleFrequency)?.let { why ->
+            // Refusing mid-handover would leave the tail playing with no way
+            // to report it, so let the tail finish and fail the normal way.
+            Log.i(TAG, "next track cannot play ($why); not handing over")
+            queue.putBack(next)
+            return false
+        }
+        val result = playback?.playGapless(next.uri, next.track.mimeType)
+        if (result != null && !result.contains("\"ok\":true")) {
+            Log.e(TAG, "gapless advance failed: $result")
+            queue.putBack(next)
+            return false
+        }
+        publishState()
+        return true
     }
 
     fun onTrackFinished() {

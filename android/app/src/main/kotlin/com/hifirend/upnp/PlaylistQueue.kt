@@ -60,6 +60,22 @@ class PlaylistQueue {
         return n
     }
 
+    /**
+     * Undoes an [advance] that could not be acted on.
+     *
+     * A gapless hand-over decides whether it is possible only after the queue
+     * has moved, and backing out has to restore both ends -- otherwise a track
+     * that merely could not start seamlessly is lost from the playlist
+     * entirely, and the one before it is reported as still playing.
+     */
+    @Synchronized
+    fun putBack(item: QueueItem) {
+        if (current !== item) return
+        next = item
+        current = played.removeLastOrNull()
+        Log.i(TAG, "queue: put ${item.uri} back as next")
+    }
+
     @Synchronized
     fun clear() {
         current = null

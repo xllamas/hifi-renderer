@@ -71,6 +71,15 @@ class HttpStreamPlayback(private val context: Context) {
      */
     var onPlaybackError: ((String) -> Unit)? = null
 
+    /**
+     * The source ran out while the tail is still playing.
+     *
+     * Returns true if a next track was started, in which case this one hands
+     * over seamlessly and the engine is never stopped. False means there was
+     * nothing queued, and the tail is left to play out normally.
+     */
+    var onSourceExhausted: (() -> Boolean)? = null
+
     private var watcher: Thread? = null
 
     @Volatile
@@ -178,8 +187,12 @@ class HttpStreamPlayback(private val context: Context) {
         durationSeconds: Int = 0,
         header: ByteArray? = null,
         mimeHint: String = "",
+        gapless: Boolean = false,
     ): String {
-        stop()
+        // A gapless start must not stop the engine: the previous track's tail
+        // is still in the ring and is what covers the time this one needs to
+        // open and start decoding.
+        if (gapless) retireWatcher() else stop()
         // A new track starts with a clean slate; the engine clears its own
         // error, and a stale one here would be read as this track failing.
         lastEngineError = null
@@ -193,6 +206,21 @@ class HttpStreamPlayback(private val context: Context) {
         // lost, and the engine reports that rather than hiding it.
         val probe = UsbAudioProbe(context)
         val device = probe.findAudioDevice()
+
+        // A gapless change of track must reuse the connection already
+        // streaming. Opening a second one and force-claiming the interfaces
+        // detaches them from the first, which kills the transfers mid-flight:
+        // the first attempt at this produced 14 transfer errors and 107 bad
+        // packets at the exact moment of hand-over, and the stream never
+        // recovered. The engine keeps the sink bound to the original
+        // descriptor, so there is nothing to reopen.
+        val existing = connection
+        if (gapless && existing != null) {
+            Log.i(TAG, "gapless: reusing the open USB connection")
+            return startDecoding(uri, existing.fileDescriptor, seekSeconds, rangeStart,
+                                 durationSeconds, header, mimeHint, gapless = true)
+        }
+
         val conn = when {
             device == null -> {
                 Log.i(TAG, "no USB audio device; using Android audio")
@@ -219,12 +247,26 @@ class HttpStreamPlayback(private val context: Context) {
         connection = conn
         val fd = conn?.fileDescriptor ?: -1
 
+        return startDecoding(uri, fd, seekSeconds, rangeStart, durationSeconds, header,
+                             mimeHint, gapless = gapless)
+    }
+
+    /**
+     * Starts the decoder and the fetch for [uri] against an already-chosen
+     * output. Split out so a gapless change of track can skip the device
+     * acquisition entirely and keep the stream that is playing.
+     */
+    private fun startDecoding(
+        uri: String,
+        fd: Int,
+        seekSeconds: Int,
+        rangeStart: Long,
+        durationSeconds: Int,
+        header: ByteArray?,
+        mimeHint: String,
+        gapless: Boolean,
+    ): String {
         if (durationSeconds > 0) trackDurationSeconds = durationSeconds
-        // The cached header is prepended below, so the decoder always sees a
-        // well-formed stream and never needs relaxed (headerless) mode.
-        // The decoder is chosen from the MIME type. The controller's DIDL is
-        // the better source -- it describes the file, whereas a server's
-        // Content-Type is often a generic octet-stream.
         val mime = mimeHint.ifBlank { lastKnownMime }
 
         if (usePlatformDecoder(mime)) {
@@ -243,7 +285,7 @@ class HttpStreamPlayback(private val context: Context) {
         }
 
         val started = NativeBridge.startStream(
-            fd, seekSeconds, relaxed = false, mime = mime
+            fd, seekSeconds, relaxed = false, mime = mime, gapless = gapless
         )
         if (!started.contains("\"ok\":true")) {
             stop()
@@ -256,13 +298,16 @@ class HttpStreamPlayback(private val context: Context) {
         // can be set at all.
         runCatching { restoreVolume() }
             .onFailure { Log.w(TAG, "volume restore failed: ${it.message}") }
-        thread(name = "http-fetch", isDaemon = true) { fetch(uri, rangeStart, header) }
+        val fetchGeneration = generation
+        thread(name = "http-fetch", isDaemon = true) {
+            fetch(uri, rangeStart, header, fetchGeneration)
+        }
         startWatcher()
         Log.i(TAG, "stream: fetching $uri")
         return """{"ok":true,"uri":"${uri.replace("\"", "\\\"")}"}"""
     }
 
-    private fun fetch(uri: String, rangeStart: Long, header: ByteArray?) {
+    private fun fetch(uri: String, rangeStart: Long, header: ByteArray?, mine: Int) {
         var stream: InputStream? = null
         var conn: HttpURLConnection? = null
         try {
@@ -317,11 +362,16 @@ class HttpStreamPlayback(private val context: Context) {
             stream = conn.inputStream
             val buf = ByteArray(32 * 1024)
             var total = 0L
-            while (fetching.get()) {
+            while (fetching.get() && generation == mine) {
                 val n = stream.read(buf)
                 if (n < 0) break
                 if (n > 0) {
                     total += n
+                    // The generation check is what stops a fetch that outlived
+                    // its track from pushing its bytes into the next one's
+                    // decoder -- the streams are swapped underneath it, and
+                    // the corruption would be silent.
+                    if (generation != mine) break
                     // Blocks when the native buffer is full; that backpressure
                     // is what stops a fast server buffering a whole album.
                     if (!NativeBridge.pushStreamData(buf, n)) break
@@ -347,6 +397,17 @@ class HttpStreamPlayback(private val context: Context) {
      * the DAC is actually doing, rather than what was requested.
      */
     @Volatile private var engineRunning = false
+
+    /**
+     * Whether the decoder is alive, as distinct from the sink.
+     *
+     * A gapless change of track leaves the sink running on purpose, so the
+     * sink's own flag stopped being a usable proxy for "playback is
+     * progressing": a decoder that failed after the hand-over left the stream
+     * running and empty, and the transport went on reporting PLAYING over
+     * silence -- the exact failure the error reporting exists to prevent.
+     */
+    @Volatile private var decoding = false
 
     @Volatile private var lastVolumeReadAt = 0L
     @Volatile private var volumeSetAt = 0L
@@ -418,7 +479,7 @@ class HttpStreamPlayback(private val context: Context) {
      * as fatal would stop playback that was about to be fine.
      */
     private val engineError: String?
-        get() = lastEngineError?.takeIf { !engineRunning }
+        get() = lastEngineError?.takeIf { !decoding }
 
     private fun publishEngineState() {
         try {
@@ -432,6 +493,7 @@ class HttpStreamPlayback(private val context: Context) {
             RendererState.underruns = j.optLong("underruns")
             RendererState.positionSeconds = j.optInt("positionSeconds")
             engineRunning = j.optBoolean("running")
+            decoding = j.optBoolean("decoding")
             // Nothing between the decoder and the DAC alters samples, so a
             // running USB stream is bit-perfect by construction. A fallback
             // path would have to clear this.
@@ -466,12 +528,41 @@ class HttpStreamPlayback(private val context: Context) {
      * "fetch complete" is not "playback complete" -- only the native engine
      * knows when the last sample has actually gone out.
      */
+    /**
+     * Retires the current watcher without stopping playback.
+     *
+     * A gapless change of track leaves the engine running, so the old watcher
+     * has to be told to stand down some other way -- otherwise two of them
+     * poll the same engine and both try to advance the queue.
+     */
+    private fun retireWatcher() {
+        generation++
+        fetching.set(false)
+    }
+
+    @Volatile private var generation = 0
+
     private fun startWatcher() {
+        val mine = generation
         watcher = thread(name = "track-watcher", isDaemon = true) {
-            while (fetching.get()) {
-                Thread.sleep(400)
-                if (!fetching.get()) return@thread
+            var handedOver = false
+            while (fetching.get() && generation == mine) {
+                Thread.sleep(200)
+                if (!fetching.get() || generation != mine) return@thread
                 publishEngineState()
+
+                // The window for a seamless change of track: the decoder is
+                // out of source but the ring still holds the tail. Ask once.
+                if (!handedOver && NativeBridge.streamReadyForNext()) {
+                    handedOver = true
+                    val advanced = runCatching { onSourceExhausted?.invoke() ?: false }
+                        .onFailure { Log.e(TAG, "onSourceExhausted threw: ${it.message}") }
+                        .getOrDefault(false)
+                    if (advanced) {
+                        Log.i(TAG, "handed over to the next track without stopping")
+                        return@thread
+                    }
+                }
 
                 // An engine that stopped while we still believe we are playing
                 // has failed -- most often because the DAC refused the format

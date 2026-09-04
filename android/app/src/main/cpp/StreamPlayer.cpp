@@ -58,9 +58,24 @@ public:
      * @param relaxed true when the stream starts mid-file and therefore has no
      *        FLAC header, so the decoder must scan for a frame boundary.
      */
-    std::string start(int fd, int seekSeconds, bool relaxed, const std::string &mime) {
+    std::string start(int fd, int seekSeconds, bool relaxed, const std::string &mime,
+                      bool gapless = false) {
         std::lock_guard<std::mutex> lock(mutex_);
-        stopLocked();
+
+        // A gapless start keeps the running stream and its ring: the previous
+        // track's tail is still in there, and the new track's samples are
+        // simply appended behind it. Whether that is actually possible is not
+        // known until the header has been read, so the decision is deferred to
+        // the decode loop -- here we only avoid destroying what it may reuse.
+        const bool keepSink = gapless && sink_ && sinkStarted_;
+        if (keepSink) {
+            handover_.store(true);
+            stopSourceLocked();
+            handover_.store(false);
+        } else {
+            stopLocked();
+        }
+
         positionBase_.store(seekSeconds);
         relaxed_ = relaxed;
         format_ = formatFromMime(mime);
@@ -68,14 +83,18 @@ public:
 
         stream_ = std::make_unique<NetworkStream>();
         std::string err;
-        if (!openSink(fd, &err)) {
-            sink_.reset();
-            stream_.reset();
-            return "{\"ok\":false,\"message\":\"" + esc(err) + "\"}";
+        if (!keepSink) {
+            lastFd_ = fd;
+            if (!openSink(fd, &err)) {
+                sink_.reset();
+                stream_.reset();
+                return "{\"ok\":false,\"message\":\"" + esc(err) + "\"}";
+            }
         }
 
         error_.clear();
         finished_.store(false);
+        readyForNext_.store(false);
         running_.store(true);
         framesDecoded_.store(0);
         rate_.store(0);
@@ -173,7 +192,22 @@ public:
             if (sink_->start(&err)) pcmStarted_ = true;
         }
         sink_->setSourceEnded(true);
-        while (running_.load() && sink_->ringAvailable() > 0) usleep(5000);
+
+        // Announce it here, not after the drain. The ring still holds a second
+        // or so of audio, and that is exactly the budget the next track has to
+        // be fetched, opened and decoded into the same ring behind this one.
+        // Waiting until the ring is empty -- which is what "finished" means --
+        // spends that budget on silence before anyone is even told.
+        readyForNext_.store(true, std::memory_order_release);
+
+        while (running_.load() && !handover_.load() && sink_->ringAvailable() > 0) {
+            usleep(5000);
+        }
+        if (handover_.load()) {
+            LOGI("handing over to the next track with %zu bytes still to play",
+                 sink_->ringAvailable());
+            return;
+        }
         sink_->setPaused(true);
         finished_.store(true, std::memory_order_release);
     }
@@ -249,6 +283,9 @@ public:
     /** True once the track played to its natural end, as opposed to being stopped. */
     bool finished() const { return finished_.load(std::memory_order_acquire); }
 
+    /** Source exhausted, tail still playing: the moment to start the next. */
+    bool readyForNext() const { return readyForNext_.load(std::memory_order_acquire); }
+
     void endOfStream() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stream_) stream_->setEof();
@@ -274,6 +311,12 @@ public:
         s += ",\"sourceBits\":" + std::to_string(sourceBits_);
         s += ",\"channels\":" + std::to_string(sourceChannels_);
         s += ",\"finished\":" + std::string(finished_.load() ? "true" : "false");
+        // Whether the *decoder* is alive, which is not the same as whether the
+        // sink is. Since a gapless change of track deliberately leaves the sink
+        // running across tracks, the sink's own flag can no longer stand in for
+        // "playback is progressing" -- a decoder that died leaves the stream
+        // running and quietly empty.
+        s += ",\"decoding\":" + std::string(running_.load() ? "true" : "false");
         s += ",\"error\":\"" + esc(error_) + "\"";
         s += "}";
         return s;
@@ -287,16 +330,25 @@ public:
     }
 
 private:
-    void stopLocked() {
+    /** Ends the current source and its decode thread, leaving the sink alone. */
+    void stopSourceLocked() {
         running_.store(false);
         if (stream_) stream_->close();
         if (decoder_.joinable()) decoder_.join();
+        stream_.reset();
+    }
+
+    void stopLocked() {
+        stopSourceLocked();
         if (sink_) {
             sink_->stop();
             sink_->close();
             sink_.reset();
         }
-        stream_.reset();
+        sinkStarted_ = false;
+        cfgRate_ = 0;
+        cfgBits_ = 0;
+        cfgChannels_ = 0;
         pcmMode_ = false;
         pcmStarted_ = false;
     }
@@ -349,11 +401,49 @@ private:
         sourceChannels_ = channels;
         LOGI("stream: %s %u Hz %d-bit %dch", formatName(format_), rate, bits, channels);
 
-        if (!sink_->configure(rate, bits, channels, &err)) {
-            error_ = err;
-            LOGE("decode: %s", err.c_str());
-            running_.store(false);
-            return;
+        // Can this track simply continue into the stream already running?
+        //
+        // Only when it is the same shape as the one before it. A change of
+        // rate or depth has to be negotiated with the hardware, and the sink
+        // cannot be reconfigured underneath a running stream -- which is why
+        // gapless is possible within an album and not across a rate change.
+        const bool continuing = sinkStarted_ && cfgRate_ == rate &&
+                                cfgBits_ == bits && cfgChannels_ == channels;
+
+        if (continuing) {
+            // The tail of the previous track is still in the ring; these
+            // samples go in behind it, and nothing is stopped or re-started.
+            sink_->setSourceEnded(false);
+            sink_->setPaused(false);
+            LOGI("gapless: continuing into the running stream (%u Hz, %d-bit, %d ch)",
+                 rate, bits, channels);
+        } else {
+            if (sinkStarted_) {
+                // Same shape it is not, so the stream has to be rebuilt. The
+                // tail is already gone by now: whoever asked for this accepted
+                // the gap that a rate change costs.
+                LOGI("format changed to %u Hz %d-bit %d ch; restarting the stream",
+                     rate, bits, channels);
+                sink_->stop();
+                sink_->close();
+                sink_.reset();
+                sinkStarted_ = false;
+                if (!openSink(lastFd_, &err)) {
+                    error_ = err;
+                    LOGE("decode: %s", err.c_str());
+                    running_.store(false);
+                    return;
+                }
+            }
+            if (!sink_->configure(rate, bits, channels, &err)) {
+                error_ = err;
+                LOGE("decode: %s", err.c_str());
+                running_.store(false);
+                return;
+            }
+            cfgRate_ = rate;
+            cfgBits_ = bits;
+            cfgChannels_ = channels;
         }
 
         const int subslot = sink_->deviceSubslot();
@@ -387,17 +477,20 @@ private:
         // Fill the ring BEFORE opening the stream. Isochronous transfers start
         // draining the instant they are submitted, so starting empty guarantees
         // a burst of silence and an audible glitch at the head of every track.
-        const size_t preRoll = sink_->ringSpace() / 2;
-        while (running_.load() && sink_->ringAvailable() < preRoll) {
-            if (!decodeChunk()) break;
-        }
-        LOGI("pre-roll: %zu bytes buffered before start", sink_->ringAvailable());
+        if (!continuing) {
+            const size_t preRoll = sink_->ringSpace() / 2;
+            while (running_.load() && sink_->ringAvailable() < preRoll) {
+                if (!decodeChunk()) break;
+            }
+            LOGI("pre-roll: %zu bytes buffered before start", sink_->ringAvailable());
 
-        if (!sink_->start(&err)) {
-            error_ = err;
-            LOGE("decode: %s", err.c_str());
-            running_.store(false);
-            return;
+            if (!sink_->start(&err)) {
+                error_ = err;
+                LOGE("decode: %s", err.c_str());
+                running_.store(false);
+                return;
+            }
+            sinkStarted_ = true;
         }
 
         // Rebuffer rather than dribble. If the source falls behind, hold output
@@ -437,7 +530,23 @@ private:
         // the last fraction of a second is cut off. Telling the sink the source
         // has ended first means the silence after it is not counted as a fault.
         sink_->setSourceEnded(true);
-        while (running_.load() && sink_->ringAvailable() > 0) usleep(5000);
+
+        // Announce it here, not after the drain. The ring still holds a second
+        // or so of audio, and that is exactly the budget the next track has to
+        // be fetched, opened and decoded into the same ring behind this one.
+        // Waiting until the ring is empty -- which is what "finished" means --
+        // spends that budget on silence before anyone is even told.
+        readyForNext_.store(true, std::memory_order_release);
+
+        while (running_.load() && !handover_.load() && sink_->ringAvailable() > 0) {
+            usleep(5000);
+        }
+        if (handover_.load()) {
+            LOGI("handing over to the next track with %zu bytes still to play",
+                 sink_->ringAvailable());
+            decoder->close();
+            return;
+        }
 
         // Park the sink before announcing the end. Between here and the
         // controller acting there is a poll interval of silence, and without
@@ -461,6 +570,26 @@ private:
     std::atomic<uint64_t> framesDecoded_{0};
     std::atomic<uint32_t> rate_{0};
     std::atomic<bool> finished_{false};
+    /**
+     * The decoder has run out of source, but the ring still holds the tail.
+     *
+     * This is the moment the next track has to start if there is to be no gap:
+     * "finished" is only true once the ring has drained, by which point the
+     * output has already been silent for as long as it takes to notice, fetch
+     * and buffer the next one.
+     */
+    std::atomic<bool> readyForNext_{false};
+    /** A replacement source is arriving; stop waiting for the tail to drain. */
+    std::atomic<bool> handover_{false};
+
+    // What the sink is currently configured for, and the descriptor it was
+    // opened with, so a track that matches can be appended to the running
+    // stream and one that does not can still reopen the device.
+    uint32_t cfgRate_ = 0;
+    int cfgBits_ = 0;
+    int cfgChannels_ = 0;
+    bool sinkStarted_ = false;
+    int lastFd_ = -1;
     std::atomic<uint32_t> positionBase_{0};
     bool relaxed_ = false;
     SourceFormat format_ = SourceFormat::Unknown;
@@ -483,10 +612,11 @@ extern "C" {
 JNIEXPORT jstring JNICALL
 Java_com_hifirend_NativeBridge_nativeStartStream(JNIEnv *env, jobject, jint fd,
                                                  jint seekSeconds, jboolean relaxed,
-                                                 jstring mime) {
+                                                 jstring mime, jboolean gapless) {
     const char *m = mime ? env->GetStringUTFChars(mime, nullptr) : "";
     std::string result = StreamPlayer::instance().start(
-        static_cast<int>(fd), static_cast<int>(seekSeconds), relaxed == JNI_TRUE, m);
+        static_cast<int>(fd), static_cast<int>(seekSeconds), relaxed == JNI_TRUE, m,
+        gapless == JNI_TRUE);
     if (mime) env->ReleaseStringUTFChars(mime, m);
     return env->NewStringUTF(result.c_str());
 }
@@ -544,6 +674,11 @@ Java_com_hifirend_NativeBridge_nativeSetDacVolume(JNIEnv *, jobject, jint percen
 JNIEXPORT void JNICALL
 Java_com_hifirend_NativeBridge_nativeForgetVolumeLearning(JNIEnv *, jobject) {
     StreamPlayer::instance().forgetVolumeLearning();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_hifirend_NativeBridge_nativeStreamReadyForNext(JNIEnv *, jobject) {
+    return StreamPlayer::instance().readyForNext() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL

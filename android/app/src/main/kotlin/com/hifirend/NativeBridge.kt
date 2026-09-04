@@ -29,7 +29,7 @@ object NativeBridge {
 
     private external fun nativePlaybackStatus(): String
 
-    private external fun nativeStartStream(fd: Int, seekSeconds: Int, relaxed: Boolean, mime: String): String
+    private external fun nativeStartStream(fd: Int, seekSeconds: Int, relaxed: Boolean, mime: String, gapless: Boolean): String
     private external fun nativePushStreamData(data: ByteArray, len: Int): Boolean
     private external fun nativeEndStream()
     private external fun nativeStopStream()
@@ -37,6 +37,7 @@ object NativeBridge {
     private external fun nativeStreamPositionSeconds(): Int
     private external fun nativeSetStreamPaused(paused: Boolean)
     private external fun nativeStreamFinished(): Boolean
+    private external fun nativeStreamReadyForNext(): Boolean
     private external fun nativeGetDacVolume(): Int
     private external fun nativeSetDacVolume(percent: Int): Boolean
     private external fun nativeForgetVolumeLearning()
@@ -72,9 +73,10 @@ object NativeBridge {
         seekSeconds: Int = 0,
         relaxed: Boolean = false,
         mime: String = "",
+        gapless: Boolean = false,
     ): String =
         loadError?.let { """{"ok":false,"message":"native library failed to load"}""" }
-            ?: nativeStartStream(fd, seekSeconds, relaxed, mime)
+            ?: nativeStartStream(fd, seekSeconds, relaxed, mime, gapless)
 
     fun pushStreamData(data: ByteArray, len: Int): Boolean =
         if (isLoaded) nativePushStreamData(data, len) else false
@@ -86,6 +88,15 @@ object NativeBridge {
         loadError?.let { """{"running":false}""" } ?: nativeStreamStatus()
 
     fun streamPositionSeconds(): Int = if (isLoaded) nativeStreamPositionSeconds() else 0
+
+    /**
+     * The decoder has run out of source while the tail is still playing.
+     *
+     * The window in which the next track can be started without a gap. It
+     * opens well before [streamFinished], which is only true once the ring has
+     * drained and the output has already gone quiet.
+     */
+    fun streamReadyForNext(): Boolean = if (isLoaded) nativeStreamReadyForNext() else false
 
     fun setStreamPaused(paused: Boolean) { if (isLoaded) nativeSetStreamPaused(paused) }
 

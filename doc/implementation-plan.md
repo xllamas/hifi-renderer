@@ -325,7 +325,7 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 | M1 USB capability probe | ✅ — verified against a second, UAC1 device |
 | M2 bit-perfect playback | ✅ — 30 min soak, zero dropouts |
 | M3 DLNA renderer | ✅ — discovery, transport, DIDL, LastChange eventing |
-| M4 full audio path | ✅ FLAC/WAV/MP3/AAC, seek, volume · ❌ gapless, Oboe fallback |
+| M4 full audio path | ✅ FLAC/WAV/MP3/AAC, seek, volume, gapless, Oboe fallback |
 | M5 UI | ✅ now-playing, settings, DAC capabilities · ❌ first-run onboarding |
 | M6 appliance | ✅ foreground service, boot start, wake locks, vendor autostart |
 | M7 widget | ✅ 4x2, art, transport, pushed from the service |
@@ -356,8 +356,11 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
   hardware held, which on a device with unreadable volume is its maximum — a
   first track at full scale into an amplifier, before anyone can reach a
   control.
-- **Gapless is absent.** There is a real gap between tracks; unavoidable across
-  a rate change, but not within one.
+- **Gapless works within a rate.** The next track is started when the decoder
+  runs out of source rather than when the ring empties, and is decoded into the
+  same running stream. Measured on the AL400: hand-over in 22 ms against 3.8 s
+  of tail still buffered, with the frame counter continuous and no underrun.
+  Across a rate change the stream is still rebuilt, which is unavoidable.
 - **No fallback without a DAC.** Playback simply fails; the plan calls for an
   Oboe path clearly marked as not bit-perfect.
 - **USB permission prompts on every replug** on MIUI, which offers no "use by
@@ -419,7 +422,7 @@ controller retry, over a metered connection.
 
 ### Next up
 
-Gapless, the Oboe fallback, first-run onboarding, and M8.
+First-run onboarding and M8.
 
 ---
 

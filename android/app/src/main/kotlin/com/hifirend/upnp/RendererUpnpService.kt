@@ -88,6 +88,11 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             refreshNotification(playing = result.contains("\"ok\":true"))
             return result
         }
+        override fun playGapless(uri: String, mimeType: String?): String {
+            val result = playback.play(uri, mimeHint = mimeType ?: "", gapless = true)
+            refreshNotification(playing = result.contains("\"ok\":true"))
+            return result
+        }
         override fun stop() {
             playback.stop()
             refreshNotification(playing = false)
@@ -404,6 +409,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         RendererControl.onOutputDeviceChanged = { force -> onOutputDeviceChanged(force) }
         playback.onTrackFinished = { av.onTrackFinished() }
         playback.onPlaybackError = { av.onPlaybackFailed(it) }
+        playback.onSourceExhausted = { av.onSourceExhausted() }
         // The manager creates its own instance by default; supply ours so the
         // queue and (from M4) the audio engine share one object.
         val avManager = object : LastChangeAwareServiceManager<RendererAvTransport>(
