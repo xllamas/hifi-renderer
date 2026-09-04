@@ -279,6 +279,17 @@ class HttpStreamPlayback(private val context: Context) {
             Log.i(TAG, "stream: HTTP $code, type=${conn.contentType}, " +
                 "len=${conn.contentLengthLong}, total=$contentLength, range=$rangeStart")
 
+            // What the server actually served, as opposed to what the
+            // controller said it would. A transcoding server announces itself
+            // here: contentFeatures carries the DLNA profile it converted to,
+            // and a chunked response with no length is the usual sign that the
+            // bytes are being produced on the fly rather than read from a file.
+            listOf("Content-Type", "Content-Length", "Content-Range",
+                   "transferMode.dlna.org", "contentFeatures.dlna.org",
+                   "Transfer-Encoding", "Server", "Accept-Ranges")
+                .mapNotNull { h -> conn.getHeaderField(h)?.let { "$h: $it" } }
+                .forEach { Log.i(TAG, "served: $it") }
+
             // Give the decoder the real header first so STREAMINFO is known,
             // then the ranged audio. dr_flac resynchronises to the next frame.
             if (header != null) {

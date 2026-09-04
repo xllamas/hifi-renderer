@@ -37,6 +37,7 @@ data class TrackMetadata(
          */
         fun parse(didl: String?): TrackMetadata {
             if (didl.isNullOrBlank()) return TrackMetadata()
+            describeOffer(didl)
             return try {
                 val item = DIDLParser().parse(didl).items.firstOrNull()
                     ?: return TrackMetadata()
@@ -63,6 +64,51 @@ data class TrackMetadata(
                 // pulling out the few fields that matter.
                 Log.w(TAG, "strict DIDL parse failed (${e::class.java.simpleName}); using lenient fallback")
                 lenient(didl)
+            }
+        }
+
+        /**
+         * Logs every <res> a controller offered, and the raw DIDL behind it.
+         *
+         * This is how to see whether a server transcoded and to what. A
+         * transcoding server usually offers several <res> elements for one
+         * track -- the original alongside converted alternatives -- or
+         * substitutes a converted one outright, and the giveaway is in the
+         * protocolInfo and the sampleFrequency/bitsPerSample attributes rather
+         * than in anything the renderer can measure later. By the time audio
+         * arrives, a transcode looks exactly like a file that was always that
+         * format.
+         *
+         * Never throws and never affects parsing: this is observation only.
+         */
+        private fun describeOffer(didl: String) {
+            try {
+                val res = Regex("<res\\s([^>]*)>", RegexOption.DOT_MATCHES_ALL)
+                    .findAll(didl).map { it.groupValues[1] }.toList()
+                Log.i(TAG, "offer: ${res.size} <res> element(s) from the controller")
+                res.forEachIndexed { i, attrs ->
+                    fun a(n: String) = Regex("$n=\"([^\"]*)\"").find(attrs)?.groupValues?.get(1)
+                    val detail = listOfNotNull(
+                        a("protocolInfo")?.let { "protocolInfo=$it" },
+                        a("sampleFrequency")?.let { "rate=$it" },
+                        a("bitsPerSample")?.let { "bits=$it" },
+                        a("nrAudioChannels")?.let { "ch=$it" },
+                        a("bitrate")?.let { "bitrate=$it" },
+                        a("size")?.let { "size=$it" },
+                        a("duration")?.let { "duration=$it" },
+                    ).joinToString(" ")
+                    Log.i(TAG, "offer[$i]: $detail")
+                }
+                // The whole thing, chunked: logcat drops anything past about
+                // 4 kB in one message, and DIDL from a real server exceeds it.
+                val chunk = 3000
+                val parts = (didl.length + chunk - 1) / chunk
+                for (i in 0 until parts) {
+                    Log.i(TAG, "didl[${i + 1}/$parts]: " +
+                        didl.substring(i * chunk, minOf((i + 1) * chunk, didl.length)))
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "could not describe the offer: ${e::class.java.simpleName}")
             }
         }
 
