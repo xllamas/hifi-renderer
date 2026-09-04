@@ -46,11 +46,17 @@ still reaches the DAC untouched at the source's own sample rate. Routing through
 
 ## Compatibility
 
-**USB Audio Class 2.0 only.** UAC 1.0 is a 1998-era specification capped at
-24-bit/96 kHz over full-speed USB, and is effectively absent from the DACs anyone
-would pair with a bit-perfect renderer. UAC1 devices are still detected and
-identified, and the app says plainly that it cannot use them, rather than failing
-obscurely.
+**USB Audio Class 1.0 and 2.0.** UAC1 was initially assumed dead and turned out
+not to be: class-compliant UAC1 dongles are still sold and still work. They are
+supported, with the limits the class itself imposes — full-speed USB caps the
+bandwidth well below what a UAC2 DAC offers, and such devices are commonly
+*adaptive*, taking their timing from the phone rather than running their own
+clock. Playback is still bit-perfect at the rates they do support.
+
+What decides whether a device is usable is not its class version but whether it
+offers PCM out over an isochronous endpoint. A USB microphone, or the capture
+half of a headset adapter, does not — and the app says so plainly rather than
+failing obscurely.
 
 **Android 8.0 (API 26) and above**, `arm64-v8a` and `armeabi-v7a`. USB host (OTG)
 support is required.
@@ -77,6 +83,27 @@ so:
 > This device exposes no USB volume control. It does report its own knob or
 > remote to the phone, but that is one-way: nothing sent from here can change its
 > volume. Use the physical control.
+
+## When the DAC cannot play a track
+
+Every DAC has a rate ceiling, and `protocolInfo` — the list of formats a
+renderer advertises — can express a rate limit for LPCM but not for FLAC: the
+DLNA profiles for compressed and lossless containers carry no rate constraint.
+There is no way to advertise "FLAC, but only up to 48 kHz".
+
+So the renderer has two things it can say to a server, and they trade directly
+against each other. Advertise the formats the app decodes, and files at
+supported rates play bit-perfectly while anything above the ceiling is refused
+and the reason shown. Or withhold them, leaving only LPCM at rates the DAC can
+clock, so the server converts — everything plays, and nothing is bit-perfect any
+more, including files the DAC could have played untouched.
+
+That is a setting, off by default. Refusing and saying why is the behaviour that
+matches an app whose whole purpose is the untouched path.
+
+The advertised list follows the attached DAC, and changing the output device
+re-announces the renderer on SSDP, because controllers cache `protocolInfo` from
+discovery and never ask again.
 
 ## The home-screen widget
 

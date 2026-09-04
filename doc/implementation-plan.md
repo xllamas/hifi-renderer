@@ -322,13 +322,14 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 | Milestone | State |
 |---|---|
 | M0 skeleton | ✅ |
-| M1 USB capability probe | ✅ — second device still untested |
+| M1 USB capability probe | ✅ — verified against a second, UAC1 device |
 | M2 bit-perfect playback | ✅ — 30 min soak, zero dropouts |
 | M3 DLNA renderer | ✅ — discovery, transport, DIDL, LastChange eventing |
 | M4 full audio path | ✅ FLAC/WAV/MP3/AAC, seek, volume · ❌ gapless, Oboe fallback |
 | M5 UI | ✅ now-playing, settings, DAC capabilities · ❌ first-run onboarding |
 | M6 appliance | ✅ foreground service, boot start, wake locks, vendor autostart |
 | M7 widget | ✅ 4x2, art, transport, pushed from the service |
+| Device icon | ✅ launcher + DLNA iconList (PNG/JPEG, 48 and 120) |
 | M8 DAC verification | ❌ specified, not built |
 
 ### Verified on hardware
@@ -341,10 +342,15 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 
 ### Known gaps
 
-- **Only one DAC has ever been tested.** The parser, the alt-setting choice and
-  the capability screen all make promises about hardware we do not own.
-- **DAC volume is unverified.** The AL400 has no Feature Unit, so the UAC
-  volume read/write path has never executed. Written from the spec only.
+- **Two DACs have now been tested** — the UAC2 AL400 and a UAC1 dongle. The
+  second one immediately found three real faults (see below), so the parser and
+  alt-setting choice are better evidenced than they were; they still make
+  promises about hardware we do not own.
+- **DAC volume now executes**, on the UAC1 device's Feature Unit. The AL400 has
+  none, so this path had never run: it used the UAC2 request codes throughout,
+  and UAC1 puts the direction in the code itself (GET_MIN is 0x82, not 0x02),
+  so every read asked the device to SET what it meant to GET. Written from the
+  spec, and wrong — exactly the risk this section existed to record.
 - **Gapless is absent.** There is a real gap between tracks; unavoidable across
   a rate change, but not within one.
 - **No fallback without a DAC.** Playback simply fails; the plan calls for an
@@ -352,6 +358,26 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 - **USB permission prompts on every replug** on MIUI, which offers no "use by
   default" checkbox. Expected to behave better on stock Android — worth
   confirming before documenting compatibility.
+
+### What the second DAC taught us
+
+Worth recording, because all three were invisible with one device attached:
+
+- **A failure after Play had been answered reached nobody.** The engine
+  configures on the decoder thread, once the source's real rate and depth are
+  known — after SetAVTransportURI and Play have both returned. A failure there
+  left the transport PLAYING, the screen and widget showing a running track,
+  and silence as the only symptom.
+- **libusb collapses most ioctl failures into LIBUSB_ERROR_OTHER**, keeping the
+  errno in an internal log that goes nowhere on Android. Routing it into logcat
+  is what turned "set_alt_setting failed" into "the device stalled it with
+  EPIPE".
+- **Firmware can wedge.** The UAC1 device stopped answering *any* control
+  transfer — including string descriptors — and stayed that way across app
+  restarts until it was replugged. The control experiment that established it
+  was device-specific rather than environmental: the other DAC on the same hub
+  answered normally throughout, which is only visible because the capability
+  dump covers every attached device rather than just the selected one.
 
 ### Next up
 
