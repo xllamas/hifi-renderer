@@ -242,6 +242,23 @@ class RendererAvTransport(
             transportState = TransportState.NO_MEDIA_PRESENT
             return
         }
+        // Refuse before fetching anything, when the server has already said the
+        // track is at a rate this DAC cannot clock.
+        //
+        // The alternative is to find out from the decoder, which means pulling
+        // megabytes of a stream that was never going to play -- and a
+        // controller that retries does it again each time. This is the
+        // server's own claim rather than a measurement, so it is only acted on
+        // when it is present and unambiguous; the decoder stays the authority
+        // for everything else.
+        unplayableRate()?.let { why ->
+            Log.i(TAG, "refusing before fetch: $why")
+            com.hifirend.RendererState.lastError = why
+            transportState = TransportState.STOPPED
+            publishState()
+            return
+        }
+
         val result = playback?.play(uri, queue.current?.track?.mimeType)
         if (result != null && !result.contains("\"ok\":true")) {
             // Report the failure through the transport state rather than
@@ -252,6 +269,25 @@ class RendererAvTransport(
             return
         }
         transportState = TransportState.PLAYING
+    }
+
+    /**
+     * A plain-language reason the announced track cannot play, or null when
+     * there is no reason to think it cannot.
+     */
+    private fun unplayableRate(): String? {
+        val rates = com.hifirend.RendererState.dacRates
+        if (rates.isEmpty()) return null                    // capabilities unknown
+        val announced = queue.current?.track?.sampleFrequency ?: 0
+        if (announced <= 0) return null                     // server said nothing
+        if (rates.contains(announced)) return null
+        val ceiling = rates.max()
+        return "This DAC cannot play ${khz(announced)}; its highest rate is ${khz(ceiling)}."
+    }
+
+    private fun khz(hz: Int): String {
+        val k = hz / 1000.0
+        return if (k == k.toInt().toDouble()) "${k.toInt()} kHz" else "%.1f kHz".format(k)
     }
 
     override fun pause(instanceId: UnsignedIntegerFourBytes?) {

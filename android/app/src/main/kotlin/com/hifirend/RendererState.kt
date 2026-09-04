@@ -36,6 +36,12 @@ object RendererState {
 
     /** Stable vendor:product key for the selected DAC; keys its remembered volume. */
     @Volatile var dacKey: String? = null
+
+    /**
+     * Every rate the selected DAC can clock. Empty when unknown, in which case
+     * nothing may be refused on the strength of it.
+     */
+    @Volatile var dacRates: List<Int> = emptyList()
     @Volatile var dacConnected: Boolean = false
 
     /** How many USB audio devices are attached; more than one needs a choice. */

@@ -42,6 +42,13 @@ class NowPlayingScreen extends StatelessWidget {
                     : _portrait(context, constraints);
               },
             ),
+            if (status.lastError != null && !status.isPlaying)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 8,
+                child: _problem(status.lastError!),
+              ),
             Positioned(
               top: 4,
               right: 4,
@@ -56,6 +63,29 @@ class NowPlayingScreen extends StatelessWidget {
       ),
     );
   }
+
+  /// Why the last track did not play.
+  ///
+  /// A refusal that shows nothing is indistinguishable from the app being
+  /// broken -- which is exactly what a track silently failing to start looks
+  /// like from across the room.
+  Widget _problem(String message) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.amber.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.warning_amber_outlined,
+              size: 18, color: Colors.amberAccent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(message,
+                style: const TextStyle(fontSize: 12, color: Colors.white70)),
+          ),
+        ]),
+      );
 
   Widget _idle(BuildContext context) => Center(
         child: Column(

@@ -23,6 +23,15 @@ data class TrackMetadata(
     val durationSeconds: Int = 0,
     val mimeType: String? = null,
     val rawDuration: String? = null,
+    /**
+     * res@sampleFrequency, as announced by the server. 0 when absent.
+     *
+     * The server's own statement about the file, which lets a track the DAC
+     * cannot clock be refused before any of it is fetched. It is a claim, not
+     * a measurement -- the decoder remains the authority -- but it is the only
+     * thing available before the download starts.
+     */
+    val sampleFrequency: Int = 0,
 ) {
     /** UPnP wants H:MM:SS. */
     val upnpDuration: String
@@ -52,6 +61,7 @@ data class TrackMetadata(
                     durationSeconds = parseDuration(raw),
                     mimeType = res?.protocolInfo?.contentFormat,
                     rawDuration = raw,
+                    sampleFrequency = res?.sampleFrequency?.toInt() ?: 0,
                 ).also {
                     Log.i(TAG, "metadata: '${it.title}' by '${it.artist}' " +
                         "album='${it.album}' ${it.durationSeconds}s mime=${it.mimeType}")
@@ -132,6 +142,7 @@ data class TrackMetadata(
                 durationSeconds = parseDuration(raw),
                 mimeType = attr("protocolInfo")?.split(":")?.getOrNull(2),
                 rawDuration = raw,
+                sampleFrequency = attr("sampleFrequency")?.toIntOrNull() ?: 0,
             ).also {
                 Log.i(TAG, "metadata (lenient): '${it.title}' by '${it.artist}' " +
                     "album='${it.album}' ${it.durationSeconds}s mime=${it.mimeType}")

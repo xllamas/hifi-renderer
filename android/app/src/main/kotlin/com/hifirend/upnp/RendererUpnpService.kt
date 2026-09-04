@@ -440,7 +440,18 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         // not serve them. Getting this backwards leaves GetProtocolInfo's Sink
         // empty, and controllers then refuse to send anything while still
         // showing the device as discovered, which looks like a broken renderer.
-        val cm = ConnectionManagerService(ProtocolInfos(), sinkFormats())
+        // Subclassed only to record that the question was asked. Whether a
+        // controller consults GetProtocolInfo at all is otherwise invisible
+        // from here, and it is the difference between "it read our formats and
+        // ignored them" and "it never looked" -- which have entirely different
+        // remedies.
+        val cm = object : ConnectionManagerService(ProtocolInfos(), sinkFormats()) {
+            override fun getProtocolInfo() {
+                Log.i(TAG, "ConnectionManager.GetProtocolInfo asked; " +
+                    "answering with ${sinkProtocolInfo.size} sink entries")
+                super.getProtocolInfo()
+            }
+        }
         connectionManager = cm
         cmService.manager = object : DefaultServiceManager<ConnectionManagerService>(
             cmService, ConnectionManagerService::class.java
@@ -472,14 +483,21 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
      * Declared for what M4 will decode. FLAC is the format that matters for a
      * hi-fi renderer; LPCM is what a bit-perfect path handles natively.
      */
-    private fun sinkFormats(): ProtocolInfos = SinkFormats.build(
-        runCatching { com.hifirend.usb.UsbAudioProbe(applicationContext).selectedCapabilities() }
-            .getOrNull(),
-        // Off by default: advertising the formats we decode is what keeps
-        // playback bit-perfect, and giving that up is the user's call, not a
-        // default. See ServerConversion.
-        allowNativeFormats = !ServerConversion.isEnabled(applicationContext),
-    )
+    private fun sinkFormats(): ProtocolInfos {
+        // Same probe answers both questions, so the rates are cached here for
+        // the transport to refuse an impossible track without re-probing.
+        val caps = runCatching {
+            com.hifirend.usb.UsbAudioProbe(applicationContext).selectedCapabilities()
+        }.getOrNull()
+        com.hifirend.RendererState.dacRates = SinkFormats.playableRates(caps)
+        return SinkFormats.build(
+            caps,
+            // Off by default: advertising the formats we decode is what keeps
+            // playback bit-perfect, and giving that up is the user's call, not
+            // a default. See ServerConversion.
+            allowNativeFormats = !ServerConversion.isEnabled(applicationContext),
+        )
+    }
 
     /**
      * The output device changed, so what this renderer can accept changed with
