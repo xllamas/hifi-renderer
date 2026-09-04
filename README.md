@@ -86,24 +86,39 @@ so:
 
 ## When the DAC cannot play a track
 
-Every DAC has a rate ceiling, and `protocolInfo` — the list of formats a
-renderer advertises — can express a rate limit for LPCM but not for FLAC: the
-DLNA profiles for compressed and lossless containers carry no rate constraint.
-There is no way to advertise "FLAC, but only up to 48 kHz".
+The renderer reports what the attached DAC can actually do, and refuses
+anything outside it with a reason. It never resamples to make a track fit —
+that would defeat the point of the app — and it does not pretend a limitation
+away.
 
-So the renderer has two things it can say to a server, and they trade directly
-against each other. Advertise the formats the app decodes, and files at
-supported rates play bit-perfectly while anything above the ceiling is refused
-and the reason shown. Or withhold them, leaving only LPCM at rates the DAC can
-clock, so the server converts — everything plays, and nothing is bit-perfect any
-more, including files the DAC could have played untouched.
+`protocolInfo`, the list of formats a renderer advertises, carries the DAC's
+real sample rates for LPCM. It cannot do the same for FLAC: the DLNA profiles
+for compressed and lossless containers have no rate constraint, so there is no
+way to advertise "FLAC, but only up to 48 kHz". The renderer therefore
+advertises the formats it can decode — which is true, it can decode them — and
+enforces the rate ceiling by refusing tracks above it.
 
-That is a setting, off by default. Refusing and saying why is the behaviour that
-matches an app whose whole purpose is the untouched path.
+A refusal is immediate and cheap. Servers state the sample rate in the metadata
+they send, so a track the DAC cannot clock is declined before any of it is
+fetched, and the now-playing screen says why:
+
+> ⚠️ This DAC cannot play 192 kHz; its highest rate is 48 kHz.
 
 The advertised list follows the attached DAC, and changing the output device
-re-announces the renderer on SSDP, because controllers cache `protocolInfo` from
-discovery and never ask again.
+re-announces the renderer on SSDP as well as firing the evented
+`SinkProtocolInfo`, since controllers otherwise keep whatever they read at
+discovery.
+
+**Whether a controller respects any of this is up to the controller.** Measured
+against BubbleUPnP with a Tidal source: it requested `GetProtocolInfo` six times
+in one session, was told the renderer accepted only LPCM at 44.1 and 48 kHz, and
+sent 192 kHz FLAC regardless — with a direct link rather than through its own
+proxy, so it was not in the stream path and could not have converted anything.
+It read the truth and sent the file anyway. There is a setting to withhold the
+container formats entirely, which is what would make a *transcoding* server
+convert instead; it is off by default, because it costs bit-perfect playback of
+every file the DAC could have played untouched, and it does not change the
+behaviour of a controller that does not consult the list.
 
 ## The home-screen widget
 

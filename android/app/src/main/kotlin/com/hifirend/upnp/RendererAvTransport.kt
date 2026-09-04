@@ -208,6 +208,17 @@ class RendererAvTransport(
         val next = queue.advance()
         if (next != null) {
             Log.i(TAG, "auto-advancing to ${next.uri}")
+            // The same refusal as an explicit Play. A playlist reaching a
+            // track the DAC cannot clock should say so, not fetch megabytes of
+            // it first, and not look like the renderer simply stopped.
+            unplayableRate(next.track.sampleFrequency)?.let { why ->
+                Log.i(TAG, "auto-advance refused before fetch: $why")
+                com.hifirend.RendererState.lastError = why
+                playback?.stop()
+                transportState = TransportState.STOPPED
+                publishState()
+                return
+            }
             val result = playback?.play(next.uri, next.track.mimeType)
             transportState = if (result != null && !result.contains("\"ok\":true")) {
                 Log.e(TAG, "auto-advance failed: $result")
@@ -251,7 +262,7 @@ class RendererAvTransport(
         // server's own claim rather than a measurement, so it is only acted on
         // when it is present and unambiguous; the decoder stays the authority
         // for everything else.
-        unplayableRate()?.let { why ->
+        unplayableRate(queue.current?.track?.sampleFrequency ?: 0)?.let { why ->
             Log.i(TAG, "refusing before fetch: $why")
             com.hifirend.RendererState.lastError = why
             transportState = TransportState.STOPPED
@@ -275,10 +286,9 @@ class RendererAvTransport(
      * A plain-language reason the announced track cannot play, or null when
      * there is no reason to think it cannot.
      */
-    private fun unplayableRate(): String? {
+    private fun unplayableRate(announced: Int): String? {
         val rates = com.hifirend.RendererState.dacRates
         if (rates.isEmpty()) return null                    // capabilities unknown
-        val announced = queue.current?.track?.sampleFrequency ?: 0
         if (announced <= 0) return null                     // server said nothing
         if (rates.contains(announced)) return null
         val ceiling = rates.max()

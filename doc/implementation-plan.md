@@ -398,6 +398,25 @@ Worth recording, because all three were invisible with one device attached:
   answered normally throughout, which is only visible because the capability
   dump covers every attached device rather than just the selected one.
 
+### Format negotiation, as measured
+
+The renderer advertises the attached DAC's real capabilities and refuses what
+falls outside them. What a controller does with that is the controller's
+choice, and at least one common one ignores it.
+
+BubbleUPnP, playing from Tidal, called `GetProtocolInfo` six times in a single
+session, was answered each time with LPCM at 44.1/48 kHz and no FLAC, and sent
+192 kHz FLAC anyway. Its URI carried `proxy=false` — a direct link, so it was
+never in the stream path and could not have transcoded whatever it had been
+told. Restarting the controller between attempts ruled out caching; the
+`GetProtocolInfo` logging ruled out it never having asked.
+
+The conclusion is that automatic rate negotiation cannot be relied on, so the
+renderer's own refusal is the mechanism that matters: declined from the
+metadata before any bytes are fetched, with the reason on screen. Fetching
+first was costing megabytes of a stream that could not play, repeated on every
+controller retry, over a metered connection.
+
 ### Next up
 
 Gapless, the Oboe fallback, first-run onboarding, and M8.
