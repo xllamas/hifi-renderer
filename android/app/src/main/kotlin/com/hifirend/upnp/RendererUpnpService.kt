@@ -42,6 +42,7 @@ private const val TAG = "hifirend"
 private const val PREFS = "hifirend_upnp"
 private const val KEY_UDN = "udn"
 private const val KEY_NAME = "friendly_name"
+private const val KEY_SERVER_CONVERSION = "allow_server_conversion"
 
 /**
  * Hosts the UPnP MediaRenderer device.
@@ -65,6 +66,8 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     private var connectionManager: ConnectionManagerService? = null
     /** Last volume announced to controllers, to avoid re-eventing every tick. */
     @Volatile private var publishedVolume = -1
+    /** The output device the advertised capabilities currently describe. */
+    @Volatile private var advertisedDeviceKey: String? = null
     private var eventFlusher: ScheduledExecutorService? = null
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -123,6 +126,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 runCatching { RendererWidget.refresh(applicationContext, force = true) }
                 // A different DAC accepts different formats, and a controller
                 // that discovered us before the swap still believes the old set.
+                // No-ops when the selected device is unchanged.
                 runCatching { onOutputDeviceChanged() }
             }
         }
@@ -334,6 +338,11 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             startEventFlusher()
             startNetworkWatcher()
             startUsbWatcher()
+            advertisedDeviceKey = runCatching {
+                com.hifirend.usb.UsbAudioProbe(applicationContext).let { p ->
+                    p.findAudioDevice()?.let { p.deviceKey(it) }
+                }
+            }.getOrNull()
             RendererWidget.refresh(applicationContext, force = true)
             Log.i(TAG, "UPnP renderer registered: ${device.details.friendlyName} udn=${device.identity.udn}")
         } catch (e: Throwable) {
@@ -387,7 +396,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 return ok
             }
         }
-        RendererControl.onOutputDeviceChanged = { onOutputDeviceChanged() }
+        RendererControl.onOutputDeviceChanged = { force -> onOutputDeviceChanged(force) }
         playback.onTrackFinished = { av.onTrackFinished() }
         playback.onPlaybackError = { av.onPlaybackFailed(it) }
         // The manager creates its own instance by default; supply ours so the
@@ -458,7 +467,10 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     private fun sinkFormats(): ProtocolInfos = SinkFormats.build(
         runCatching { com.hifirend.usb.UsbAudioProbe(applicationContext).selectedCapabilities() }
             .getOrNull(),
-        allowNativeFormats = true,
+        // Off by default: advertising the formats we decode is what keeps
+        // playback bit-perfect, and giving that up is the user's call, not a
+        // default. See ServerConversion.
+        allowNativeFormats = !ServerConversion.isEnabled(applicationContext),
     )
 
     /**
@@ -472,8 +484,18 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
      * re-announced -- a byebye followed by an alive -- which is the only thing
      * that makes those controllers look again.
      */
-    fun onOutputDeviceChanged() {
+    fun onOutputDeviceChanged(force: Boolean = false) {
         val cm = connectionManager ?: return
+
+        // Re-announcing drops every controller's subscription, so it must not
+        // happen on USB traffic that has nothing to do with the output -- a
+        // phone running this is on a hub with Ethernet and whatever else, and
+        // the watcher fires for all of it.
+        val probe = com.hifirend.usb.UsbAudioProbe(applicationContext)
+        val key = runCatching { probe.findAudioDevice()?.let { probe.deviceKey(it) } }.getOrNull()
+        if (!force && key == advertisedDeviceKey) return
+        advertisedDeviceKey = key
+
         val fresh = sinkFormats()
         try {
             val sink = cm.sinkProtocolInfo

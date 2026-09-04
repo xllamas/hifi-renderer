@@ -153,6 +153,17 @@ class MainActivity : FlutterActivity() {
                         RendererControl.outputDeviceChanged()
                         result.success(true)
                     }
+                    "getServerConversion" ->
+                        result.success(
+                            com.hifirend.upnp.ServerConversion.isEnabled(applicationContext))
+                    "setServerConversion" -> {
+                        val on = call.argument<Boolean>("enabled") ?: false
+                        com.hifirend.upnp.ServerConversion.setEnabled(applicationContext, on)
+                        // Changes what the renderer advertises, so controllers
+                        // that already discovered us are now wrong.
+                        RendererControl.outputDeviceChanged()
+                        result.success(true)
+                    }
                     "openVendorAutostart" ->
                         result.success(VendorAutostart.open(this) ?: "")
                     "requestBatteryExemption" ->

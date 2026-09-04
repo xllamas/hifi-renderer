@@ -34,12 +34,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Map<String, dynamic> _appliance = const {};
   List<dynamic> _dacs = const [];
   bool _saved = false;
+  bool _serverConversion = false;
 
   @override
   void initState() {
     super.initState();
     _loadAppliance();
     _loadDacs();
+    _loadServerConversion();
+  }
+
+  Future<void> _loadServerConversion() async {
+    try {
+      final on = await _channel.invokeMethod<bool>('getServerConversion') ?? false;
+      if (mounted) setState(() => _serverConversion = on);
+    } catch (_) {
+      // Absent means off, which is the default anyway.
+    }
+  }
+
+  Future<void> _setServerConversion(bool on) async {
+    setState(() => _serverConversion = on);
+    await _channel.invokeMethod('setServerConversion', {'enabled': on});
   }
 
   @override
@@ -201,6 +217,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               );
             },
+          ),
+          Card(
+            child: SwitchListTile(
+              value: _serverConversion,
+              onChanged: _setServerConversion,
+              secondary: Icon(
+                _serverConversion ? Icons.transform : Icons.verified_outlined,
+                color: _serverConversion ? Colors.amberAccent : Colors.greenAccent,
+              ),
+              title: const Text('Let the server convert unplayable tracks'),
+              subtitle: Text(
+                _serverConversion
+                    ? 'Everything plays, but nothing is bit-perfect: the server '
+                        'decodes and resamples, including tracks this DAC could '
+                        'have played untouched.'
+                    : 'Tracks at rates this DAC cannot clock are refused, and '
+                        'the reason is shown. Everything that does play is '
+                        'bit-perfect.',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
           ),
           Card(
             child: ListTile(

@@ -22,10 +22,15 @@ object RendererControl {
      * capabilities and controllers have to be told.
      */
     @Volatile
-    var onOutputDeviceChanged: (() -> Unit)? = null
+    var onOutputDeviceChanged: ((Boolean) -> Unit)? = null
 
-    fun outputDeviceChanged() {
-        runCatching { onOutputDeviceChanged?.invoke() }
+    /**
+     * [force] for a deliberate change by the user -- picking a device, or
+     * changing the conversion policy. Those alter what is advertised even when
+     * the device itself is the same, so they must not be skipped.
+     */
+    fun outputDeviceChanged(force: Boolean = true) {
+        runCatching { onOutputDeviceChanged?.invoke(force) }
     }
 
     interface TransportCommands {
