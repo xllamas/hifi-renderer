@@ -27,6 +27,7 @@
 #include "decode/FlacDecoder.h"
 #include "decode/Mp3Decoder.h"
 #include "usb/UsbSink.h"
+#include "sink/OboeSink.h"
 
 #define LOG_TAG "hifirend"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -66,10 +67,8 @@ public:
         mime_ = mime;
 
         stream_ = std::make_unique<NetworkStream>();
-        sink_ = std::make_unique<UsbSink>();
-        sink_->adoptVolumeLearning(volumeLearning_);
         std::string err;
-        if (!sink_->open(fd, &err)) {
+        if (!openSink(fd, &err)) {
             sink_.reset();
             stream_.reset();
             return "{\"ok\":false,\"message\":\"" + esc(err) + "\"}";
@@ -97,10 +96,8 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         stopLocked();
 
-        sink_ = std::make_unique<UsbSink>();
-        sink_->adoptVolumeLearning(volumeLearning_);
         std::string err;
-        if (!sink_->open(fd, &err)) {
+        if (!openSink(fd, &err)) {
             sink_.reset();
             return "{\"ok\":false,\"message\":\"" + esc(err) + "\"}";
         }
@@ -207,10 +204,41 @@ public:
         return ok;
     }
 
+    /**
+     * Opens the USB sink when there is a device, and Android's own output when
+     * there is not.
+     *
+     * A negative descriptor means the Kotlin layer found no DAC to use. That
+     * is not an error: a phone with nothing plugged in should still play, and
+     * everything above this point -- decoders, transport, playlist, widget --
+     * is identical either way. What differs is that the fallback is not
+     * bit-perfect, which it reports rather than conceals.
+     */
+    bool openSink(int fd, std::string *error) {
+        if (fd >= 0) {
+            auto usb = std::make_unique<UsbSink>();
+            usb->adoptVolumeLearning(volumeLearning_);
+            if (usb->open(fd, error)) {
+                sink_ = std::move(usb);
+                return true;
+            }
+            // A DAC that is present but unusable is a fault worth reporting,
+            // not something to paper over by quietly playing through the
+            // speaker at a quality the user did not ask for.
+            LOGE("usb sink unavailable: %s", error->c_str());
+            return false;
+        }
+        auto oboe = std::make_unique<OboeSink>();
+        if (!oboe->open(fd, error)) return false;
+        LOGI("no DAC attached; falling back to Android audio (NOT bit-perfect)");
+        sink_ = std::move(oboe);
+        return true;
+    }
+
     /** The DAC changed, so nothing learned about the last one still applies. */
     void forgetVolumeLearning() {
         std::lock_guard<std::mutex> lock(mutex_);
-        volumeLearning_ = UsbSink::VolumeLearning{};
+        volumeLearning_ = AudioSink::VolumeLearning{};
     }
 
     void setPaused(bool paused) {
@@ -427,7 +455,7 @@ private:
 
     std::mutex mutex_;
     std::unique_ptr<NetworkStream> stream_;
-    std::unique_ptr<UsbSink> sink_;
+    std::unique_ptr<AudioSink> sink_;
     std::thread decoder_;
     std::atomic<bool> running_{false};
     std::atomic<uint64_t> framesDecoded_{0};
@@ -445,7 +473,7 @@ private:
     std::vector<uint8_t> pcmScratch_;
     std::string error_;
     // Survives the sink, because it describes the DAC rather than the stream.
-    UsbSink::VolumeLearning volumeLearning_;
+    AudioSink::VolumeLearning volumeLearning_;
 };
 
 }  // namespace

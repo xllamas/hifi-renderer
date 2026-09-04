@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hifirend/main.dart';
 import 'package:hifirend/renderer_state.dart';
+import 'package:hifirend/screens/now_playing_screen.dart';
 import 'package:hifirend/usb/dac_capabilities.dart';
 
 /// Modelled on the real AL400 probe output.
@@ -269,6 +270,31 @@ void main() {
       final title = tester.getCenter(find.text('Excursions'));
       expect(art.dx, lessThan(title.dx));
       expect(find.text('FLAC 16/44.1'), findsOneWidget);
+    });
+
+    testWidgets('marks the fallback as system audio, not bit-perfect', (tester) async {
+      const playing = '''
+{"rendererName":"HiFi Renderer","transportState":"PLAYING","title":"Fallback",
+"artist":"Test","album":"Test","durationSeconds":100,"positionSeconds":10,
+"formatBadge":"FLAC 16/44.1","sourceFormat":"FLAC","sourceRate":44100,
+"sourceBits":16,"channels":2,"dacConnected":false,"dacCount":0,
+"bitPerfect":false,"output":"android","dacVolume":-1,
+"dacVolumeSupported":false,"underruns":0}
+''';
+      final status = RendererStatus.parse(playing);
+      expect(status.usingSystemAudio, isTrue);
+      expect(status.bitPerfect, isFalse);
+      await tester.pumpWidget(MaterialApp(
+        home: NowPlayingScreen(
+          status: status,
+          onOpenSettings: () {},
+          onPlayPause: () {},
+          onVolumeChanged: (_) {},
+        ),
+      ));
+      expect(find.text('system audio'), findsOneWidget);
+      expect(find.text('bit-perfect'), findsNothing);
+      expect(find.textContaining('resampled by Android'), findsOneWidget);
     });
 
     testWidgets('idle state names the renderer without crashing', (tester) async {

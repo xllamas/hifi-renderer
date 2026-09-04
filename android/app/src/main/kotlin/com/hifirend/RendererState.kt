@@ -54,6 +54,9 @@ object RendererState {
      */
     @Volatile var bitPerfect: Boolean = false
 
+    /** Which output is carrying audio: "usb" or "android". */
+    @Volatile var output: String = "usb"
+
     /** Percent as reported by the DAC, or -1 when it exposes no volume control. */
     @Volatile var dacVolume: Int = -1
     @Volatile var dacVolumeSupported: Boolean = false
@@ -84,7 +87,7 @@ object RendererState {
         title = null; artist = null; album = null; albumArtUri = null
         durationSeconds = 0; positionSeconds = 0
         sourceFormat = null; sourceRate = 0; sourceBits = 0; channels = 0
-        deviceBits = 0; altSetting = -1; bitPerfect = false
+        deviceBits = 0; altSetting = -1; bitPerfect = false; output = "usb"
     }
 
     private fun q(s: String?): String =
@@ -111,6 +114,7 @@ object RendererState {
         append(",\"dacConnected\":").append(dacConnected)
         append(",\"dacCount\":").append(dacCount)
         append(",\"bitPerfect\":").append(bitPerfect)
+        append(",\"output\":").append(q(output))
         append(",\"dacVolume\":").append(dacVolume)
         append(",\"dacVolumeSupported\":").append(dacVolumeSupported)
         append(",\"dacVolumeReadback\":").append(q(dacVolumeReadback))

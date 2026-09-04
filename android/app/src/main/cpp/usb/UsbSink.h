@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "../RingBuffer.h"
+#include "../sink/AudioSink.h"
 #include "UacCapabilities.h"
 
 struct libusb_context;
@@ -45,28 +46,28 @@ struct SinkStats {
 // No sample is altered on the way through -- no resampling, no mixing, no
 // volume. Where the DAC's container is wider than the source, samples are
 // left-justified and zero-padded, which preserves their values exactly.
-class UsbSink {
+class UsbSink : public AudioSink {
 public:
     UsbSink();
     ~UsbSink();
 
     // fd is owned by the caller's UsbDeviceConnection and must outlive the sink.
-    bool open(int fd, std::string *error);
+    bool open(int fd, std::string *error) override;
 
     const UacCapabilities &capabilities() const { return caps_; }
 
     // Configures the stream. sourceBits selects the alt-setting; the DAC's
     // container may be wider.
-    bool configure(uint32_t rate, int sourceBits, int channels, std::string *error);
+    bool configure(uint32_t rate, int sourceBits, int channels, std::string *error) override;
 
-    bool start(std::string *error);
-    void stop();
-    void close();
+    bool start(std::string *error) override;
+    void stop() override;
+    void close() override;
 
     // Producer side: returns bytes accepted, in the DAC's wire format.
-    size_t write(const uint8_t *pcm, size_t bytes) { return ring_ ? ring_->write(pcm, bytes) : 0; }
-    size_t ringSpace() const { return ring_ ? ring_->space() : 0; }
-    size_t ringAvailable() const { return ring_ ? ring_->available() : 0; }
+    size_t write(const uint8_t *pcm, size_t bytes) override { return ring_ ? ring_->write(pcm, bytes) : 0; }
+    size_t ringSpace() const override { return ring_ ? ring_->space() : 0; }
+    size_t ringAvailable() const override { return ring_ ? ring_->available() : 0; }
 
     /**
      * Pause emits silence without draining the ring, so everything upstream
@@ -75,7 +76,7 @@ public:
      * isochronous stream open also avoids re-negotiating the alt-setting on
      * resume, which the DAC would render as a click.
      */
-    void setPaused(bool paused) { paused_.store(paused, std::memory_order_release); }
+    void setPaused(bool paused) override { paused_.store(paused, std::memory_order_release); }
     bool paused() const { return paused_.load(std::memory_order_acquire); }
 
     /**
@@ -87,9 +88,9 @@ public:
      * over thousands of individually broken packets, so it is counted as a
      * rebuffer event and not as a fault.
      */
-    void setStalled(bool stalled) { stalled_.store(stalled, std::memory_order_release); }
+    void setStalled(bool stalled) override { stalled_.store(stalled, std::memory_order_release); }
     bool stalled() const { return stalled_.load(std::memory_order_acquire); }
-    void noteRebuffer() { stats_.rebuffers.fetch_add(1, std::memory_order_relaxed); }
+    void noteRebuffer() override { stats_.rebuffers.fetch_add(1, std::memory_order_relaxed); }
 
     /**
      * The decoder has reached the end of the source.
@@ -99,7 +100,7 @@ public:
      * starve on. Counting it would add hundreds of phantom faults per track and
      * make the one number that signals real dropouts useless.
      */
-    void setSourceEnded(bool ended) { sourceEnded_.store(ended, std::memory_order_release); }
+    void setSourceEnded(bool ended) override { sourceEnded_.store(ended, std::memory_order_release); }
 
     /**
      * Volume via the UAC Feature Unit.
@@ -114,17 +115,21 @@ public:
         return caps_.volumeHostControllable && caps_.featureUnitId >= 0;
     }
     bool readVolumeRange();
-    bool getVolumePercent(int *percent);
-    bool setVolumePercent(int percent);
+    bool getVolumePercent(int *percent) override;
+    bool setVolumePercent(int percent) override;
 
     const SinkStats &stats() const { return stats_; }
     uint32_t rate() const { return rate_; }
     int deviceBits() const { return alt_ ? alt_->bits : 0; }
-    int deviceSubslot() const { return alt_ ? alt_->subslot : 0; }
+    int deviceSubslot() const override { return alt_ ? alt_->subslot : 0; }
     int altSetting() const { return alt_ ? alt_->alt : -1; }
     bool running() const { return running_.load(); }
 
-    std::string statusJson() const;
+    std::string statusJson() const override;
+
+    /** Samples reach the DAC untouched; that is the point of this sink. */
+    bool bitPerfect() const override { return true; }
+    const char *outputName() const override { return "usb"; }
 
 private:
     static void onDataComplete(libusb_transfer *t);
@@ -189,41 +194,10 @@ private:
      * about this is exactly the kind of thing the app exists to catch.
      */
 public:
-    /**
-     * How far the device has got towards proving it reports its own volume.
-     *
-     * Proven needs *two different* values to have read back correctly.
-     * One is not evidence: a device that always answers with its maximum
-     * agrees with any write that happens to be near maximum, and the
-     * reference dongle passed a single check at 99% because its fixed
-     * 0.0 dB answer sits inside one step of the -1.0 dB that was written.
-     *
-     * Until it is Proven the app's own last written value is used, which is
-     * also the safe default -- following a device that reports nonsense is
-     * worse than not following one that is honest.
-     */
-    enum class Readback { Unknown, Probed, Proven, Untrusted };
-
-    /**
-     * What has been learned about this DAC's volume, carried between sinks.
-     *
-     * A sink lives for one stream, but these facts belong to the *device*: a
-     * DAC that lies about its volume on one track lies about it on the next.
-     * Losing them at every track boundary meant the first poll of each new
-     * track believed the device again, and the volume jumped back -- which is
-     * invisible to any test that does not cross a track boundary.
-     */
-    struct VolumeLearning {
-        Readback readback = Readback::Unknown;
-        int lastSetPercent = -1;
-        int provenAtRaw = 0;      // the written value that first read back
-        bool haveProbe = false;
-    };
-
-    VolumeLearning volumeLearning() const {
+    VolumeLearning volumeLearning() const override {
         return VolumeLearning{volumeReadback_, lastSetPercent_, probeRaw_, haveProbe_};
     }
-    void adoptVolumeLearning(const VolumeLearning &v) {
+    void adoptVolumeLearning(const VolumeLearning &v) override {
         volumeReadback_ = v.readback;
         lastSetPercent_ = v.lastSetPercent;
         probeRaw_ = v.provenAtRaw;

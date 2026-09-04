@@ -136,7 +136,10 @@ class NowPlayingScreen extends StatelessWidget {
           ],
           const SizedBox(height: 16),
           Center(child: _formatBadge()),
-          if (status.dacName != null) ...[
+          if (status.usingSystemAudio) ...[
+            const SizedBox(height: 10),
+            Center(child: _systemOutput()),
+          ] else if (status.dacName != null) ...[
             const SizedBox(height: 10),
             Center(child: _outputDevice()),
           ],
@@ -171,7 +174,10 @@ class NowPlayingScreen extends StatelessWidget {
                 ],
                 const SizedBox(height: 14),
                 _formatBadge(),
-                if (status.dacName != null) ...[
+                if (status.usingSystemAudio) ...[
+                  const SizedBox(height: 10),
+                  _systemOutput(),
+                ] else if (status.dacName != null) ...[
                   const SizedBox(height: 10),
                   _outputDevice(),
                 ],
@@ -325,6 +331,18 @@ class NowPlayingScreen extends StatelessWidget {
         ],
       );
 
+  /// Where the audio is going when there is no DAC: the phone's own output,
+  /// with what that costs stated rather than implied.
+  Widget _systemOutput() => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.phone_android, size: 14, color: Colors.amberAccent),
+          const SizedBox(width: 6),
+          const Text('Phone speaker or headphones — resampled by Android',
+              style: TextStyle(fontSize: 12, color: Colors.white38)),
+        ],
+      );
+
   /// Where the audio is going. On a phone that may have several USB devices
   /// attached -- a hub, an Ethernet adapter, more than one DAC -- naming the
   /// output is the difference between trusting the screen and guessing.
@@ -378,6 +396,17 @@ class NowPlayingScreen extends StatelessWidget {
           const SizedBox(width: 5),
           const Text('bit-perfect',
               style: TextStyle(fontSize: 12, color: Colors.greenAccent)),
+        ]
+        // Never leave this ambiguous. Saying nothing would let the fallback
+        // pass for the real thing, and the difference between them is the
+        // reason the app exists.
+        else if (status.usingSystemAudio) ...[
+          const SizedBox(width: 10),
+          const Icon(Icons.warning_amber_outlined,
+              size: 15, color: Colors.amberAccent),
+          const SizedBox(width: 5),
+          const Text('system audio',
+              style: TextStyle(fontSize: 12, color: Colors.amberAccent)),
         ],
       ],
     );

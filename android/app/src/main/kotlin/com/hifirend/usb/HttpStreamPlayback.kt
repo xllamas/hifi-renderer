@@ -186,21 +186,38 @@ class HttpStreamPlayback(private val context: Context) {
         engineRunning = false
         RendererState.lastError = null
 
-        val device = UsbAudioProbe(context).findAudioDevice()
-            ?: return """{"ok":false,"message":"No USB audio device connected."}"""
-        if (!usbManager.hasPermission(device)) {
-            return """{"ok":false,"message":"USB permission not granted. Open the app and probe the DAC once."}"""
+        // No DAC, or one we cannot open, is not a failure: the engine falls
+        // back to Android's own output. A file descriptor of -1 is how that is
+        // asked for. Everything above here -- decoders, transport, playlist,
+        // widget -- behaves identically; only the bit-perfect guarantee is
+        // lost, and the engine reports that rather than hiding it.
+        val probe = UsbAudioProbe(context)
+        val device = probe.findAudioDevice()
+        val conn = when {
+            device == null -> {
+                Log.i(TAG, "no USB audio device; using Android audio")
+                null
+            }
+            !usbManager.hasPermission(device) -> {
+                Log.i(TAG, "no USB permission for ${probe.describeForUi(device)}; " +
+                    "using Android audio")
+                null
+            }
+            else -> usbManager.openDevice(device).also {
+                if (it == null) Log.w(TAG, "could not open the DAC; using Android audio")
+            }
         }
-        val conn = usbManager.openDevice(device)
-            ?: return """{"ok":false,"message":"Could not open the DAC."}"""
 
-        for (i in 0 until device.interfaceCount) {
-            val itf = device.getInterface(i)
-            if (itf.interfaceClass == UsbConstants.USB_CLASS_AUDIO) {
-                conn.claimInterface(itf, true)
+        if (conn != null && device != null) {
+            for (i in 0 until device.interfaceCount) {
+                val itf = device.getInterface(i)
+                if (itf.interfaceClass == UsbConstants.USB_CLASS_AUDIO) {
+                    conn.claimInterface(itf, true)
+                }
             }
         }
         connection = conn
+        val fd = conn?.fileDescriptor ?: -1
 
         if (durationSeconds > 0) trackDurationSeconds = durationSeconds
         // The cached header is prepended below, so the decoder always sees a
@@ -214,7 +231,7 @@ class HttpStreamPlayback(private val context: Context) {
             // MediaCodec fetches the URL itself, so the HTTP pipe is unused here.
             currentUri = uri
             var failure: String? = null
-            val ok = aac.start(uri, conn.fileDescriptor, seekSeconds) { failure = it }
+            val ok = aac.start(uri, fd, seekSeconds) { failure = it }
             if (!ok) {
                 stop()
                 return """{"ok":false,"message":"${(failure ?: "platform decoder failed").replace("\"", "\\\"")}"}"""
@@ -226,7 +243,7 @@ class HttpStreamPlayback(private val context: Context) {
         }
 
         val started = NativeBridge.startStream(
-            conn.fileDescriptor, seekSeconds, relaxed = false, mime = mime
+            fd, seekSeconds, relaxed = false, mime = mime
         )
         if (!started.contains("\"ok\":true")) {
             stop()
@@ -418,7 +435,8 @@ class HttpStreamPlayback(private val context: Context) {
             // Nothing between the decoder and the DAC alters samples, so a
             // running USB stream is bit-perfect by construction. A fallback
             // path would have to clear this.
-            RendererState.bitPerfect = j.optBoolean("running")
+            RendererState.bitPerfect = j.optBoolean("bitPerfect")
+            RendererState.output = j.optString("output").takeIf { it.isNotBlank() } ?: "usb"
             RendererState.dacVolumeSupported = j.optBoolean("volumeSupported")
             j.optString("volumeReadback").takeIf { it.isNotBlank() }
                 ?.let { RendererState.dacVolumeReadback = it }

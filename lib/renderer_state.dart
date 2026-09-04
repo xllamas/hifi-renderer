@@ -23,6 +23,9 @@ class RendererStatus {
   final bool dacConnected;
   final int dacCount;
   final bool bitPerfect;
+
+  /// Which output is carrying audio: 'usb' or 'android'.
+  final String output;
   final int dacVolume;
   final bool dacVolumeSupported;
 
@@ -50,6 +53,7 @@ class RendererStatus {
     this.dacConnected = false,
     this.dacCount = 0,
     this.bitPerfect = false,
+    this.output = 'usb',
     this.dacVolume = -1,
     this.dacVolumeSupported = false,
     this.dacVolumeReadback = 'unknown',
@@ -79,6 +83,7 @@ class RendererStatus {
         dacConnected: j['dacConnected'] as bool? ?? false,
         dacCount: (j['dacCount'] as num?)?.toInt() ?? 0,
         bitPerfect: j['bitPerfect'] as bool? ?? false,
+        output: j['output'] as String? ?? 'usb',
         dacVolume: (j['dacVolume'] as num?)?.toInt() ?? -1,
         dacVolumeSupported: j['dacVolumeSupported'] as bool? ?? false,
         dacVolumeReadback: j['dacVolumeReadback'] as String? ?? 'unknown',
@@ -96,6 +101,10 @@ class RendererStatus {
   /// expose none at all, and showing a slider that does nothing is worse than
   /// showing no slider.
   bool get canControlVolume => dacVolumeSupported && dacVolume >= 0;
+
+  /// Playing through Android's mixer instead of a DAC, so nothing is
+  /// bit-perfect and the screen must not imply otherwise.
+  bool get usingSystemAudio => output == 'android';
 
   /// The DAC takes a volume but will not report one, so its own knob or remote
   /// cannot be followed and this shows the last value sent.
@@ -127,6 +136,7 @@ class RendererStatus {
         dacConnected: dacConnected,
         dacCount: dacCount,
         bitPerfect: bitPerfect,
+        output: output,
         dacVolume: volume,
         dacVolumeSupported: dacVolumeSupported,
         dacVolumeReadback: dacVolumeReadback,

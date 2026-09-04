@@ -16,6 +16,7 @@ add_library(hifirend SHARED
     usb/UacProbe.cpp
     usb/UacCapabilities.cpp
     usb/UsbSink.cpp
+    sink/OboeSink.cpp
 )
 
 target_include_directories(hifirend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
