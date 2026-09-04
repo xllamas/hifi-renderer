@@ -625,7 +625,10 @@ bool UsbSink::getVolumePercent(int *percent) {
     // A device that does not report its own volume back has nothing useful to
     // say here, and asking it anyway would overwrite the value the user set
     // with whatever fixed number it returns.
-    if (volumeReadback_ == Readback::Untrusted) {
+    // Only a device that has proven it tracks writes is asked. Anything else
+    // is answered from what this app last set, which is both the safe default
+    // and the honest one: an unproven device may be reporting a fixed number.
+    if (volumeReadback_ != Readback::Proven) {
         if (lastSetPercent_ < 0) return false;
         *percent = lastSetPercent_;
         return true;
@@ -702,7 +705,10 @@ bool UsbSink::setVolumePercent(int percent) {
     }
     LOGI("volume: set %d%% (%.1f dB)", percent, value / 256.0);
     lastSetPercent_ = percent;
-    if (volumeReadback_ == Readback::Unknown) checkVolumeReadback(value);
+    if (volumeReadback_ != Readback::Untrusted &&
+        volumeReadback_ != Readback::Proven) {
+        checkVolumeReadback(value);
+    }
     return true;
 }
 
@@ -754,8 +760,28 @@ void UsbSink::checkVolumeReadback(int16_t written) {
             return;
         }
     }
-    volumeReadback_ = Readback::Trusted;
-    LOGI("volume: device reports its own volume back consistently; polling it");
+
+    // Agreed -- but agreeing once proves nothing. A device answering with a
+    // fixed value agrees with any write that lands near it, which is exactly
+    // how this check was passed at 99% on a device whose answer is always its
+    // 0 dB maximum. Proof needs a second, clearly different value.
+    if (!haveProbe_) {
+        haveProbe_ = true;
+        probeRaw_ = written;
+        volumeReadback_ = Readback::Probed;
+        LOGI("volume: device echoed %.1f dB; needs a second, different value "
+             "before its readback is believed", written / 256.0);
+        return;
+    }
+    const int spread = std::abs(static_cast<int>(written) - static_cast<int>(probeRaw_));
+    if (spread <= tolerance * 4) {
+        LOGI("volume: %.1f dB is too close to %.1f dB to prove anything; "
+             "still using the last value set", written / 256.0, probeRaw_ / 256.0);
+        return;
+    }
+    volumeReadback_ = Readback::Proven;
+    LOGI("volume: device tracked two values %.1f dB apart; its readback is "
+         "believable, polling it", spread / 256.0);
 }
 
 std::string UsbSink::statusJson() const {
@@ -778,8 +804,8 @@ std::string UsbSink::statusJson() const {
         static_cast<unsigned long long>(stats_.packetErrors.load()),
         static_cast<unsigned long long>(stats_.packetsSubmitted.load()),
         volumeSupported() ? "true" : "false",
-        volumeReadback_ == Readback::Trusted ? "trusted"
-            : volumeReadback_ == Readback::Untrusted ? "untrusted" : "unknown",
+        volumeReadback_ == Readback::Proven ? "trusted"
+            : volumeReadback_ == Readback::Untrusted ? "untrusted" : "unproven",
         static_cast<unsigned long long>(stats_.rebuffers.load()),
         ring_ ? static_cast<int>(ring_->available() * 100 / std::max<size_t>(ring_->capacity(), 1)) : 0);
 }

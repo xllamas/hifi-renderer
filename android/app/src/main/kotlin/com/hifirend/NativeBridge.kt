@@ -39,6 +39,7 @@ object NativeBridge {
     private external fun nativeStreamFinished(): Boolean
     private external fun nativeGetDacVolume(): Int
     private external fun nativeSetDacVolume(percent: Int): Boolean
+    private external fun nativeForgetVolumeLearning()
     private external fun nativeStartPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int): String
     private external fun nativePushPcm(data: ByteArray, len: Int): Boolean
     private external fun nativePcmEndOfStream()
@@ -103,6 +104,16 @@ object NativeBridge {
 
     /** Volume the DAC itself reports, or -1 when it has no volume control. */
     fun getDacVolume(): Int = if (isLoaded) nativeGetDacVolume() else -1
+
+    /**
+     * Discards what was learned about the previous DAC's volume behaviour --
+     * whether it reports honestly, and what it was last set to. Those facts
+     * describe a device, so they outlive a stream but must not outlive a
+     * change of device.
+     */
+    fun forgetVolumeLearning() {
+        if (isLoaded) nativeForgetVolumeLearning()
+    }
 
     fun setDacVolume(percent: Int): Boolean =
         if (isLoaded) nativeSetDacVolume(percent) else false

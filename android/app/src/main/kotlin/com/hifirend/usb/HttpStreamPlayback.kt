@@ -348,6 +348,7 @@ class HttpStreamPlayback(private val context: Context) {
     /** A different DAC must not inherit the level restored for the last one. */
     fun forgetRestoredVolume() {
         volumeRestored = false
+        NativeBridge.forgetVolumeLearning()
     }
 
     /**

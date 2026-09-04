@@ -188,9 +188,53 @@ private:
      * the device: nothing here may branch on VID/PID, and a device that lies
      * about this is exactly the kind of thing the app exists to catch.
      */
-    enum class Readback { Unknown, Trusted, Untrusted };
+public:
+    /**
+     * How far the device has got towards proving it reports its own volume.
+     *
+     * Proven needs *two different* values to have read back correctly.
+     * One is not evidence: a device that always answers with its maximum
+     * agrees with any write that happens to be near maximum, and the
+     * reference dongle passed a single check at 99% because its fixed
+     * 0.0 dB answer sits inside one step of the -1.0 dB that was written.
+     *
+     * Until it is Proven the app's own last written value is used, which is
+     * also the safe default -- following a device that reports nonsense is
+     * worse than not following one that is honest.
+     */
+    enum class Readback { Unknown, Probed, Proven, Untrusted };
+
+    /**
+     * What has been learned about this DAC's volume, carried between sinks.
+     *
+     * A sink lives for one stream, but these facts belong to the *device*: a
+     * DAC that lies about its volume on one track lies about it on the next.
+     * Losing them at every track boundary meant the first poll of each new
+     * track believed the device again, and the volume jumped back -- which is
+     * invisible to any test that does not cross a track boundary.
+     */
+    struct VolumeLearning {
+        Readback readback = Readback::Unknown;
+        int lastSetPercent = -1;
+        int provenAtRaw = 0;      // the written value that first read back
+        bool haveProbe = false;
+    };
+
+    VolumeLearning volumeLearning() const {
+        return VolumeLearning{volumeReadback_, lastSetPercent_, probeRaw_, haveProbe_};
+    }
+    void adoptVolumeLearning(const VolumeLearning &v) {
+        volumeReadback_ = v.readback;
+        lastSetPercent_ = v.lastSetPercent;
+        probeRaw_ = v.provenAtRaw;
+        haveProbe_ = v.haveProbe;
+    }
+
+private:
     Readback volumeReadback_ = Readback::Unknown;
     int lastSetPercent_ = -1;
+    int16_t probeRaw_ = 0;
+    bool haveProbe_ = false;
     std::atomic<int> inFlight_{0};
     std::thread eventThread_;
     // Logging happens here, never on the event thread: __android_log_print can

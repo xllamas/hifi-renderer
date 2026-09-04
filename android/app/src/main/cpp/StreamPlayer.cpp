@@ -67,6 +67,7 @@ public:
 
         stream_ = std::make_unique<NetworkStream>();
         sink_ = std::make_unique<UsbSink>();
+        sink_->adoptVolumeLearning(volumeLearning_);
         std::string err;
         if (!sink_->open(fd, &err)) {
             sink_.reset();
@@ -97,6 +98,7 @@ public:
         stopLocked();
 
         sink_ = std::make_unique<UsbSink>();
+        sink_->adoptVolumeLearning(volumeLearning_);
         std::string err;
         if (!sink_->open(fd, &err)) {
             sink_.reset();
@@ -191,12 +193,24 @@ public:
 
     bool getVolume(int *percent) {
         std::lock_guard<std::mutex> lock(mutex_);
-        return sink_ && sink_->getVolumePercent(percent);
+        if (!sink_) return false;
+        const bool ok = sink_->getVolumePercent(percent);
+        volumeLearning_ = sink_->volumeLearning();
+        return ok;
     }
 
     bool setVolume(int percent) {
         std::lock_guard<std::mutex> lock(mutex_);
-        return sink_ && sink_->setVolumePercent(percent);
+        if (!sink_) return false;
+        const bool ok = sink_->setVolumePercent(percent);
+        volumeLearning_ = sink_->volumeLearning();
+        return ok;
+    }
+
+    /** The DAC changed, so nothing learned about the last one still applies. */
+    void forgetVolumeLearning() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        volumeLearning_ = UsbSink::VolumeLearning{};
     }
 
     void setPaused(bool paused) {
@@ -430,6 +444,8 @@ private:
     int sourceChannels_ = 0;
     std::vector<uint8_t> pcmScratch_;
     std::string error_;
+    // Survives the sink, because it describes the DAC rather than the stream.
+    UsbSink::VolumeLearning volumeLearning_;
 };
 
 }  // namespace
@@ -495,6 +511,11 @@ Java_com_hifirend_NativeBridge_nativeGetDacVolume(JNIEnv *, jobject) {
 JNIEXPORT jboolean JNICALL
 Java_com_hifirend_NativeBridge_nativeSetDacVolume(JNIEnv *, jobject, jint percent) {
     return StreamPlayer::instance().setVolume(static_cast<int>(percent)) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_hifirend_NativeBridge_nativeForgetVolumeLearning(JNIEnv *, jobject) {
+    StreamPlayer::instance().forgetVolumeLearning();
 }
 
 JNIEXPORT jboolean JNICALL
