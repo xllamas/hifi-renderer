@@ -75,6 +75,22 @@ object SinkFormats {
             runCatching { infos.add(ProtocolInfo("http-get:*:$e:*")) }
                 .onFailure { Log.w(TAG, "bad protocolInfo '$e': ${it.message}") }
         }
+
+        // The same LPCM entries again, named by their DLNA profile.
+        //
+        // DLNA.ORG_PN=LPCM is defined for 16-bit L16 at 44.1 or 48 kHz, mono or
+        // stereo, and a transcoding server decides what to convert *to* by
+        // matching profile names rather than by parsing MIME parameters. A
+        // renderer that offers only the bare "audio/L16;rate=..." form can be
+        // read as having no profile the server knows how to produce, which
+        // looks the same to it as a renderer that cannot accept LPCM at all.
+        for (rate in lpcmRates.filter { it == 44100 || it == 48000 }) {
+            if (depths.isNotEmpty() && depths.none { it >= 16 }) continue
+            runCatching {
+                infos.add(ProtocolInfo(
+                    "http-get:*:audio/L16;rate=$rate;channels=2:DLNA.ORG_PN=LPCM"))
+            }.onFailure { Log.w(TAG, "bad LPCM protocolInfo: ${it.message}") }
+        }
         Log.i(TAG, "protocolInfo: ${infos.size} entries, rates=$lpcmRates " +
             "depths=$depths native=$allowNativeFormats")
         return infos
