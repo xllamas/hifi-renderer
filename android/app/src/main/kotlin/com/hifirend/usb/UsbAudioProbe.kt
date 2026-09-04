@@ -186,6 +186,7 @@ class UsbAudioProbe(private val context: Context) {
         com.hifirend.RendererState.let { st ->
             st.dacConnected = device != null && usbManager.hasPermission(device)
             st.dacName = device?.let { describeForUi(it) }
+            st.dacKey = device?.let { VolumeMemory.key(it.vendorId, it.productId) }
             st.dacCount = listAudioDevices().size
         }
     }

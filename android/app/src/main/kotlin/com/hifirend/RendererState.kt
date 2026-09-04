@@ -33,6 +33,9 @@ object RendererState {
     @Volatile var altSetting: Int = -1
 
     @Volatile var dacName: String? = null
+
+    /** Stable vendor:product key for the selected DAC; keys its remembered volume. */
+    @Volatile var dacKey: String? = null
     @Volatile var dacConnected: Boolean = false
 
     /** How many USB audio devices are attached; more than one needs a choice. */

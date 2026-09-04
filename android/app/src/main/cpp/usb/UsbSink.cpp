@@ -640,6 +640,24 @@ bool UsbSink::getVolumePercent(int *percent) {
         b, 2, 1000);
     if (n != 2) return false;
     const int16_t cur = static_cast<int16_t>(b[0] | (b[1] << 8));
+
+    // A device that answers outside the range it declared itself is not
+    // reporting a volume, whatever it is reporting. 0x8000 is the spec's
+    // "silence" sentinel rather than a level, and values far below the
+    // declared minimum are simply junk. Either way, believing it would
+    // overwrite what the user set with nonsense.
+    if (!volumeValueSane(cur)) {
+        if (volumeReadback_ != Readback::Untrusted) {
+            volumeReadback_ = Readback::Untrusted;
+            LOGI("volume: device answered %.1f dB, outside its own range "
+                 "[%.1f, %.1f] -- readback not trustworthy, using the last "
+                 "value set", cur / 256.0, volMin_ / 256.0, volMax_ / 256.0);
+        }
+        if (lastSetPercent_ < 0) return false;
+        *percent = lastSetPercent_;
+        return true;
+    }
+
     int pct = static_cast<int>(
         (static_cast<double>(cur - volMin_) / (volMax_ - volMin_)) * 100.0 + 0.5);
     if (pct < 0) pct = 0;
@@ -696,31 +714,48 @@ bool UsbSink::setVolumePercent(int percent) {
  * entitled to snap to their own resolution, and some report the snapped value
  * rather than the requested one.
  */
+bool UsbSink::volumeValueSane(int16_t raw) const {
+    // 0x8000 means "silence", not a level, per the class spec.
+    if (raw == static_cast<int16_t>(0x8000)) return false;
+    const int slack = volRes_ > 0 ? volRes_ : 256;
+    return raw >= volMin_ - slack && raw <= volMax_ + slack;
+}
+
 void UsbSink::checkVolumeReadback(int16_t written) {
     const uint8_t in =
         LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE;
-    uint8_t b[2];
-    int n = libusb_control_transfer(
-        handle_, in, caps_.isUac2() ? kReqCur : kUac1GetCur,
-        static_cast<uint16_t>(kFuVolumeControl << 8),
-        static_cast<uint16_t>((caps_.featureUnitId << 8) | caps_.audioControlInterface),
-        b, 2, 1000);
-    if (n != 2) {
-        volumeReadback_ = Readback::Untrusted;
-        LOGI("volume: device does not answer GET_CUR; using the last value set");
-        return;
-    }
-    const int16_t got = static_cast<int16_t>(b[0] | (b[1] << 8));
     const int tolerance = volRes_ > 0 ? volRes_ : 1;
-    if (std::abs(static_cast<int>(got) - static_cast<int>(written)) <= tolerance) {
-        volumeReadback_ = Readback::Trusted;
-        LOGI("volume: device reports its own volume back; polling it");
-    } else {
-        volumeReadback_ = Readback::Untrusted;
-        LOGI("volume: wrote %.1f dB, device reports %.1f dB -- readback not "
-             "trustworthy, using the last value set",
-             written / 256.0, got / 256.0);
+
+    // Read several times rather than once. The reference UAC1 dongle echoes
+    // the written value correctly on the read immediately following a write
+    // and only then starts alternating between junk and its maximum -- so a
+    // single probe samples exactly the one answer it gets right, and concludes
+    // the device is honest.
+    for (int attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) usleep(25 * 1000);
+        uint8_t b[2];
+        int n = libusb_control_transfer(
+            handle_, in, caps_.isUac2() ? kReqCur : kUac1GetCur,
+            static_cast<uint16_t>(kFuVolumeControl << 8),
+            static_cast<uint16_t>((caps_.featureUnitId << 8) | caps_.audioControlInterface),
+            b, 2, 1000);
+        if (n != 2) {
+            volumeReadback_ = Readback::Untrusted;
+            LOGI("volume: device does not answer GET_CUR; using the last value set");
+            return;
+        }
+        const int16_t got = static_cast<int16_t>(b[0] | (b[1] << 8));
+        if (!volumeValueSane(got) ||
+            std::abs(static_cast<int>(got) - static_cast<int>(written)) > tolerance) {
+            volumeReadback_ = Readback::Untrusted;
+            LOGI("volume: wrote %.1f dB, device answered %.1f dB on read %d -- "
+                 "readback not trustworthy, using the last value set",
+                 written / 256.0, got / 256.0, attempt + 1);
+            return;
+        }
     }
+    volumeReadback_ = Readback::Trusted;
+    LOGI("volume: device reports its own volume back consistently; polling it");
 }
 
 std::string UsbSink::statusJson() const {

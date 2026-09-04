@@ -235,6 +235,10 @@ class HttpStreamPlayback(private val context: Context) {
 
         currentUri = uri
         fetching.set(true)
+        // The sink is open now, so this is the first moment the DAC's volume
+        // can be set at all.
+        runCatching { restoreVolume() }
+            .onFailure { Log.w(TAG, "volume restore failed: ${it.message}") }
         thread(name = "http-fetch", isDaemon = true) { fetch(uri, rangeStart, header) }
         startWatcher()
         Log.i(TAG, "stream: fetching $uri")
@@ -337,6 +341,34 @@ class HttpStreamPlayback(private val context: Context) {
     /** Called whenever this app sets the volume, to open the settle window. */
     fun noteVolumeSet() {
         volumeSetAt = android.os.SystemClock.elapsedRealtime()
+    }
+
+    @Volatile private var volumeRestored = false
+
+    /** A different DAC must not inherit the level restored for the last one. */
+    fun forgetRestoredVolume() {
+        volumeRestored = false
+    }
+
+    /**
+     * Puts the DAC at a known level the first time we can talk to it.
+     *
+     * Otherwise the starting volume is whatever the hardware happens to hold --
+     * where it powered up, or, on a device whose volume cannot be read back,
+     * its maximum. This app drives real amplifiers, and a first track arriving
+     * at full scale can do damage before anyone reaches a control.
+     *
+     * Once per device rather than once per track, so that a DAC with a working
+     * physical knob is not overridden every time a track changes.
+     */
+    private fun restoreVolume() {
+        if (volumeRestored) return
+        val wanted = VolumeMemory.remembered(context, RendererState.dacKey)
+        if (!NativeBridge.setDacVolume(wanted)) return   // no host volume control
+        volumeRestored = true
+        RendererState.dacVolume = wanted
+        noteVolumeSet()
+        Log.i(TAG, "volume: restored to $wanted% for ${RendererState.dacKey}")
     }
 
     /**

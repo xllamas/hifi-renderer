@@ -134,6 +134,7 @@ private:
     bool selectAltSetting(std::string *error);
     bool setSampleRate(uint32_t hz, std::string *error);
     void checkVolumeReadback(int16_t written);
+    bool volumeValueSane(int16_t raw) const;
     bool setSampleRateUac1(uint32_t hz, std::string *error);
     void eventLoop();
     void monitorLoop();

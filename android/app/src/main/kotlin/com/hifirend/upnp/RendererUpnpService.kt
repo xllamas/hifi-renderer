@@ -117,6 +117,9 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                         Log.i(TAG, "USB device detached; stopping playback")
                         runCatching { playback.stop() }
                         avTransport?.let { it.onDeviceLost() }
+                        // A different DAC gets its own remembered level, and
+                        // must not inherit this one's.
+                        playback.forgetRestoredVolume()
                     }
                     UsbManager.ACTION_USB_DEVICE_ATTACHED ->
                         Log.i(TAG, "USB device attached")
@@ -392,6 +395,8 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                     // Opens the settle window so the status poll does not read
                     // back a stale value and undo this a moment later.
                     playback.noteVolumeSet()
+                    com.hifirend.usb.VolumeMemory.remember(
+                        applicationContext, com.hifirend.RendererState.dacKey, percent)
                 }
                 return ok
             }
