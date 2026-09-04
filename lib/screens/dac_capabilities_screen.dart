@@ -10,37 +10,45 @@ import '../usb/dac_capabilities.dart';
 /// cannot set its volume, which is exactly the sort of thing a user otherwise
 /// discovers only after a long stretch of fruitless configuration.
 class DacCapabilitiesScreen extends StatelessWidget {
-  final DacCapabilities? caps;
-  final bool loading;
-  final VoidCallback onRefresh;
+  /// Watched rather than passed by value: this is a pushed route, so it is
+  /// built once and would otherwise keep showing whatever was current when it
+  /// was opened -- including after its own refresh button re-probed.
+  final ValueNotifier<DacProbeState> probe;
+  final Future<void> Function() onRefresh;
 
   const DacCapabilitiesScreen({
     super.key,
-    required this.caps,
-    required this.loading,
+    required this.probe,
     required this.onRefresh,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('DAC capabilities'),
-        actions: [
-          IconButton(
-            onPressed: loading ? null : onRefresh,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Re-probe',
-          ),
-        ],
+    return ValueListenableBuilder<DacProbeState>(
+      valueListenable: probe,
+      builder: (context, state, _) => Scaffold(
+        appBar: AppBar(
+          title: const Text('DAC capabilities'),
+          actions: [
+            IconButton(
+              onPressed: state.probing ? null : onRefresh,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Re-probe',
+            ),
+          ],
+        ),
+        body: _body(context, state),
       ),
-      body: _body(context),
     );
   }
 
-  Widget _body(BuildContext context) {
-    final c = caps;
-    if (loading && c == null) {
+  Widget _body(BuildContext context, DacProbeState state) {
+    final c = state.caps;
+    // Show the spinner for the whole probe, not only the first one. After a
+    // device change the capabilities still in hand belong to the *other* DAC,
+    // and leaving them on screen is precisely the confusion this screen exists
+    // to prevent.
+    if (state.probing) {
       return const Center(child: CircularProgressIndicator());
     }
     if (c == null) {
@@ -123,7 +131,9 @@ class DacCapabilitiesScreen extends StatelessWidget {
       );
 
   Widget _whatItSupports(BuildContext context, DacCapabilities c) {
-    final rates = c.rates;
+    // playableRates, not rates: UAC1 has no clock entity and reports its rates
+    // per alt-setting, so the clock list is empty on a device that plays fine.
+    final rates = c.playableRates;
     final depths = c.pcmBitDepths;
 
     String rateText;

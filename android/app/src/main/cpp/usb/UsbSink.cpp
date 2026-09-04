@@ -30,11 +30,32 @@ constexpr int kFramesPerSecondFull = 1000;    // full speed
 
 constexpr uint8_t kReqCur = 0x01;
 constexpr uint8_t kReqRange = 0x02;   // UAC2: min/max/res in one reply
-constexpr uint8_t kReqMin = 0x02;     // UAC1
-constexpr uint8_t kReqMax = 0x03;     // UAC1
-constexpr uint8_t kReqRes = 0x04;     // UAC1
+
+// UAC1 encodes direction in the request code itself: SET_x in the low nibble,
+// GET_x with bit 7 set. UAC2 dropped that -- there the direction lives only in
+// bmRequestType and CUR is 0x01 either way. Reusing the UAC2 codes for a UAC1
+// read asks the device to SET what we meant to GET, and it stalls.
+constexpr uint8_t kUac1GetCur = 0x81;
+constexpr uint8_t kUac1GetMin = 0x82;
+constexpr uint8_t kUac1GetMax = 0x83;
+constexpr uint8_t kUac1GetRes = 0x84;
 constexpr uint8_t kCsSamFreqControl = 0x01;
 constexpr uint8_t kFuVolumeControl = 0x02;
+
+/**
+ * Routes libusb's own diagnostics into logcat.
+ *
+ * libusb collapses most ioctl failures into LIBUSB_ERROR_OTHER and puts the
+ * real errno only in its internal log, which on Android goes to a native stderr
+ * nothing reads. That is the difference between "set_alt_setting failed" and
+ * knowing the kernel said EBUSY -- and on foreign hardware, that difference is
+ * the whole diagnosis.
+ */
+void libusbLog(libusb_context *, enum libusb_log_level level, const char *str) {
+    __android_log_print(level == LIBUSB_LOG_LEVEL_ERROR ? ANDROID_LOG_ERROR
+                                                        : ANDROID_LOG_WARN,
+                        LOG_TAG, "libusb: %s", str);
+}
 
 std::string sfmt(const char *f, ...) {
     char buf[512];
@@ -65,6 +86,8 @@ bool UsbSink::open(int fd, std::string *error) {
         *error = sfmt("libusb_init: %s", libusb_error_name(r));
         return false;
     }
+    libusb_set_log_cb(ctx_, libusbLog, LIBUSB_LOG_CB_CONTEXT);
+    libusb_set_option(ctx_, LIBUSB_OPTION_LOG_LEVEL, LIBUSB_LOG_LEVEL_WARNING);
     r = libusb_wrap_sys_device(ctx_, static_cast<intptr_t>(fd), &handle_);
     if (r != LIBUSB_SUCCESS || handle_ == nullptr) {
         *error = sfmt("libusb_wrap_sys_device(fd=%d): %s", fd, libusb_error_name(r));
@@ -77,8 +100,16 @@ bool UsbSink::open(int fd, std::string *error) {
         *error = caps_.error;
         return false;
     }
-    if (!caps_.isUac2()) {
-        *error = "device is not USB Audio Class 2.0";
+    if (caps_.uacVersion == 0) {
+        *error = "device reports no USB Audio Class version";
+        return false;
+    }
+    // A device can be a valid audio device and still be no use to a renderer:
+    // a USB microphone, or the capture half of a headset adapter. Rejecting on
+    // the absence of an output rather than on the class version is what lets
+    // UAC1 devices through.
+    if (!caps_.hasPlayableAltSetting()) {
+        *error = "device has no PCM isochronous output endpoint";
         return false;
     }
     return true;
@@ -91,9 +122,10 @@ bool UsbSink::configure(uint32_t rate, int sourceBits, int channels, std::string
         *error = sfmt("device does not support %u Hz", rate);
         return false;
     }
-    alt_ = caps_.chooseAltSetting(sourceBits, channels);
+    alt_ = caps_.chooseAltSetting(sourceBits, channels, rate);
     if (alt_ == nullptr) {
-        *error = sfmt("no PCM alt-setting holds %d-bit %dch", sourceBits, channels);
+        *error = sfmt("no PCM alt-setting holds %d-bit %dch at %u Hz",
+                      sourceBits, channels, rate);
         return false;
     }
     rate_ = rate;
@@ -109,12 +141,7 @@ bool UsbSink::configure(uint32_t rate, int sourceBits, int channels, std::string
     }
     claimedStreaming_ = true;
 
-    r = libusb_set_interface_alt_setting(handle_, alt_->interfaceNum, alt_->alt);
-    if (r != LIBUSB_SUCCESS) {
-        *error = sfmt("set_alt_setting(if=%u alt=%u): %s",
-                      alt_->interfaceNum, alt_->alt, libusb_error_name(r));
-        return false;
-    }
+    if (!selectAltSetting(error)) return false;
 
     if (!setSampleRate(rate, error)) return false;
 
@@ -153,7 +180,47 @@ bool UsbSink::configure(uint32_t rate, int sourceBits, int channels, std::string
     return true;
 }
 
+/**
+ * Selects the streaming alt-setting, from whatever state the device is in.
+ *
+ * A device is not reliably idle when we arrive. If a previous run was killed,
+ * or the device stalled the teardown request, it is still sitting in a
+ * streaming alt-setting -- and firmware that is asked to re-select the
+ * alt-setting it already holds is entitled to stall, which is what the
+ * reference UAC1 device does. The symptom is brutal to diagnose from the
+ * outside: the first track after a fresh start plays, every later one is
+ * silent, because the first is the only one that found the device at alt 0.
+ *
+ * So the interface is driven to alt 0 first and only then to the target. The
+ * reset is best-effort: a device already at alt 0 may stall that too, and it
+ * has still told us what we needed to know.
+ */
+bool UsbSink::selectAltSetting(std::string *error) {
+    int r = libusb_set_interface_alt_setting(handle_, alt_->interfaceNum, 0);
+    if (r != LIBUSB_SUCCESS) {
+        LOGI("alt reset(if=%u -> 0): %s (continuing)", alt_->interfaceNum,
+             libusb_error_name(r));
+    }
+
+    r = libusb_set_interface_alt_setting(handle_, alt_->interfaceNum, alt_->alt);
+    if (r == LIBUSB_SUCCESS) return true;
+
+    // One retry. A device that has just been dropped out of a streaming
+    // alt-setting can need a moment before it will accept the next one.
+    LOGI("set_alt_setting(if=%u alt=%u): %s -- retrying",
+         alt_->interfaceNum, alt_->alt, libusb_error_name(r));
+    usleep(50 * 1000);
+    r = libusb_set_interface_alt_setting(handle_, alt_->interfaceNum, alt_->alt);
+    if (r == LIBUSB_SUCCESS) return true;
+
+    *error = sfmt("set_alt_setting(if=%u alt=%u): %s",
+                  alt_->interfaceNum, alt_->alt, libusb_error_name(r));
+    return false;
+}
+
 bool UsbSink::setSampleRate(uint32_t hz, std::string *error) {
+    if (!caps_.isUac2()) return setSampleRateUac1(hz, error);
+
     if (caps_.clockSourceId < 0) {
         *error = "no clock source entity found";
         return false;
@@ -175,6 +242,53 @@ bool UsbSink::setSampleRate(uint32_t hz, std::string *error) {
                       r < 0 ? libusb_error_name(r) : "short write");
         return false;
     }
+    return true;
+}
+
+/**
+ * UAC1 rate setting.
+ *
+ * UAC1 predates the clock-entity model entirely: there is no clock source to
+ * address, and the rate is a property of the streaming *endpoint*, set with a
+ * class request whose recipient is the endpoint rather than the interface. The
+ * value is three bytes, not four.
+ *
+ * The request is only legal once the non-zero alt-setting is selected, because
+ * before that the endpoint does not exist -- which is why configure() sets the
+ * alt-setting first.
+ *
+ * A device whose endpoint descriptor does not advertise the control is
+ * fixed-rate. That is not an error: the alt-setting was already chosen for a
+ * rate it lists, so it is already clocking the rate we want, and issuing the
+ * request anyway would earn a STALL from a device that is doing nothing wrong.
+ */
+bool UsbSink::setSampleRateUac1(uint32_t hz, std::string *error) {
+    if (alt_ == nullptr) { *error = "not configured"; return false; }
+
+    if (!alt_->data.sampleRateControl) {
+        LOGI("UAC1: endpoint 0x%02x is fixed-rate; alt %u already carries %u Hz",
+             alt_->data.address, alt_->alt, hz);
+        return true;
+    }
+
+    uint8_t data[3] = {
+        static_cast<uint8_t>(hz & 0xFF),
+        static_cast<uint8_t>((hz >> 8) & 0xFF),
+        static_cast<uint8_t>((hz >> 16) & 0xFF)};
+    int r = libusb_control_transfer(
+        handle_,
+        LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_ENDPOINT,
+        kReqCur,
+        static_cast<uint16_t>(kCsSamFreqControl << 8),
+        static_cast<uint16_t>(alt_->data.address),
+        data, 3, 1000);
+    if (r != 3) {
+        *error = sfmt("UAC1 set sample rate %u Hz on endpoint 0x%02x failed: %s", hz,
+                      alt_->data.address,
+                      r < 0 ? libusb_error_name(r) : "short write");
+        return false;
+    }
+    LOGI("UAC1: endpoint 0x%02x set to %u Hz", alt_->data.address, hz);
     return true;
 }
 
@@ -434,7 +548,14 @@ void UsbSink::close() {
         if (claimedStreaming_ && alt_ != nullptr) {
             // Back to the zero-bandwidth alt so the DAC stops clocking, then
             // release so the kernel driver can rebind and system audio returns.
-            libusb_set_interface_alt_setting(handle_, alt_->interfaceNum, 0);
+            // Worth logging when it fails: the device is then left streaming,
+            // which is exactly the state the next configure() has to recover
+            // from.
+            int r = libusb_set_interface_alt_setting(handle_, alt_->interfaceNum, 0);
+            if (r != LIBUSB_SUCCESS) {
+                LOGE("close: could not return if=%u to alt 0: %s",
+                     alt_->interfaceNum, libusb_error_name(r));
+            }
             libusb_release_interface(handle_, alt_->interfaceNum);
             claimedStreaming_ = false;
         }
@@ -468,14 +589,25 @@ bool UsbSink::readVolumeRange() {
         volMax_ = static_cast<int16_t>(buf[4] | (buf[5] << 8));
         volRes_ = static_cast<int16_t>(buf[6] | (buf[7] << 8));
     } else {
+        // UAC1 has no RANGE request: min, max and resolution are three
+        // separate reads.
         uint8_t b[2];
-        if (libusb_control_transfer(handle_, in, kReqMin, wValue, wIndex, b, 2, 1000) != 2)
+        int n = libusb_control_transfer(handle_, in, kUac1GetMin, wValue, wIndex, b, 2, 1000);
+        if (n != 2) {
+            LOGE("volume: UAC1 GET_MIN failed (%d: %s)", n,
+                 n < 0 ? libusb_error_name(n) : "short read");
             return false;
+        }
         volMin_ = static_cast<int16_t>(b[0] | (b[1] << 8));
-        if (libusb_control_transfer(handle_, in, kReqMax, wValue, wIndex, b, 2, 1000) != 2)
+        n = libusb_control_transfer(handle_, in, kUac1GetMax, wValue, wIndex, b, 2, 1000);
+        if (n != 2) {
+            LOGE("volume: UAC1 GET_MAX failed (%d: %s)", n,
+                 n < 0 ? libusb_error_name(n) : "short read");
             return false;
+        }
         volMax_ = static_cast<int16_t>(b[0] | (b[1] << 8));
-        if (libusb_control_transfer(handle_, in, kReqRes, wValue, wIndex, b, 2, 1000) == 2)
+        // Resolution is optional; 1 is a safe assumption when it is absent.
+        if (libusb_control_transfer(handle_, in, kUac1GetRes, wValue, wIndex, b, 2, 1000) == 2)
             volRes_ = static_cast<int16_t>(b[0] | (b[1] << 8));
     }
     if (volRes_ <= 0) volRes_ = 1;
@@ -491,15 +623,26 @@ bool UsbSink::getVolumePercent(int *percent) {
     uint8_t b[2];
     int n = libusb_control_transfer(
         handle_, LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
-        kReqCur, static_cast<uint16_t>(kFuVolumeControl << 8),
+        caps_.isUac2() ? kReqCur : kUac1GetCur,
+        static_cast<uint16_t>(kFuVolumeControl << 8),
         static_cast<uint16_t>((caps_.featureUnitId << 8) | caps_.audioControlInterface),
         b, 2, 1000);
     if (n != 2) return false;
     const int16_t cur = static_cast<int16_t>(b[0] | (b[1] << 8));
-    *percent = static_cast<int>(
+    int pct = static_cast<int>(
         (static_cast<double>(cur - volMin_) / (volMax_ - volMin_)) * 100.0 + 0.5);
-    if (*percent < 0) *percent = 0;
-    if (*percent > 100) *percent = 100;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    // Logged only on change: this is polled several times a second while
+    // playing, and the raw device value is the only way to tell a genuine
+    // volume change from a device that reports a different scale than it
+    // accepts.
+    if (pct != lastVolumeLogged_) {
+        LOGI("volume: GET_CUR raw=%d (%.1f dB) in [%d, %d] -> %d%%",
+             cur, cur / 256.0, volMin_, volMax_, pct);
+        lastVolumeLogged_ = pct;
+    }
+    *percent = pct;
     return true;
 }
 

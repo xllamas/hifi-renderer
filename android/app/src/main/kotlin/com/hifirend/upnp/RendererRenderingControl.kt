@@ -5,6 +5,9 @@ import org.jupnp.model.types.UnsignedIntegerFourBytes
 import org.jupnp.model.types.UnsignedIntegerTwoBytes
 import org.jupnp.support.model.Channel
 import org.jupnp.support.renderingcontrol.AbstractAudioRenderingControl
+import org.jupnp.support.renderingcontrol.lastchange.ChannelMute
+import org.jupnp.support.renderingcontrol.lastchange.ChannelVolume
+import org.jupnp.support.renderingcontrol.lastchange.RenderingControlVariable
 
 private const val TAG = "hifirend"
 
@@ -18,8 +21,12 @@ private const val TAG = "hifirend"
  * nothing is sent to the hardware — attenuating in software would silently stop
  * playback being bit-perfect, which is the entire point of the app.
  *
- * [volumeSink] is supplied by the audio engine in M4. While it is null, or
- * while the DAC exposes no volume control, this is bookkeeping only.
+ * Volume is a *shared* quantity, and that shapes this class. It can be changed
+ * from a DLNA controller, from the app's own screen, or from the DAC's own knob
+ * or remote, and every one of those has to end up visible in the other two.
+ * So the value reported here is whatever was last observed from any source, and
+ * [publish] fires the LastChange event that tells subscribed controllers about
+ * changes they did not make themselves.
  */
 class RendererRenderingControl(
     private val volumeSink: ((Int) -> Boolean)? = null,
@@ -44,6 +51,7 @@ class RendererRenderingControl(
         Log.i(TAG, "RenderingControl.SetMute $desiredMute")
         muted = desiredMute
         lastSetReachedHardware = volumeSink?.invoke(if (desiredMute) 0 else volume) ?: false
+        publish()
     }
 
     override fun getVolume(instanceId: UnsignedIntegerFourBytes?, channelName: String?): UnsignedIntegerTwoBytes =
@@ -57,7 +65,41 @@ class RendererRenderingControl(
         val v = (desiredVolume?.value ?: 100L).toInt().coerceIn(0, 100)
         volume = v
         lastSetReachedHardware = volumeSink?.invoke(v) ?: false
+        if (lastSetReachedHardware) com.hifirend.RendererState.dacVolume = v
         Log.i(TAG, "RenderingControl.SetVolume $v reachedHardware=$lastSetReachedHardware")
+        publish()
+    }
+
+    /**
+     * The volume changed somewhere other than here — the app's own screen, or
+     * the DAC's physical knob.
+     *
+     * Without this a controller's slider silently disagrees with the hardware
+     * for as long as it stays connected, because a controller only learns about
+     * volume from its own SetVolume calls and from LastChange.
+     */
+    fun onVolumeObserved(percent: Int) {
+        val v = percent.coerceIn(0, 100)
+        if (v == volume) return
+        volume = v
+        publish()
+    }
+
+    /**
+     * jUPnP only accumulates evented values; the service's flusher turns them
+     * into the NOTIFY that actually reaches subscribers.
+     */
+    private fun publish() {
+        try {
+            lastChange.setEventedValue(
+                getDefaultInstanceID(),
+                RenderingControlVariable.Volume(ChannelVolume(Channel.Master, volume)),
+                RenderingControlVariable.Mute(ChannelMute(Channel.Master, muted)),
+            )
+        } catch (e: Throwable) {
+            // Eventing must never break playback or a SOAP response.
+            Log.w(TAG, "RenderingControl LastChange failed: ${e::class.java.simpleName}: ${e.message}")
+        }
     }
 
     override fun getCurrentInstanceIds(): Array<UnsignedIntegerFourBytes> =

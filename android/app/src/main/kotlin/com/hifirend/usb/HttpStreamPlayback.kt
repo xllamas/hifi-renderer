@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 private const val TAG = "hifirend"
+private const val VOLUME_POLL_MS = 2_000L
+private const val VOLUME_SETTLE_MS = 1_500L
 
 /**
  * Fetches a track over HTTP and feeds it to the native decoder.
@@ -60,6 +62,14 @@ class HttpStreamPlayback(private val context: Context) {
      */
     @Volatile
     var onTrackFinished: (() -> Unit)? = null
+
+    /**
+     * The engine stopped with an error after playback had been reported as
+     * started. Configure() runs on the decoder thread once the source's rate
+     * and depth are known, so its failures land here rather than in play()'s
+     * return value.
+     */
+    var onPlaybackError: ((String) -> Unit)? = null
 
     private var watcher: Thread? = null
 
@@ -170,6 +180,11 @@ class HttpStreamPlayback(private val context: Context) {
         mimeHint: String = "",
     ): String {
         stop()
+        // A new track starts with a clean slate; the engine clears its own
+        // error, and a stale one here would be read as this track failing.
+        lastEngineError = null
+        engineRunning = false
+        RendererState.lastError = null
 
         val device = UsbAudioProbe(context).findAudioDevice()
             ?: return """{"ok":false,"message":"No USB audio device connected."}"""
@@ -299,6 +314,51 @@ class HttpStreamPlayback(private val context: Context) {
      * Copies engine status into the shared snapshot so the screen can show what
      * the DAC is actually doing, rather than what was requested.
      */
+    @Volatile private var engineRunning = false
+
+    @Volatile private var lastVolumeReadAt = 0L
+    @Volatile private var volumeSetAt = 0L
+
+    /**
+     * Whether to re-read the DAC's volume now.
+     *
+     * Two seconds is plenty to notice someone turning the DAC's own knob, and
+     * the settle window after a write keeps a stale read from overwriting a
+     * value the user just chose.
+     */
+    private fun volumeReadDue(): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - volumeSetAt < VOLUME_SETTLE_MS) return false
+        if (now - lastVolumeReadAt < VOLUME_POLL_MS) return false
+        lastVolumeReadAt = now
+        return true
+    }
+
+    /** Called whenever this app sets the volume, to open the settle window. */
+    fun noteVolumeSet() {
+        volumeSetAt = android.os.SystemClock.elapsedRealtime()
+    }
+
+    /**
+     * The engine's own error, mirrored each poll.
+     *
+     * Deliberately not read back from RendererState.lastError: that field
+     * accumulates the most recent error from anywhere and is never cleared, so
+     * a failure on one track would still be sitting there when the next one
+     * started and would kill it instantly. The engine clears its error when a
+     * stream starts, so mirroring it exactly -- blank included -- is what makes
+     * this describe the current track and not the last one.
+     */
+    @Volatile private var lastEngineError: String? = null
+
+    /**
+     * An error that the engine has actually given up on. A message alongside a
+     * still-running stream is a transient it recovered from, and treating that
+     * as fatal would stop playback that was about to be fine.
+     */
+    private val engineError: String?
+        get() = lastEngineError?.takeIf { !engineRunning }
+
     private fun publishEngineState() {
         try {
             val j = JSONObject(NativeBridge.streamStatus())
@@ -310,6 +370,7 @@ class HttpStreamPlayback(private val context: Context) {
             RendererState.altSetting = j.optInt("altSetting", -1)
             RendererState.underruns = j.optLong("underruns")
             RendererState.positionSeconds = j.optInt("positionSeconds")
+            engineRunning = j.optBoolean("running")
             // Nothing between the decoder and the DAC alters samples, so a
             // running USB stream is bit-perfect by construction. A fallback
             // path would have to clear this.
@@ -317,11 +378,20 @@ class HttpStreamPlayback(private val context: Context) {
             RendererState.dacVolumeSupported = j.optBoolean("volumeSupported")
             // Read back from the hardware rather than echoing what was set: on
             // a DAC with its own knob the two can differ.
-            if (RendererState.dacVolumeSupported) {
+            //
+            // Rate limited, and suppressed briefly after we set it. This poll
+            // runs every 400 ms, which is far more often than a volume control
+            // changes, and each read is a control transfer to the DAC. Worse,
+            // polling that fast fights the UI: the slider shows the value the
+            // user just chose, a read that crossed with the write returns the
+            // old one, and the slider jumps back before settling -- which looks
+            // exactly like the app ignoring the user.
+            if (RendererState.dacVolumeSupported && volumeReadDue()) {
                 NativeBridge.getDacVolume().takeIf { it >= 0 }
                     ?.let { RendererState.dacVolume = it }
             }
-            j.optString("error").takeIf { it.isNotBlank() }?.let { RendererState.lastError = it }
+            lastEngineError = j.optString("error").takeIf { it.isNotBlank() }
+            lastEngineError?.let { RendererState.lastError = it }
         } catch (_: Throwable) {
             // Status is telemetry; never let it disturb playback.
         }
@@ -338,6 +408,20 @@ class HttpStreamPlayback(private val context: Context) {
                 Thread.sleep(400)
                 if (!fetching.get()) return@thread
                 publishEngineState()
+
+                // An engine that stopped while we still believe we are playing
+                // has failed -- most often because the DAC refused the format
+                // or the alt-setting. Silence with a PLAYING transport is the
+                // worst possible way to report that.
+                val failure = engineError
+                if (failure != null) {
+                    Log.e(TAG, "engine stopped with error: $failure")
+                    fetching.set(false)
+                    runCatching { onPlaybackError?.invoke(failure) }
+                        .onFailure { Log.e(TAG, "onPlaybackError threw: ${it.message}") }
+                    return@thread
+                }
+
                 if (NativeBridge.streamFinished()) {
                     Log.i(TAG, "track finished: $currentUri")
                     fetching.set(false)

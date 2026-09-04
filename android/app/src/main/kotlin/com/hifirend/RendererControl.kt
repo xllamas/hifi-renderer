@@ -16,6 +16,18 @@ object RendererControl {
     @Volatile
     var transport: TransportCommands? = null
 
+    /**
+     * Set by the service. The renderer advertises what the *attached DAC* can
+     * accept, so changing the output device changes the renderer's advertised
+     * capabilities and controllers have to be told.
+     */
+    @Volatile
+    var onOutputDeviceChanged: (() -> Unit)? = null
+
+    fun outputDeviceChanged() {
+        runCatching { onOutputDeviceChanged?.invoke() }
+    }
+
     interface TransportCommands {
         fun play()
         fun pause()

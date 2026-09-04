@@ -12,13 +12,13 @@ import 'playback_test_screen.dart';
 /// that does not belong on the now-playing screen.
 class SettingsScreen extends StatefulWidget {
   final RendererStatus status;
-  final DacCapabilities? caps;
-  final VoidCallback onRefreshCaps;
+  final ValueNotifier<DacProbeState> probe;
+  final Future<void> Function() onRefreshCaps;
 
   const SettingsScreen({
     super.key,
     required this.status,
-    required this.caps,
+    required this.probe,
     required this.onRefreshCaps,
   });
 
@@ -70,7 +70,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _selectDac(String? key) async {
     await _channel.invokeMethod('selectDac', {'key': key});
     await _loadDacs();
-    widget.onRefreshCaps();
+    // The capability panel below describes the *selected* device, so it has to
+    // be re-measured here. Choosing a DAC and being shown the other one's
+    // capabilities is worse than showing none.
+    await widget.onRefreshCaps();
   }
 
   Future<void> _saveName() async {
@@ -163,27 +166,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }).toList(),
               ),
             ),
-          Card(
-            child: ListTile(
-              leading: Icon(
-                widget.caps?.ok == true ? Icons.usb : Icons.usb_off,
-                color: widget.caps?.ok == true ? Colors.greenAccent : Colors.white38,
-              ),
-              title: Text(widget.caps?.ok == true
-                  ? widget.caps!.displayName
-                  : 'No DAC connected'),
-              subtitle: Text(widget.caps?.ok == true
-                  ? 'USB Audio Class ${widget.caps!.uacVersion} — tap for what it supports'
-                  : 'Connect a USB DAC and tap to probe'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => DacCapabilitiesScreen(
-                  caps: widget.caps,
-                  loading: false,
-                  onRefresh: widget.onRefreshCaps,
+          ValueListenableBuilder<DacProbeState>(
+            valueListenable: widget.probe,
+            builder: (context, probe, _) {
+              final caps = probe.caps;
+              final ok = caps?.ok == true;
+              return Card(
+                child: ListTile(
+                  leading: probe.probing
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : Icon(ok ? Icons.usb : Icons.usb_off,
+                          color: ok ? Colors.greenAccent : Colors.white38),
+                  title: Text(probe.probing
+                      ? 'Reading the device…'
+                      : ok
+                          ? caps!.displayName
+                          : 'No DAC connected'),
+                  subtitle: Text(probe.probing
+                      ? 'Asking the DAC what it supports'
+                      : ok
+                          ? 'USB Audio Class ${caps!.uacVersion}'
+                              ' — tap for what it supports'
+                          : 'Connect a USB DAC and tap to probe'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => DacCapabilitiesScreen(
+                      probe: widget.probe,
+                      onRefresh: widget.onRefreshCaps,
+                    ),
+                  )),
                 ),
-              )),
-            ),
+              );
+            },
           ),
           Card(
             child: ListTile(

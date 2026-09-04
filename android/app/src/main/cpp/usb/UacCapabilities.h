@@ -19,6 +19,12 @@ struct UacEndpoint {
     std::string sync = "none";   // async | adaptive | sync | none
     uint16_t maxPacket = 0;
     uint8_t interval = 0;
+    // UAC1 only: the endpoint's own CS_ENDPOINT descriptor says whether it
+    // accepts a SET_CUR sampling-frequency request. UAC1 has no clock entity,
+    // so this endpoint control is the *only* way to change rate -- and a device
+    // without it is fixed-rate, which the engine has to know rather than
+    // discover from a STALL.
+    bool sampleRateControl = false;
 };
 
 struct UacAltSetting {
@@ -35,6 +41,20 @@ struct UacAltSetting {
 
     bool isPcm() const { return format == "PCM"; }
     int bytesPerFrame() const { return subslot * channels; }
+
+    // Usable for playback: PCM, out over an isochronous endpoint. Capture-only
+    // alt-settings look identical apart from endpoint direction, and a UAC1
+    // headset adapter exposes both.
+    bool playable() const { return isPcm() && data.present && data.isIso; }
+
+    // UAC1 lists its rates per alt-setting; UAC2 keeps them on the clock
+    // entity and leaves this empty, in which case any rate the clock supports
+    // works with any alt-setting.
+    bool supportsRate(uint32_t hz) const {
+        if (rates.empty()) return true;
+        for (uint32_t r : rates) if (r == hz) return true;
+        return false;
+    }
 };
 
 struct UacCapabilities {
@@ -70,11 +90,20 @@ struct UacCapabilities {
     bool isUac2() const { return uacVersion >= 0x0200; }
     bool supportsRate(uint32_t hz) const;
 
+    // Whether anything here can carry audio out at all. A device can be a
+    // perfectly valid audio device and still be no use to a renderer -- a USB
+    // microphone, or the capture half of a headset adapter.
+    bool hasPlayableAltSetting() const;
+
     // Best alt-setting for the requested PCM stream, or nullptr if the device
     // cannot carry it. Prefers the narrowest container that holds the source
     // without truncation: a 16-bit source into a 24-bit slot is lossless
     // zero-padding, but a 24-bit source into a 16-bit slot would not be.
-    const UacAltSetting *chooseAltSetting(int sourceBits, int channels) const;
+    //
+    // [rate] matters for UAC1, where each alt-setting carries its own rate
+    // list and they need not agree; on UAC2 every alt-setting can clock any
+    // rate the clock entity supports, so it is a no-op there.
+    const UacAltSetting *chooseAltSetting(int sourceBits, int channels, uint32_t rate) const;
 };
 
 // Parses the active configuration of an already-opened device. Never throws;

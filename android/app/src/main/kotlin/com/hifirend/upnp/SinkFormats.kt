@@ -1,0 +1,124 @@
+package com.hifirend.upnp
+
+import android.util.Log
+import org.json.JSONObject
+import org.jupnp.support.model.ProtocolInfo
+import org.jupnp.support.model.ProtocolInfos
+
+private const val TAG = "hifirend"
+
+/**
+ * What the renderer tells controllers it can accept.
+ *
+ * Controllers consult GetProtocolInfo before sending anything and refuse to
+ * send formats that are absent, so a missing entry reads as "the renderer is
+ * broken" rather than "that format is unsupported". Servers also use it to
+ * decide whether to transcode.
+ *
+ * The list has to follow the attached DAC, because the DAC is what decides the
+ * answer: a 768 kHz hi-fi DAC and a 48 kHz dongle are not the same renderer,
+ * and advertising the same capabilities for both is how a controller ends up
+ * sending a 96 kHz file to hardware that cannot clock it.
+ *
+ * Rates are only expressible for LPCM. There is no standard way to say "FLAC,
+ * but only up to 48 kHz" in protocolInfo -- the DLNA profiles for compressed
+ * formats carry no rate constraint -- so a rate-limited DAC gets its LPCM
+ * entries narrowed to what it can actually clock, and the container formats are
+ * governed by [allowNativeFormats] instead.
+ */
+object SinkFormats {
+
+    /** Everything the decoders handle, independent of the DAC. */
+    private val NATIVE = listOf(
+        "audio/flac", "audio/x-flac",
+        "audio/mpeg",
+        "audio/mp4", "audio/aac", "audio/x-m4a",
+        "audio/wav", "audio/x-wav", "audio/wave",
+        "audio/x-aiff",
+    )
+
+    /**
+     * [caps] is the probe's capability JSON, or null when the DAC has not been
+     * read (no device, or no permission yet) -- in which case the full list is
+     * advertised, because refusing to name a format we can decode would leave
+     * a controller unable to send anything at all.
+     *
+     * [allowNativeFormats] false drops the compressed and lossless container
+     * formats, leaving only LPCM at rates the DAC can clock. That is what makes
+     * a server transcode rather than send a file the DAC cannot play -- at the
+     * cost of the bit-perfect path, since the server is then doing the decoding.
+     */
+    fun build(caps: JSONObject?, allowNativeFormats: Boolean = true): ProtocolInfos {
+        val rates = playableRates(caps)
+        val depths = playableDepths(caps)
+        val entries = mutableListOf<String>()
+
+        if (allowNativeFormats) {
+            entries += NATIVE
+        }
+
+        // LPCM, qualified by rate. L16 is 16-bit and L24 is 24-bit by
+        // definition, so each is only offered when the DAC has a container
+        // that wide.
+        val lpcmRates = rates.ifEmpty { listOf(44100, 48000) }
+        for (rate in lpcmRates) {
+            if (depths.isEmpty() || depths.any { it >= 16 }) {
+                entries += "audio/L16;rate=$rate;channels=2"
+            }
+            if (depths.any { it >= 24 }) {
+                entries += "audio/L24;rate=$rate;channels=2"
+            }
+        }
+
+        val infos = ProtocolInfos()
+        for (e in entries) {
+            runCatching { infos.add(ProtocolInfo("http-get:*:$e:*")) }
+                .onFailure { Log.w(TAG, "bad protocolInfo '$e': ${it.message}") }
+        }
+        Log.i(TAG, "protocolInfo: ${infos.size} entries, rates=$lpcmRates " +
+            "depths=$depths native=$allowNativeFormats")
+        return infos
+    }
+
+    /**
+     * Every rate the DAC can clock. UAC2 answers from the clock entity; UAC1
+     * has none and lists rates per alt-setting instead, so both are gathered.
+     */
+    fun playableRates(caps: JSONObject?): List<Int> {
+        if (caps == null) return emptyList()
+        val out = sortedSetOf<Int>()
+        caps.optJSONObject("clock")?.optJSONArray("rates")?.let { arr ->
+            for (i in 0 until arr.length()) out.add(arr.optInt(i))
+        }
+        forEachPlayableFormat(caps) { f ->
+            f.optJSONArray("rates")?.let { arr ->
+                for (i in 0 until arr.length()) out.add(arr.optInt(i))
+            }
+        }
+        out.remove(0)
+        return out.toList()
+    }
+
+    private fun playableDepths(caps: JSONObject?): List<Int> {
+        if (caps == null) return emptyList()
+        val out = sortedSetOf<Int>()
+        forEachPlayableFormat(caps) { f -> out.add(f.optInt("bits")) }
+        out.remove(0)
+        return out.toList()
+    }
+
+    /**
+     * PCM alt-settings that can actually carry audio out. A capture-only
+     * alt-setting looks identical apart from endpoint direction, and a headset
+     * adapter exposes both.
+     */
+    private inline fun forEachPlayableFormat(caps: JSONObject, body: (JSONObject) -> Unit) {
+        val formats = caps.optJSONArray("formats") ?: return
+        for (i in 0 until formats.length()) {
+            val f = formats.optJSONObject(i) ?: continue
+            if (f.optString("format") != "PCM") continue
+            if (f.optJSONObject("endpoint")?.optBoolean("iso") != true) continue
+            body(f)
+        }
+    }
+}

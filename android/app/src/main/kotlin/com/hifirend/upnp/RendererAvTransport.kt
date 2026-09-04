@@ -173,6 +173,27 @@ class RendererAvTransport(
      * knows to send the next one -- staying PLAYING forever is why playlists
      * appeared to stall.
      */
+    /**
+     * The audio engine failed after Play had already returned.
+     *
+     * Configuration happens on the decoder thread, once the file's real rate
+     * and depth are known -- which is after SetAVTransportURI and Play have
+     * both been answered. A failure there used to reach nobody: the transport
+     * stayed PLAYING, the screen and the widget showed a running track, and the
+     * only symptom was silence. Reporting STOPPED is what lets a controller,
+     * and the user, see that something went wrong.
+     */
+    fun onPlaybackFailed(message: String) {
+        Log.e(TAG, "engine failed during playback: $message")
+        com.hifirend.RendererState.lastError = message
+        if (transportState == TransportState.PLAYING ||
+            transportState == TransportState.PAUSED_PLAYBACK ||
+            transportState == TransportState.TRANSITIONING) {
+            transportState = TransportState.STOPPED
+            publishState()
+        }
+    }
+
     /** The DAC went away mid-playback; report it rather than pretending. */
     fun onDeviceLost() {
         if (transportState == TransportState.PLAYING ||

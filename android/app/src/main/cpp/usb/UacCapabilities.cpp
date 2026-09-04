@@ -23,6 +23,12 @@ constexpr uint8_t kSubclassAudioControl = 0x01;
 constexpr uint8_t kSubclassAudioStreaming = 0x02;
 
 constexpr uint8_t kCsInterface = 0x24;
+constexpr uint8_t kCsEndpoint = 0x25;
+
+// UAC1 CS_ENDPOINT/EP_GENERAL: bmAttributes bit 0 is the sampling frequency
+// control -- the only rate-setting mechanism UAC1 has.
+constexpr uint8_t kEpGeneral = 0x01;
+constexpr uint8_t kEpAttrSamplingFreq = 0x01;
 
 constexpr uint8_t kAcHeader = 0x01;
 constexpr uint8_t kAcFeatureUnit = 0x06;
@@ -130,12 +136,23 @@ bool UacCapabilities::supportsRate(uint32_t hz) const {
     return false;
 }
 
-const UacAltSetting *UacCapabilities::chooseAltSetting(int sourceBits, int ch) const {
+bool UacCapabilities::hasPlayableAltSetting() const {
+    for (const auto &a : altSettings) {
+        if (a.playable()) return true;
+    }
+    return false;
+}
+
+const UacAltSetting *UacCapabilities::chooseAltSetting(int sourceBits, int ch,
+                                                       uint32_t rate) const {
     const UacAltSetting *best = nullptr;
     for (const auto &a : altSettings) {
         if (!a.isPcm()) continue;              // DSD is out of scope
         if (a.channels != ch) continue;
         if (!a.data.present || !a.data.isIso) continue;
+        // On UAC1 the alt-setting *is* the rate selection, so an alt that does
+        // not list this rate cannot carry it however wide its container.
+        if (!a.supportsRate(rate)) continue;
         // The container must hold every source bit. Widening is lossless
         // zero-padding; narrowing would discard real audio data.
         if (a.bits < sourceBits) continue;
@@ -359,6 +376,24 @@ UacCapabilities parseUacCapabilities(libusb_device_handle *h) {
                 info.sync = syncTypeName(ep.bmAttributes);
                 info.maxPacket = ep.wMaxPacketSize;
                 info.interval = ep.bInterval;
+
+                // The audio-class endpoint descriptor rides in the endpoint's
+                // extra bytes. On UAC1 it carries the one bit that says whether
+                // this endpoint accepts a sampling-frequency SET_CUR -- which
+                // is the only way to change rate on a device with no clock
+                // entity. A device without it is fixed-rate, and the engine has
+                // to know that rather than discover it from a STALL.
+                DescWalker ew{ep.extra, ep.extra_length};
+                const uint8_t *ed;
+                uint8_t elen;
+                while (ew.next(&ed, &elen)) {
+                    if (ed[1] != kCsEndpoint || elen < 4) continue;
+                    if (ed[2] != kEpGeneral) continue;
+                    if (caps.uacVersion < 0x0200) {
+                        info.sampleRateControl = (ed[3] & kEpAttrSamplingFreq) != 0;
+                    }
+                }
+
                 if ((ep.bmAttributes & kEpUsageMask) == kEpUsageFeedback ||
                     ((ep.bEndpointAddress & 0x80) && info.isIso && ep.wMaxPacketSize <= 4)) {
                     as.feedback = info;
@@ -423,6 +458,7 @@ std::string uacCapabilitiesToJson(const UacCapabilities &c) {
         j += ",\"iso\":" + jbool(a.data.isIso);
         j += ",\"sync\":" + jstr(a.data.sync);
         j += ",\"maxPacket\":" + fmt("%u", a.data.maxPacket);
+        j += ",\"sampleRateControl\":" + jbool(a.data.sampleRateControl);
         j += ",\"interval\":" + fmt("%u", a.data.interval) + "}";
         j += ",\"feedbackEndpoint\":";
         if (a.feedback.present) {

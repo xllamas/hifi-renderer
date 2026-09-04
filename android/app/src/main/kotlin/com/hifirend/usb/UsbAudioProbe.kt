@@ -78,13 +78,39 @@ class UsbAudioProbe(private val context: Context) {
      * identical DACs, but reading it needs permission, so vendor:product is the
      * fallback -- imperfect only in the rare case of two of the same model.
      */
-    fun deviceKey(d: UsbDevice): String {
-        val serial = try {
-            if (usbManager.hasPermission(d)) d.serialNumber else null
-        } catch (_: Throwable) {
-            null
-        }
-        return "%04x:%04x:%s".format(d.vendorId, d.productId, serial ?: "-")
+    fun deviceKey(d: UsbDevice): String =
+        "%04x:%04x:%s".format(d.vendorId, d.productId, serialOf(d) ?: "-")
+
+    /** Null unless we hold permission and the device actually reports one. */
+    private fun serialOf(d: UsbDevice): String? = try {
+        if (usbManager.hasPermission(d)) d.serialNumber?.trim()?.takeIf { it.isNotEmpty() }
+        else null
+    } catch (_: Throwable) {
+        null
+    }
+
+    /**
+     * Whether a remembered key refers to this device.
+     *
+     * Not string equality, because the key is not stable: the serial can only
+     * be read while we hold permission, and on this phone permission lapses on
+     * every replug. A key stored as vendor:product:serial therefore stops
+     * matching the same device as soon as the grant expires, and the renderer
+     * silently reverts to whichever DAC sorts first -- the user's choice
+     * quietly discarded, with nothing on screen to explain it.
+     *
+     * So vendor and product must match, and the serial is only allowed to
+     * *rule out* a device when both sides actually know it. That is exactly the
+     * case it exists for: telling two of the same model apart.
+     */
+    private fun keyRefersTo(stored: String, d: UsbDevice): Boolean {
+        val prefix = "%04x:%04x:".format(d.vendorId, d.productId)
+        if (!stored.startsWith(prefix)) return false
+        val storedSerial = stored.removePrefix(prefix)
+            .takeIf { it.isNotBlank() && it != "-" }
+        val actualSerial = serialOf(d)
+        if (storedSerial == null || actualSerial == null) return true
+        return storedSerial == actualSerial
     }
 
     /**
@@ -125,7 +151,7 @@ class UsbAudioProbe(private val context: Context) {
         if (devices.isEmpty()) return null
         val preferred = preferredDeviceKey
         if (preferred != null) {
-            devices.firstOrNull { deviceKey(it) == preferred }?.let { return it }
+            devices.firstOrNull { keyRefersTo(preferred, it) }?.let { return it }
             Log.i(TAG, "preferred DAC $preferred not attached; using ${describeForUi(devices.first())}")
         }
         return devices.first()
@@ -141,7 +167,7 @@ class UsbAudioProbe(private val context: Context) {
             """"vendorId":"%04x","productId":"%04x",""".format(d.vendorId, d.productId) +
             """"hasPermission":${usbManager.hasPermission(d)},""" +
             """"interfaces":${d.interfaceCount},""" +
-            """"preferred":${key == preferred},""" +
+            """"preferred":${preferred != null && keyRefersTo(preferred, d)},""" +
             """"active":${active != null && deviceKey(active) == key}}"""
         }
         return """{"devices":[$items],"preferredKey":${jsonString(preferred)}}"""
@@ -183,15 +209,32 @@ class UsbAudioProbe(private val context: Context) {
             }
         }
 
-        val connection = usbManager.openDevice(device)
+        val probed = probeOne(device)
             ?: return failure("open_failed",
                 "Could not open the device. It may have been unplugged, or another app holds it.")
 
-        // The AudioControl interface must be taken away from the kernel's
-        // snd-usb-audio driver before class control transfers will work --
-        // without this, the UAC2 clock GET_RANGE (the only way to learn a UAC2
-        // device's real sample rates) fails with LIBUSB_ERROR_IO.
-        // force=true is what performs the kernel detach.
+        dumpCapabilities(describeForUi(device), probed.json)
+        dumpOthers(device)
+
+        // Envelope adds what only the Android layer knows.
+        return """{"ok":true,"claimedAudioControl":${probed.claimedAudioControl},""" +
+            """"attachedDevices":$attached,"dac":${probed.json}}"""
+    }
+
+    private class Probed(val json: String, val claimedAudioControl: Boolean)
+
+    /**
+     * Opens one device and runs the native parser against it.
+     *
+     * The AudioControl interface must be taken away from the kernel's
+     * snd-usb-audio driver before class control transfers will work -- without
+     * this, the UAC2 clock GET_RANGE (the only way to learn a UAC2 device's
+     * real sample rates) fails with LIBUSB_ERROR_IO. force=true is what
+     * performs the kernel detach, and it must be released again or the device
+     * stays detached from system audio.
+     */
+    private fun probeOne(device: UsbDevice): Probed? {
+        val connection = usbManager.openDevice(device) ?: return null
         val control = (0 until device.interfaceCount)
             .map { device.getInterface(it) }
             .firstOrNull {
@@ -202,17 +245,81 @@ class UsbAudioProbe(private val context: Context) {
             claimed = connection.claimInterface(control, true)
             Log.i(TAG, "claimInterface(AudioControl if=${control.id}, force=true) -> $claimed")
         }
-
         return try {
-            val dac = NativeBridge.probeUsbDevice(connection.fileDescriptor)
-            // Envelope adds what only the Android layer knows.
-            """{"ok":true,"claimedAudioControl":$claimed,"attachedDevices":$attached,"dac":$dac}"""
+            Probed(NativeBridge.probeUsbDevice(connection.fileDescriptor), claimed)
         } finally {
-            // Release so the kernel driver can rebind; otherwise the DAC stays
-            // detached from system audio after a probe.
             if (claimed && control != null) connection.releaseInterface(control)
             // The native side wrapped this fd but does not own it.
             connection.close()
+        }
+    }
+
+    /**
+     * Dumps the other attached audio devices too.
+     *
+     * A support dump that describes only the selected DAC is misleading on the
+     * setup most likely to be producing a support request in the first place --
+     * someone with two devices attached, wondering why the app prefers one of
+     * them. Devices we do not already hold permission for are named but not
+     * opened: prompting for each one would put a stack of system dialogs in
+     * front of a user who only opened the settings screen.
+     */
+    private fun dumpOthers(selected: UsbDevice) {
+        val selectedKey = deviceKey(selected)
+        for (d in listAudioDevices()) {
+            if (deviceKey(d) == selectedKey) continue
+            if (!usbManager.hasPermission(d)) {
+                Log.i(TAG, "caps: ${describeForUi(d)} attached, no permission; not probed")
+                continue
+            }
+            val other = runCatching { probeOne(d) }.getOrNull()
+            if (other == null) {
+                Log.i(TAG, "caps: ${describeForUi(d)} attached, could not open")
+            } else {
+                dumpCapabilities(describeForUi(d), other.json)
+            }
+        }
+    }
+
+    /**
+     * The selected device's capability table, or null when it cannot be read.
+     *
+     * Never prompts: this is called to answer questions about the renderer's
+     * capabilities (what formats to advertise, for instance), which can happen
+     * at any moment, and a permission dialog appearing out of nowhere would be
+     * worse than not knowing.
+     */
+    fun selectedCapabilities(): org.json.JSONObject? {
+        val device = findAudioDevice() ?: return null
+        if (!usbManager.hasPermission(device)) return null
+        val probed = runCatching { probeOne(device) }.getOrNull() ?: return null
+        return runCatching { org.json.JSONObject(probed.json) }
+            .getOrNull()
+            ?.takeIf { it.optBoolean("ok") }
+    }
+
+    /**
+     * Writes the whole capability table to logcat.
+     *
+     * The app has to work with DACs we will never physically have, and this
+     * table is the only thing that explains why a given one behaves as it does.
+     * A user can capture it with `adb logcat -s hifirend` and send it, which
+     * turns "it does not work on my DAC" into something actionable.
+     *
+     * Chunked because logcat drops anything past roughly 4 kB in one message,
+     * and a device with many alt-settings comfortably exceeds that -- silently,
+     * which would make the dump look complete when it was truncated.
+     */
+    private fun dumpCapabilities(name: String, json: String) {
+        val chunk = 3000
+        if (json.length <= chunk) {
+            Log.i(TAG, "caps [$name]: $json")
+            return
+        }
+        val parts = (json.length + chunk - 1) / chunk
+        for (i in 0 until parts) {
+            val end = minOf((i + 1) * chunk, json.length)
+            Log.i(TAG, "caps [$name] ${i + 1}/$parts: ${json.substring(i * chunk, end)}")
         }
     }
 

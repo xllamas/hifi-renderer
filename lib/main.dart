@@ -37,8 +37,23 @@ class _RendererHomeState extends State<RendererHome> {
   static const _channel = MethodChannel('com.hifirend/renderer');
 
   RendererStatus _status = const RendererStatus();
-  DacCapabilities? _caps;
   Timer? _poll;
+
+  /// The probe result, as one value every screen watches.
+  ///
+  /// A plain field cannot work here: the settings and capability screens are
+  /// pushed routes, built once from whatever was current at push time, and a
+  /// setState on this state does not rebuild them. Selecting the second of two
+  /// DACs therefore re-probed correctly and then displayed the first one's
+  /// capabilities for the life of the screen.
+  final ValueNotifier<DacProbeState> _probe =
+      ValueNotifier(const DacProbeState());
+
+  /// Automatic re-probes are rate limited. A failed probe leaves caps.ok
+  /// false, and without this the 500 ms poll would reopen the device twice a
+  /// second for as long as it kept failing.
+  static const _retryGap = Duration(seconds: 5);
+  DateTime? _lastProbe;
 
   @override
   void initState() {
@@ -53,6 +68,7 @@ class _RendererHomeState extends State<RendererHome> {
   @override
   void dispose() {
     _poll?.cancel();
+    _probe.dispose();
     super.dispose();
   }
 
@@ -60,26 +76,51 @@ class _RendererHomeState extends State<RendererHome> {
     try {
       final raw = await _channel.invokeMethod<String>('rendererState') ?? '{}';
       if (!mounted) return;
-      final next = RendererStatus.parse(raw);
+      var next = RendererStatus.parse(raw);
+      // Hold the value the user just chose until the write has had time to
+      // land and be read back.
+      final pending = _pendingVolume;
+      if (pending != null) {
+        if (_volumeSettling) {
+          next = next.copyWithVolume(pending);
+        } else {
+          _pendingVolume = null;
+        }
+      }
       // A DAC that appears after startup -- or permission granted later -- must
       // trigger a re-probe, or the capability screen stays stuck on the failed
       // first attempt for the life of the app.
       final gained = next.dacConnected && !_status.dacConnected;
       setState(() => _status = next);
-      if (gained || (next.dacConnected && (_caps == null || !_caps!.ok))) {
-        _probeDac();
-      }
+      if (_shouldProbe(next, gained)) _probeDac();
     } catch (_) {
       // The service may not be up yet; the idle screen is the right fallback.
     }
   }
 
+  bool _shouldProbe(RendererStatus next, bool gained) {
+    if (gained) return true;
+    if (!next.dacConnected) return false;
+    final caps = _probe.value.caps;
+    if (caps != null && caps.ok) return false;
+    final last = _lastProbe;
+    return last == null || DateTime.now().difference(last) >= _retryGap;
+  }
+
+  /// Probes whichever DAC is currently selected and publishes the result.
+  ///
+  /// Also the callback the settings screen uses after changing the selection,
+  /// which is why it goes through the notifier rather than returning: the
+  /// screen that asked is not necessarily the only one showing the answer.
   Future<void> _probeDac() async {
+    _lastProbe = DateTime.now();
+    _probe.value = _probe.value.asProbing();
     try {
       final raw = await _channel.invokeMethod<String>('probeUsb') ?? '';
-      if (mounted) setState(() => _caps = DacCapabilities.parse(raw));
+      _probe.value = DacProbeState(caps: DacCapabilities.parse(raw));
     } on PlatformException {
       // Leave capabilities unknown rather than claiming no DAC.
+      _probe.value = DacProbeState(caps: _probe.value.caps);
     }
   }
 
@@ -88,10 +129,27 @@ class _RendererHomeState extends State<RendererHome> {
     _refresh();
   }
 
+  /// While a drag is settling, the poll must not overwrite the slider.
+  ///
+  /// The hardware is still the authority -- a DAC's own knob can move
+  /// independently -- but a read that crosses with our write returns the old
+  /// value, and applying it makes the slider jump back to where it was and
+  /// then forward again. That reads as the app fighting the user.
+  int? _pendingVolume;
+  DateTime? _volumeChangedAt;
+  static const _volumeSettle = Duration(milliseconds: 1500);
+
+  bool get _volumeSettling {
+    final at = _volumeChangedAt;
+    return at != null && DateTime.now().difference(at) < _volumeSettle;
+  }
+
   Future<void> _setVolume(int percent) async {
-    // Optimistic: the poll corrects it from the hardware a moment later, which
-    // matters on a DAC whose own knob can move independently.
-    setState(() => _status = _status.copyWithVolume(percent));
+    setState(() {
+      _pendingVolume = percent;
+      _volumeChangedAt = DateTime.now();
+      _status = _status.copyWithVolume(percent);
+    });
     await _channel.invokeMethod('setDacVolume', {'percent': percent});
   }
 
@@ -103,7 +161,7 @@ class _RendererHomeState extends State<RendererHome> {
         onOpenSettings: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => SettingsScreen(
             status: _status,
-            caps: _caps,
+            probe: _probe,
             onRefreshCaps: _probeDac,
           ),
         )),

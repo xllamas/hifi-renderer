@@ -31,7 +31,6 @@ import org.jupnp.model.types.UDN
 import org.jupnp.support.avtransport.lastchange.AVTransportLastChangeParser
 import org.jupnp.support.connectionmanager.ConnectionManagerService
 import org.jupnp.support.lastchange.LastChangeAwareServiceManager
-import org.jupnp.support.model.ProtocolInfo
 import org.jupnp.support.model.ProtocolInfos
 import org.jupnp.support.renderingcontrol.lastchange.RenderingControlLastChangeParser
 import java.util.UUID
@@ -62,6 +61,10 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     // jUPnP only accumulates LastChange values; the NOTIFY is sent when
     // fireLastChange() is called, so it needs flushing on a timer.
     private val lastChangeManagers = mutableListOf<LastChangeAwareServiceManager<*>>()
+    private var renderingControl: RendererRenderingControl? = null
+    private var connectionManager: ConnectionManagerService? = null
+    /** Last volume announced to controllers, to avoid re-eventing every tick. */
+    @Volatile private var publishedVolume = -1
     private var eventFlusher: ScheduledExecutorService? = null
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -118,6 +121,9 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 runCatching { probe.refreshDacPresence() }
                 refreshNotification(playing = false)
                 runCatching { RendererWidget.refresh(applicationContext, force = true) }
+                // A different DAC accepts different formats, and a controller
+                // that discovered us before the swap still believes the old set.
+                runCatching { onOutputDeviceChanged() }
             }
         }
         usbReceiver = receiver
@@ -209,9 +215,26 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 // an idle renderer costs a string comparison twice a second.
                 runCatching { RendererWidget.refresh(applicationContext) }
                     .onFailure { Log.w(TAG, "widget refresh failed: ${it.message}") }
+
+                // And the same tick carries volume the other way. The engine
+                // reads the DAC's actual volume as it plays, so this is the one
+                // place that sees a change made on the DAC's own knob, or from
+                // the app's screen, and can tell subscribed controllers about
+                // it. Guarded by the last published value so an unchanging
+                // volume events nothing.
+                runCatching { publishVolumeIfChanged() }
+                    .onFailure { Log.w(TAG, "volume publish failed: ${it.message}") }
             }, 500, 500, TimeUnit.MILLISECONDS)
         }
         Log.i(TAG, "LastChange event flusher started")
+    }
+
+    private fun publishVolumeIfChanged() {
+        val rc = renderingControl ?: return
+        val v = com.hifirend.RendererState.dacVolume
+        if (v < 0 || v == publishedVolume) return
+        publishedVolume = v
+        rc.onVolumeObserved(v)
     }
 
     /** Rebuilds the notification from whatever the queue currently holds. */
@@ -263,6 +286,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         usbReceiver?.let { runCatching { unregisterReceiver(it) } }
         networkExecutor.shutdownNow()
         RendererControl.transport = null
+        RendererControl.onOutputDeviceChanged = null
         screenPolicy.shutdown()
         eventFlusher?.shutdownNow()
         playback.stop()
@@ -354,11 +378,18 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             override fun dacVolume(): Int? = NativeBridge.getDacVolume().takeIf { it >= 0 }
             override fun setDacVolume(percent: Int): Boolean {
                 val ok = NativeBridge.setDacVolume(percent)
-                if (ok) com.hifirend.RendererState.dacVolume = percent
+                if (ok) {
+                    com.hifirend.RendererState.dacVolume = percent
+                    // Opens the settle window so the status poll does not read
+                    // back a stale value and undo this a moment later.
+                    playback.noteVolumeSet()
+                }
                 return ok
             }
         }
+        RendererControl.onOutputDeviceChanged = { onOutputDeviceChanged() }
         playback.onTrackFinished = { av.onTrackFinished() }
+        playback.onPlaybackError = { av.onPlaybackFailed(it) }
         // The manager creates its own instance by default; supply ours so the
         // queue and (from M4) the audio engine share one object.
         val avManager = object : LastChangeAwareServiceManager<RendererAvTransport>(
@@ -372,7 +403,14 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         @Suppress("UNCHECKED_CAST")
         val rcService =
             binder.read(RendererRenderingControl::class.java) as LocalService<RendererRenderingControl>
-        val rc = RendererRenderingControl()
+        // Wire the controller's volume to the DAC. Without this, SetVolume from
+        // a DLNA controller was tracked and reported back but never reached the
+        // hardware -- the spec's "pass volume changes to the DAC if accepted by
+        // the device" was only ever half implemented.
+        val rc = RendererRenderingControl { percent ->
+            RendererControl.transport?.setDacVolume(percent) ?: false
+        }
+        renderingControl = rc
         val rcManager = object : LastChangeAwareServiceManager<RendererRenderingControl>(
             rcService, RenderingControlLastChangeParser()
         ) {
@@ -389,6 +427,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         // empty, and controllers then refuse to send anything while still
         // showing the device as discovered, which looks like a broken renderer.
         val cm = ConnectionManagerService(ProtocolInfos(), sinkFormats())
+        connectionManager = cm
         cmService.manager = object : DefaultServiceManager<ConnectionManagerService>(
             cmService, ConnectionManagerService::class.java
         ) {
@@ -416,16 +455,58 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
      * Declared for what M4 will decode. FLAC is the format that matters for a
      * hi-fi renderer; LPCM is what a bit-perfect path handles natively.
      */
-    private fun sinkFormats(): ProtocolInfos = ProtocolInfos(
-        ProtocolInfo("http-get:*:audio/L16:*"),
-        ProtocolInfo("http-get:*:audio/L24:*"),
-        ProtocolInfo("http-get:*:audio/wav:*"),
-        ProtocolInfo("http-get:*:audio/x-wav:*"),
-        ProtocolInfo("http-get:*:audio/flac:*"),
-        ProtocolInfo("http-get:*:audio/x-flac:*"),
-        ProtocolInfo("http-get:*:audio/mpeg:*"),
-        ProtocolInfo("http-get:*:audio/mp4:*"),
-        ProtocolInfo("http-get:*:audio/aac:*"),
-        ProtocolInfo("http-get:*:audio/x-aiff:*"),
+    private fun sinkFormats(): ProtocolInfos = SinkFormats.build(
+        runCatching { com.hifirend.usb.UsbAudioProbe(applicationContext).selectedCapabilities() }
+            .getOrNull(),
+        allowNativeFormats = true,
     )
+
+    /**
+     * The output device changed, so what this renderer can accept changed with
+     * it.
+     *
+     * Two things have to happen, because controllers learn protocolInfo two
+     * different ways. Subscribers are told through the ConnectionManager's
+     * evented SinkProtocolInfo. Everyone else read GetProtocolInfo once when
+     * they discovered the device and will never ask again, so the device is
+     * re-announced -- a byebye followed by an alive -- which is the only thing
+     * that makes those controllers look again.
+     */
+    fun onOutputDeviceChanged() {
+        val cm = connectionManager ?: return
+        val fresh = sinkFormats()
+        try {
+            val sink = cm.sinkProtocolInfo
+            synchronized(cm) {
+                sink.clear()
+                sink.addAll(fresh)
+            }
+            // The evented variable, for controllers that subscribed.
+            cm.propertyChangeSupport.firePropertyChange("SinkProtocolInfo", null, sink)
+            Log.i(TAG, "sink protocolInfo updated for the new output device")
+        } catch (e: Throwable) {
+            Log.w(TAG, "could not update sink protocolInfo: ${e::class.java.simpleName}: ${e.message}")
+        }
+        reannounce("output device changed")
+    }
+
+    /**
+     * Withdraws and re-advertises the device on SSDP.
+     *
+     * A controller caches the description and the protocol info from discovery.
+     * Short of it re-discovering us, nothing we change afterwards reaches it.
+     */
+    private fun reannounce(reason: String) {
+        networkExecutor.execute {
+            try {
+                upnpService.registry.localDevices.forEach {
+                    runCatching { upnpService.registry.removeDevice(it) }
+                    runCatching { upnpService.registry.addDevice(it) }
+                }
+                Log.i(TAG, "device re-announced after $reason")
+            } catch (e: Throwable) {
+                Log.e(TAG, "re-announce failed: ${e::class.java.simpleName}: ${e.message}")
+            }
+        }
+    }
 }

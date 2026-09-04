@@ -146,6 +146,11 @@ class MainActivity : FlutterActivity() {
                         val key = call.argument<String>("key")
                         UsbAudioProbe(applicationContext).preferredDeviceKey =
                             key?.takeIf { it.isNotBlank() }
+                        runCatching { UsbAudioProbe(applicationContext).refreshDacPresence() }
+                        // The renderer advertises what the selected DAC accepts,
+                        // so this changes the device's capabilities and every
+                        // controller that already discovered us is now wrong.
+                        RendererControl.outputDeviceChanged()
                         result.success(true)
                     }
                     "openVendorAutostart" ->

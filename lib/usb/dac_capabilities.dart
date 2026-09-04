@@ -10,6 +10,14 @@ class DacFormat {
   final bool hasFeedback;
   final int maxPacket;
 
+  /// UAC1 lists rates per alt-setting; UAC2 keeps them on the clock entity and
+  /// leaves this empty.
+  final List<int> rates;
+
+  /// Whether this is an output. A capture alt-setting looks identical apart
+  /// from endpoint direction, and a UAC1 headset adapter exposes both.
+  final bool isOutput;
+
   const DacFormat({
     required this.alt,
     required this.format,
@@ -18,6 +26,8 @@ class DacFormat {
     required this.sync,
     required this.hasFeedback,
     required this.maxPacket,
+    required this.rates,
+    required this.isOutput,
   });
 
   factory DacFormat.fromJson(Map<String, dynamic> j) => DacFormat(
@@ -28,9 +38,16 @@ class DacFormat {
         sync: (j['endpoint']?['sync'] as String?) ?? 'none',
         hasFeedback: j['feedbackEndpoint'] != null,
         maxPacket: (j['endpoint']?['maxPacket'] as int?) ?? 0,
+        rates: ((j['rates'] as List?) ?? const []).cast<int>(),
+        // The parser only fills the data endpoint for an isochronous OUT, so a
+        // present iso endpoint is the same statement as "this can play".
+        isOutput: (j['endpoint']?['iso'] as bool?) ?? false,
       );
 
   bool get isPcm => format == 'PCM';
+
+  /// Usable for playback: PCM, out, over an isochronous endpoint.
+  bool get isPlayable => isPcm && isOutput;
 }
 
 /// What the attached DAC can actually do, as measured rather than as documented.
@@ -155,22 +172,44 @@ class DacCapabilities {
   }
 
   List<int> get pcmBitDepths =>
-      (formats.where((f) => f.isPcm).map((f) => f.bits).toSet().toList()..sort());
+      (formats.where((f) => f.isPlayable).map((f) => f.bits).toSet().toList()..sort());
 
-  /// The app targets USB Audio Class 2.0 only. UAC1 is a 1998-era spec, capped
-  /// at 24/96 over full-speed USB, and essentially absent from DACs anyone would
-  /// pair with a bit-perfect renderer. Supporting it would mean a second rate
-  /// negotiation path (rates live in the descriptors rather than behind a clock
-  /// entity) and a second endpoint model, for hardware that is not out there.
-  /// UAC1 devices are still *identified* so the app can say so plainly.
-  bool get isSupported => uacVersion == '2.0';
+  /// Every rate the device can actually clock.
+  ///
+  /// UAC2 answers this from the clock entity, so [rates] is authoritative.
+  /// UAC1 has no clock entity and lists rates per alt-setting instead, so they
+  /// have to be gathered from the playable formats.
+  List<int> get playableRates {
+    if (rates.isNotEmpty) return rates;
+    final out = <int>{};
+    for (final f in formats.where((f) => f.isPlayable)) {
+      out.addAll(f.rates);
+    }
+    return out.toList()..sort();
+  }
+
+  /// Whether the app can play through this device.
+  ///
+  /// Deliberately not a class-version test. Both UAC1 and UAC2 are supported,
+  /// and the thing that actually decides the question is whether the device
+  /// offers PCM out over an isochronous endpoint -- which a USB microphone, or
+  /// the capture half of a headset adapter, does not.
+  bool get isSupported => formats.any((f) => f.isPlayable);
 
   bool get supportsDsd => formats.any((f) => f.format == 'DSD');
   bool get isAsync => formats.any((f) => f.sync == 'async');
+
+  /// No asynchronous output at all: the device takes its timing from the host.
+  bool get isAdaptiveOnly =>
+      isSupported && !formats.any((f) => f.isPlayable && f.sync == 'async');
   bool get hasFeedback => formats.any((f) => f.hasFeedback);
 
-  int? get maxRate => rates.isEmpty ? null : rates.reduce((a, b) => a > b ? a : b);
-  int? get minRate => rates.isEmpty ? null : rates.reduce((a, b) => a < b ? a : b);
+  int? get maxRate => playableRates.isEmpty
+      ? null
+      : playableRates.reduce((a, b) => a > b ? a : b);
+  int? get minRate => playableRates.isEmpty
+      ? null
+      : playableRates.reduce((a, b) => a < b ? a : b);
 
   /// True when 16-bit sources must be padded because the DAC offers no 16-bit
   /// alt-setting. Padding preserves sample values, so playback stays bit-perfect.
@@ -184,17 +223,34 @@ class DacCapabilities {
     if (!isSupported) {
       out.add(CapabilityNote(
         severity: NoteSeverity.important,
-        title: uacVersion == '1.0'
-            ? 'This DAC uses USB Audio Class 1.0'
-            : 'USB Audio Class version not recognised',
-        detail: uacVersion == '1.0'
-            ? 'This app supports USB Audio Class 2.0 only. UAC 1.0 is limited to '
-                '24-bit/96 kHz and is not supported here, so this DAC cannot be '
-                'used for bit-perfect playback.'
-            : 'The device did not report a USB Audio Class version this app '
-                'recognises, so it cannot be used for bit-perfect playback.',
+        title: 'This device cannot play audio',
+        detail: 'It advertises the USB audio class but offers no PCM output '
+            'over an isochronous endpoint. Capture-only devices look like this '
+            '\u2014 a USB microphone, or the recording half of a headset adapter.',
       ));
       return out;
+    }
+
+    if (uacVersion == '1.0') {
+      out.add(CapabilityNote(
+        severity: NoteSeverity.info,
+        title: 'This device uses USB Audio Class 1.0',
+        detail: 'Supported, with the limits the class itself imposes: full-speed '
+            'USB caps the bandwidth, so UAC1 devices top out well below what a '
+            'UAC2 DAC offers. Playback is still bit-perfect at the rates it does '
+            'support \u2014 nothing is resampled.',
+      ));
+    }
+
+    if (isAdaptiveOnly) {
+      out.add(CapabilityNote(
+        severity: NoteSeverity.info,
+        title: 'This device follows the phone\u0027s clock',
+        detail: 'Its endpoint is adaptive rather than asynchronous, so it adapts '
+            'to the rate the phone sends instead of running its own clock and '
+            'asking the phone to follow. Common on UAC1 hardware. Samples still '
+            'arrive unaltered; the timing reference is simply the phone\u0027s.',
+      ));
     }
 
     if (!volumeHostControllable) {
@@ -284,4 +340,20 @@ class CapabilityNote {
     required this.title,
     required this.detail,
   });
+}
+
+/// The result of probing whichever DAC is currently selected, plus whether a
+/// probe is in flight.
+///
+/// This travels as one value because the two are only meaningful together: a
+/// null [caps] means "no DAC" while idle but "still asking" while [probing],
+/// and showing the first when the second is true is how a screen ends up
+/// claiming there is no DAC attached to a phone that has two.
+class DacProbeState {
+  final DacCapabilities? caps;
+  final bool probing;
+
+  const DacProbeState({this.caps, this.probing = false});
+
+  DacProbeState asProbing() => DacProbeState(caps: caps, probing: true);
 }

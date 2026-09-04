@@ -27,7 +27,15 @@ struct SinkStats {
     std::atomic<uint32_t> lastFeedbackRaw{0};
 };
 
-// Streams PCM to a USB Audio Class 2.0 device over isochronous transfers.
+// Streams PCM to a USB Audio Class device over isochronous transfers.
+//
+// UAC2 and UAC1 differ in how the rate is negotiated and in how the device
+// keeps time. UAC2 has a clock entity and, usually, an asynchronous endpoint
+// with a feedback pipe the host tracks. UAC1 has neither: the rate belongs to
+// the endpoint, the alt-setting *is* the rate selection, and endpoints are
+// commonly adaptive, meaning the device follows the host instead. Both land in
+// the same transfer loop -- with no feedback readings the nominal packet size
+// simply stands, which is exactly right for an adaptive endpoint.
 //
 // This is the whole reason the project has a native layer: Android's
 // UsbDeviceConnection offers only control, bulk and interrupt transfers, and
@@ -123,7 +131,9 @@ private:
     static void onFeedbackComplete(libusb_transfer *t);
     void fillTransfer(libusb_transfer *t);
     void handleFeedback(libusb_transfer *t);
+    bool selectAltSetting(std::string *error);
     bool setSampleRate(uint32_t hz, std::string *error);
+    bool setSampleRateUac1(uint32_t hz, std::string *error);
     void eventLoop();
     void monitorLoop();
 
@@ -162,6 +172,7 @@ private:
     // Raw device units (1/256 dB). 0x8000 means "silence" in the spec.
     int16_t volMin_ = 0, volMax_ = 0, volRes_ = 1;
     bool volRangeKnown_ = false;
+    int lastVolumeLogged_ = -2;
     std::atomic<int> inFlight_{0};
     std::thread eventThread_;
     // Logging happens here, never on the event thread: __android_log_print can
