@@ -351,6 +351,11 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
   and UAC1 puts the direction in the code itself (GET_MIN is 0x82, not 0x02),
   so every read asked the device to SET what it meant to GET. Written from the
   spec, and wrong — exactly the risk this section existed to record.
+- **Volume is remembered per DAC and never starts at full scale.** An unknown
+  device starts at 10. The previous behaviour was to inherit whatever the
+  hardware held, which on a device with unreadable volume is its maximum — a
+  first track at full scale into an amplifier, before anyone can reach a
+  control.
 - **Gapless is absent.** There is a real gap between tracks; unavoidable across
   a rate change, but not within one.
 - **No fallback without a DAC.** Playback simply fails; the plan calls for an
@@ -372,6 +377,20 @@ Worth recording, because all three were invisible with one device attached:
   errno in an internal log that goes nowhere on Android. Routing it into logcat
   is what turned "set_alt_setting failed" into "the device stalled it with
   EPIPE".
+- **Hardware lies in ways that survive a naive check.** The UAC1 device accepts
+  SET_CUR and audibly changes volume, then answers GET_CUR with junk —
+  alternating between 0 dB and a value outside the range it declared itself.
+  Two checks were written and both passed while the bug was live: one probed a
+  single time, and this firmware echoes correctly on the read immediately
+  after a write; the next compared a single write against its readback, and
+  passed at 99% because a fixed 0 dB answer sits within one step of the -1 dB
+  written. Proof now needs two clearly different values, and until a device has
+  given it the app's own last written value is authoritative.
+- **State that describes the device must outlive the stream.** The sink is
+  rebuilt for every track, and it was carrying what had been learned about the
+  DAC. Every track boundary reset it, so the fix looked correct inside a single
+  track and failed in ordinary use. Any test of a device-level fact has to
+  cross a track change.
 - **Firmware can wedge.** The UAC1 device stopped answering *any* control
   transfer — including string descriptors — and stayed that way across app
   restarts until it was replugged. The control experiment that established it
