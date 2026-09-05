@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hifirend/main.dart';
 import 'package:hifirend/renderer_state.dart';
 import 'package:hifirend/screens/dac_verification_screen.dart';
+import 'package:hifirend/screens/onboarding_screen.dart';
 import 'package:hifirend/screens/now_playing_screen.dart';
 import 'package:hifirend/usb/dac_capabilities.dart';
 import 'package:hifirend/usb/rate_sweep.dart';
@@ -124,6 +125,114 @@ void main() {
       final s = RendererStatus.parse('not json');
       expect(s.transportState, 'NO_MEDIA_PRESENT');
       expect(s.hasTrack, isFalse);
+    });
+  });
+
+  group('Onboarding', () {
+    const channel = MethodChannel('com.hifirend/renderer');
+    late TestDefaultBinaryMessenger messenger;
+
+    setUp(() {
+      messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    });
+
+    tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    void mock(String status, {List<String>? calls}) {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls?.add(call.method);
+        return switch (call.method) {
+          'onboardingStatus' => status,
+          'requestNotifications' => 'requested',
+          'openVendorAutostart' => 'com.miui.securitycenter/...',
+          _ => null,
+        };
+      });
+    }
+
+    testWidgets('offers every step, and lets the user leave without any',
+        (tester) async {
+      mock('{"hasRun":false,"notifications":false,'
+          '"ignoringBatteryOptimizations":false,"manufacturer":"xiaomi",'
+          '"hasVendorSettings":true,"unexpectedDeaths":0}');
+
+      await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.textContaining('Show a notification'), findsOneWidget);
+      expect(find.textContaining('Stop Android suspending it'), findsOneWidget);
+      expect(find.textContaining('Autostart (xiaomi)'), findsOneWidget);
+
+      // The rest is below the fold on a test-sized screen.
+      await tester.scrollUntilVisible(find.textContaining('Your DAC'), 200,
+          scrollable: find.byType(Scrollable));
+      expect(find.textContaining('Your DAC'), findsOneWidget);
+
+      // Nothing granted, and leaving is still offered rather than blocked: a
+      // step can be impossible on hardware nobody here owns.
+      await tester.scrollUntilVisible(
+          find.textContaining('Skipping is fine'), 200,
+          scrollable: find.byType(Scrollable));
+      expect(find.text('Finish anyway'), findsOneWidget);
+      expect(find.textContaining('Skipping is fine'), findsOneWidget);
+    });
+
+    testWidgets('ticks what is granted and says so when all of it is',
+        (tester) async {
+      mock('{"hasRun":false,"notifications":true,'
+          '"ignoringBatteryOptimizations":true,"manufacturer":"xiaomi",'
+          '"hasVendorSettings":true,"unexpectedDeaths":0}');
+
+      await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Granted steps stop offering their button.
+      expect(find.text('Allow'), findsNothing);
+      expect(find.text('Grant'), findsNothing);
+      // The vendor step never ticks: those screens report nothing back, so a
+      // tick would be a claim the app cannot support.
+      expect(find.text('Open settings'), findsOneWidget);
+      expect(find.textContaining('cannot tell whether you granted'),
+          findsOneWidget);
+
+      await tester.scrollUntilVisible(find.text('Done'), 200,
+          scrollable: find.byType(Scrollable));
+      expect(find.text('Done'), findsOneWidget);
+      expect(find.textContaining('Everything the app can check'),
+          findsOneWidget);
+    });
+
+    testWidgets('writes instructions instead when the phone is unknown',
+        (tester) async {
+      mock('{"hasRun":false,"notifications":true,'
+          '"ignoringBatteryOptimizations":true,"manufacturer":"acme",'
+          '"hasVendorSettings":false,"unexpectedDeaths":0}');
+
+      await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // No Intent to offer, so it must say what to look for by hand rather
+      // than present a button that does nothing.
+      expect(find.text('Open settings'), findsNothing);
+      expect(find.textContaining('no known settings screen'), findsOneWidget);
+      expect(find.textContaining('protected apps'), findsOneWidget);
+    });
+
+    testWidgets('marks setup done on finishing', (tester) async {
+      final calls = <String>[];
+      mock('{"hasRun":false,"notifications":true,'
+          '"ignoringBatteryOptimizations":true,"manufacturer":"",'
+          '"hasVendorSettings":false,"unexpectedDeaths":0}', calls: calls);
+
+      await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.scrollUntilVisible(find.text('Done'), 200,
+          scrollable: find.byType(Scrollable));
+      await tester.tap(find.text('Done'));
+      await tester.pump();
+
+      expect(calls, contains('setOnboardingDone'));
     });
   });
 
@@ -670,6 +779,41 @@ void main() {
       expect(find.text('This DAC cannot play 192 kHz; its highest rate is 48 kHz.'),
           findsOneWidget);
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    });
+
+    testWidgets('says on the main screen when the phone keeps killing it',
+        (tester) async {
+      messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
+            'rendererState' =>
+              '{"rendererName":"Living Room","transportState":"PLAYING",'
+                  '"title":"Excursions","dacConnected":true,'
+                  '"dacName":"SMSL USB AUDIO","dacCount":1,'
+                  '"unexpectedDeaths":3}',
+            'probeUsb' => _al400,
+            _ => null,
+          });
+
+      await tester.pumpWidget(const HifiRendApp());
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // Being killed in the background looks exactly like working, from the
+      // one place this screen is meant to be read from.
+      expect(find.textContaining('stopped the renderer 3 times'),
+          findsOneWidget);
+      expect(find.textContaining('Tap to finish setup'), findsOneWidget);
+    });
+
+    testWidgets('stays quiet when nothing has killed it', (tester) async {
+      messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
+            'rendererState' => _playing,
+            'probeUsb' => _al400,
+            _ => null,
+          });
+
+      await tester.pumpWidget(const HifiRendApp());
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.textContaining('stopped the renderer'), findsNothing);
     });
 
     testWidgets('idle screen names the connected DAC', (tester) async {

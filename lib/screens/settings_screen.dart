@@ -7,6 +7,7 @@ import '../renderer_state.dart';
 import '../usb/dac_capabilities.dart';
 import 'dac_capabilities_screen.dart';
 import 'dac_verification_screen.dart';
+import 'onboarding_screen.dart';
 
 /// Configuration: the renderer's network name, plus everything operational
 /// that does not belong on the now-playing screen.
@@ -296,6 +297,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }
               },
             ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.checklist),
+              title: const Text('Run setup again'),
+              subtitle: const Text('Walk through the permissions in order'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const OnboardingScreen(rerun: true),
+                ));
+                _loadAppliance();
+              },
+            ),
+          ),
           if (deaths > 0)
             _check(
               ok: false,

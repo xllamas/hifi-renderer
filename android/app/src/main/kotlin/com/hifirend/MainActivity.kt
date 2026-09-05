@@ -151,6 +151,29 @@ class MainActivity : FlutterActivity() {
                             result.success(true)
                         }
                     }
+                    "onboardingStatus" -> {
+                        val health = ServiceHealth(applicationContext)
+                        result.success(
+                            """{"hasRun":${Onboarding.hasRun(applicationContext)}""" +
+                            ""","notifications":${
+                                Onboarding.notificationsEnabled(applicationContext)}""" +
+                            ""","ignoringBatteryOptimizations":${
+                                VendorAutostart.isIgnoringBatteryOptimizations(this)}""" +
+                            ""","manufacturer":"${VendorAutostart.manufacturer()}"""" +
+                            ""","hasVendorSettings":${
+                                VendorAutostart.hasVendorSettings(this)}""" +
+                            ""","unexpectedDeaths":${health.unexpectedDeaths}}"""
+                        )
+                    }
+                    "requestNotifications" ->
+                        result.success(Onboarding.requestNotifications(this))
+                    "openNotificationSettings" ->
+                        result.success(Onboarding.openNotificationSettings(this))
+                    "setOnboardingDone" -> {
+                        Onboarding.setHasRun(
+                            applicationContext, call.argument<Boolean>("done") ?: true)
+                        result.success(true)
+                    }
                     "applianceStatus" -> {
                         val health = ServiceHealth(applicationContext)
                         result.success(

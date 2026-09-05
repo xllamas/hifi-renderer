@@ -33,6 +33,10 @@ class RendererStatus {
   final String dacVolumeReadback;
   final int underruns;
 
+  /// How often something on this phone has killed the renderer in the
+  /// background. Non-zero means the setup steps did not hold.
+  final int unexpectedDeaths;
+
   /// Why the last track did not play, in words meant to be read from across a
   /// room. The engine's own wording is in [lastErrorDetail].
   final String? lastError;
@@ -64,6 +68,7 @@ class RendererStatus {
     this.dacVolumeSupported = false,
     this.dacVolumeReadback = 'unknown',
     this.underruns = 0,
+    this.unexpectedDeaths = 0,
     this.lastError,
     this.lastErrorDetail,
   });
@@ -95,6 +100,7 @@ class RendererStatus {
         dacVolumeSupported: j['dacVolumeSupported'] as bool? ?? false,
         dacVolumeReadback: j['dacVolumeReadback'] as String? ?? 'unknown',
         underruns: (j['underruns'] as num?)?.toInt() ?? 0,
+        unexpectedDeaths: (j['unexpectedDeaths'] as num?)?.toInt() ?? 0,
         lastError: j['lastError'] as String?,
         lastErrorDetail: j['lastErrorDetail'] as String?,
       );
@@ -149,6 +155,7 @@ class RendererStatus {
         dacVolumeSupported: dacVolumeSupported,
         dacVolumeReadback: dacVolumeReadback,
         underruns: underruns,
+        unexpectedDeaths: unexpectedDeaths,
         lastError: lastError,
         lastErrorDetail: lastErrorDetail,
       );

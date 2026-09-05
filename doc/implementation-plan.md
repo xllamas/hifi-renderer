@@ -269,6 +269,26 @@ sufficient — most OEMs kill background services regardless — so the flow is:
 Keep the vendor table as **data** (a list of manufacturer/package/class triples), not branching logic,
 so adding a vendor is a one-line change and the untestable surface stays small.
 
+**Built 2026-09-05** (`lib/screens/onboarding_screen.dart`,
+`android/.../Onboarding.kt`). Every step is offered, checked live, and
+skippable; Finish is always available, because a step that is impossible on
+hardware nobody here owns must not trap the user in setup. Three states, not
+two: granted, not granted, and **cannot be checked** — the vendor screens
+report nothing back, so that step never ticks rather than claiming a result the
+app did not earn. A phone with no known Intent gets written instructions
+instead of a button that would do nothing.
+
+Building it found that `POST_NOTIFICATIONS` was declared in the manifest and
+never requested. On Android 13+ that silently costs the foreground-service
+notification, which is the renderer's only visible sign of life. Notification
+state is now read from the notification manager rather than the permission,
+because a user who granted it and later switched notifications off is in the
+same position as one who never granted it.
+
+Step 5's self-diagnosis now reaches the now-playing screen and not only
+settings: a renderer being killed in the background looks, from across the
+room, exactly like one that works — right up until the music stops.
+
 ---
 
 ## Feature: DAC verification
@@ -341,7 +361,7 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 | M2 bit-perfect playback | ✅ — 30 min soak, zero dropouts |
 | M3 DLNA renderer | ✅ — discovery, transport, DIDL, LastChange eventing |
 | M4 full audio path | ✅ FLAC/MP3/AAC, L16/L24, WAV, AIFF, seek, volume, gapless, Oboe fallback |
-| M5 UI | ✅ now-playing, settings, DAC capabilities · ❌ first-run onboarding |
+| M5 UI | ✅ now-playing, settings, DAC capabilities, first-run onboarding |
 | M6 appliance | ✅ foreground service, boot start, wake locks, vendor autostart |
 | M7 widget | ✅ 4x2, art, transport, pushed from the service |
 | Device icon | ✅ launcher + DLNA iconList (PNG/JPEG, 48 and 120) |
@@ -388,6 +408,10 @@ it ran on.
   about anyone else's hardware. The sweep has not yet been run on the UAC1
   dongle, where every verdict would be `unverified` for want of a feedback
   endpoint.
+- **First-run setup shown on a genuine first run**, 2026-09-05, with live
+  state correct: notifications unticked and offering Allow, the battery
+  exemption already ticked from an earlier grant, and the vendor step naming
+  Xiaomi from `Build.MANUFACTURER`.
 - **Ten-minute soak passed at 96 kHz/32-bit**, 2026-09-05: 10m 03s, 58,091,844
   frames, 4,817,304 isochronous packets with none bad, zero underruns, zero
   transfer errors, and 586,171 feedback readings with none rejected. The clock
@@ -582,9 +606,9 @@ DAC could have played untouched.
 
 ### Next up
 
-First-run onboarding, and M8's last part: the file-picker source. That is the
-whole of the outstanding work — M8 closes when the app can run every test it
-specifies, not when any particular DAC has passed them.
+M8's last part: the file-picker source. That is the whole of the outstanding
+work — M8 closes when the app can run every test it specifies, not when any
+particular DAC has passed them.
 
 ---
 

@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'renderer_state.dart';
 import 'screens/now_playing_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/settings_screen.dart';
 import 'usb/dac_capabilities.dart';
 
@@ -63,6 +65,28 @@ class _RendererHomeState extends State<RendererHome> {
     // Twice a second is enough for a progress bar and costs nothing; the
     // renderer is not driven from here.
     _poll = Timer.periodic(const Duration(milliseconds: 500), (_) => _refresh());
+    _maybeOnboard();
+  }
+
+  /// Shows setup once, on the first run.
+  ///
+  /// Pushed over the now-playing screen rather than replacing it as a route,
+  /// so nothing behind it has to know setup exists and dismissing it lands
+  /// exactly where the app would otherwise have started. A failure to ask is
+  /// not worth breaking startup over -- the same checks live in Settings.
+  Future<void> _maybeOnboard() async {
+    try {
+      final raw =
+          await _channel.invokeMethod<String>('onboardingStatus') ?? '{}';
+      final status = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      if (status['hasRun'] == true || !mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => const OnboardingScreen(),
+        fullscreenDialog: true,
+      ));
+    } catch (_) {
+      // Never let setup stop the renderer from being usable.
+    }
   }
 
   @override
