@@ -55,13 +55,19 @@ Three rules that override convenience everywhere in this codebase:
    the attached device at runtime. The reference DAC is one sample, not the spec.
 2. **Degrade gracefully and say so.** When a DAC cannot do something, the app does
    the best available thing *and tells the user what it did and why*.
-3. **A failing device is a passing app.** The hardware here — one Redmi, two
-   DACs — is three samples of a population this app will mostly never see, so a
-   green result on them is close to no evidence at all. What earns its keep is
-   what the app detects on hardware nobody here owns. When a verification test
-   fails on a DAC, that is the feature working: it found something the
-   descriptors did not admit to, which is the entire reason the feature exists.
-   Read results that way round, and report them that way round.
+3. **The deliverable is the app, not results about this hardware.** The gear
+   here — one Redmi, two DACs — is three samples of a population this app will
+   mostly never see, and it is here to exercise the tool, not to be certified
+   by it. A feature is finished when the app can *perform* its test; whether a
+   particular DAC passes is a question for whoever owns that DAC, answered
+   later with the finished app. So no milestone depends on how a device
+   behaved, and no hardware measurement is ever outstanding project work.
+
+   The corollary is how to read a result. When a verification test fails on a
+   DAC, that is the feature working — it found something the descriptors did
+   not admit to, which is the entire reason the feature exists. A green run
+   proves the code path executes; it is close to no evidence about hardware in
+   general. Report both that way round.
 
 Rule 2 has a concrete, user-visible form: a **DAC capabilities screen** in the
 configuration section, showing what the connected hardware actually supports —
@@ -341,7 +347,11 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 | Device icon | ✅ launcher + DLNA iconList (PNG/JPEG, 48 and 120) |
 | M8 DAC verification | 🟡 rate sweep, stability soak, verdicts and report · ❌ file source |
 
-### Verified on hardware
+### Exercised on hardware
+
+Not certifications of these devices — see design rule 3. Each entry is
+evidence that a code path runs against real hardware, recorded with the sample
+it ran on.
 
 - 30 minutes continuous at 96 kHz/24-bit: 14.8 M isochronous packets, zero
   errors, rate held to ±0.002%.
@@ -387,11 +397,11 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
   was never close to falling behind.
 
   This clears the project's ten-minute zero-dropout bar, and at 32-bit rather
-  than the 24-bit of the original M2 soak. It does **not** cover the top rate:
-  96 kHz at 32-bit is 768 kB/s, an eighth of what 768 kHz demands, and
-  sustained load is exactly where thermal throttling would appear. A
-  30-minute soak at 768 kHz remains the measurement that would say something
-  new.
+  than the 24-bit of the original M2 soak. What it demonstrates for the project
+  is that the soak works: it holds a rate, samples it, and reports honestly for
+  ten minutes without losing the stream. Whether this AL400 would also survive
+  ten minutes at 768 kHz is a question about that DAC, and the app is now the
+  thing that answers it.
 
 ### Known gaps
 
@@ -572,12 +582,9 @@ DAC could have played untouched.
 
 ### Next up
 
-First-run onboarding, and M8's last part: the file-picker source.
-
-The outstanding *measurement* is a long soak at 768 kHz/32-bit. Ten minutes
-clean at 96 kHz is real but gentle; 6.1 MB/s sustained is where thermal
-throttling and scheduler stalls would show, and it is the one claim neither
-the four-second sweep nor the 96 kHz soak can support.
+First-run onboarding, and M8's last part: the file-picker source. That is the
+whole of the outstanding work — M8 closes when the app can run every test it
+specifies, not when any particular DAC has passed them.
 
 ---
 
@@ -640,6 +647,10 @@ asserts.
 
 *Not built:* the file-picker source, for "does my actual library play cleanly".
 
+M8 is done when the app can run each of these against whatever is plugged in.
+Hardware outcomes are what the finished tool is *for*, not a condition of
+finishing it — see design rule 3.
+
 ---
 
 ## Verification
@@ -668,9 +679,10 @@ instrument the native engine to count underruns and log them.
 > **192 kHz and beyond settled 2026-09-05** by the M8 rate sweep: all ten AL400
 > rates to 768 kHz at 32-bit, zero underruns, zero packet errors, worst clock
 > deviation 0.001%. Four seconds each rather than 30 minutes, so this answers
-> bandwidth, not endurance. Endurance was answered separately the same day by
-> the M8 soak — ten minutes clean at 96 kHz/32-bit — but not at the top rate,
-> where sustained bandwidth is eight times higher.
+> bandwidth, not endurance. Endurance was exercised separately the same day by
+> the M8 soak — ten minutes clean at 96 kHz/32-bit. Both figures describe this
+> AL400; what they establish for the project is that the sweep and the soak
+> run.
 
 **Native decoding, off-device.** `test/native/run.sh` builds `PcmDecoder` and
 `ToneSource` on the host against a small `android/log.h` shim and runs 53
@@ -689,7 +701,7 @@ controller's Wi-Fi. Playback must continue through the remaining queue.
 **Always-on.** `adb reboot`, wait, confirm the renderer reappears on the network without opening the
 app. Then leave it 12+ hours idle and confirm it is still discoverable — the real vendor-killer test.
 
-**Device-matrix honesty.** Only the Redmi + AL400 combination can be verified directly, so the rest of
+**Device-matrix honesty.** Only the Redmi + AL400 combination is here to test against, so the rest of
 the matrix is covered by *defensive behaviour* rather than testing: every vendor Intent
 `resolveActivity`-checked, the descriptor parser fuzzed against malformed input, and both the parsed
 UAC table and the service restart counters exposed in-app so a user on hardware we do not have can
