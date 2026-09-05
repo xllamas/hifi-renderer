@@ -314,7 +314,7 @@ user cannot easily determine.
 
 ---
 
-## Status (2026-09-03)
+## Status (2026-09-05)
 
 Working end to end on the reference hardware: a DLNA controller discovers the
 renderer, sends a track, and it plays bit-perfectly to the USB DAC.
@@ -325,12 +325,12 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 | M1 USB capability probe | ✅ — verified against a second, UAC1 device |
 | M2 bit-perfect playback | ✅ — 30 min soak, zero dropouts |
 | M3 DLNA renderer | ✅ — discovery, transport, DIDL, LastChange eventing |
-| M4 full audio path | ✅ FLAC/WAV/MP3/AAC, seek, volume, gapless, Oboe fallback |
+| M4 full audio path | ✅ FLAC/MP3/AAC, L16/L24, WAV, AIFF, seek, volume, gapless, Oboe fallback |
 | M5 UI | ✅ now-playing, settings, DAC capabilities · ❌ first-run onboarding |
 | M6 appliance | ✅ foreground service, boot start, wake locks, vendor autostart |
 | M7 widget | ✅ 4x2, art, transport, pushed from the service |
 | Device icon | ✅ launcher + DLNA iconList (PNG/JPEG, 48 and 120) |
-| M8 DAC verification | ❌ specified, not built |
+| M8 DAC verification | 🟡 rate sweep, verdicts and report built · ❌ file source, soak |
 
 ### Verified on hardware
 
@@ -339,6 +339,12 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 - FLAC, MP3 and AAC from a real controller (BubbleUPnP proxying Tidal), mixed
   playlists, auto-advance across a sample-rate change, pause/resume, seek.
 - Survives `am kill`; starts at boot once MIUI autostart is granted.
+- **L16 from a transcoding server plays** on the UAC1 device: BubbleUPnP Server
+  converting FLAC to `audio/L16;rate=44100;channels=2` over
+  `/ffmpegpcmdecode/stream/`, with "accept only PCM" on.
+- **The rate sweep runs end to end** on the UAC1 device. Its per-rate verdicts
+  are `unverified` there by construction — see below — so what this confirms
+  is the mechanism, not any claim about that DAC's clock.
 
 ### Known gaps
 
@@ -361,11 +367,28 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
   same running stream. Measured on the AL400: hand-over in 22 ms against 3.8 s
   of tail still buffered, with the frame counter continuous and no underrun.
   Across a rate change the stream is still rebuilt, which is unavoidable.
-- **No fallback without a DAC.** Playback simply fails; the plan calls for an
-  Oboe path clearly marked as not bit-perfect.
+- **Falling back without a DAC now works.** Playback moves to Oboe and the UI
+  marks it as not bit-perfect, which closes the gap this list used to record.
 - **USB permission prompts on every replug** on MIUI, which offers no "use by
   default" checkbox. Expected to behave better on stock Android — worth
   confirming before documenting compatibility.
+- **AIFF is implemented but has never met a real file.** The container parser
+  and both its byte orders are covered by host tests; no actual AIFF has been
+  played. AIFC's `sowt` is the variant most worth distrusting, because it is
+  little-endian inside a big-endian container.
+- **Seeking a server-converted stream fails.** `ensureHeader` looks for a FLAC
+  header and refuses without one, which also means MP3 has never been
+  seekable. For raw L16 the byte offset is exactly computable, so this is
+  cheap to fix and simply has not been.
+- **`bitPerfect` reports true on a transcoded stream.** Honest by the field's
+  own definition — nothing alters samples after the decoder — but the server
+  may well have resampled upstream, and the badge does not distinguish the two.
+- **The sweep cannot confirm the clock on an adaptive DAC.** Not a defect in
+  the sweep; there is nothing to read. It is called out because a screen full
+  of green ticks would otherwise be read as proof it cannot give.
+- **No JVM test source set.** `SinkFormats`, `Problem` and the transport are
+  untested except through the app. The Dart and native sides both have
+  harnesses now; Kotlin is the gap.
 
 ### What the second DAC taught us
 
@@ -401,6 +424,62 @@ Worth recording, because all three were invisible with one device attached:
   answered normally throughout, which is only visible because the capability
   dump covers every attached device rather than just the selected one.
 
+### What the converting server taught us
+
+The "let the server convert" switch had never been turned on with a server
+that took it up. When it was, it failed every time — and the reason was on
+our side.
+
+- **We advertised a format we could not decode.** The switch withholds every
+  container format the app decodes so the server transcodes instead, and what
+  BubbleUPnP Server transcodes to is L16. `formatFromMime` already classified
+  L16 as PCM, but the decode loop only ever constructed an MP3 or FLAC
+  decoder, so it fell into the branch that tries FLAC and gives up. The one
+  setting whose entire purpose is "make everything playable" was the one
+  setting that guaranteed nothing would play.
+- **The same hole was open in two more places, unnoticed.** Streamed WAV was
+  advertised and equally undecodable — dr_wav only ever ran in the local file
+  player. AIFF was advertised and decodable by nothing at all: not the stream
+  path, not the file player, not MediaCodec. Nobody had hit either, because
+  nobody had sent them.
+- **An advertisement is a promise, and nothing was checking it.** Every one of
+  these was a line in a list of MIME types that no code path could honour. The
+  advertisement is now logged entry by entry rather than counted, because when
+  it is wrong the symptom surfaces somewhere else entirely — as a track that
+  will not play, or one converted when it needed no converting.
+- **Byte order is the failure that does not announce itself.** L16, L24 and
+  AIFF are big-endian; WAV and AIFC's `sowt` are little-endian; 8-bit is
+  unsigned in WAV and signed in AIFF. Read any of them the wrong way round and
+  the decoder produces full-scale noise rather than an error. That is not
+  something to discover through a pair of speakers, so all of it is covered by
+  host tests (`test/native/run.sh`) that need neither a phone nor a DAC.
+- **The engine's own words are not a user interface.** A refusal reached the
+  now-playing screen as `unsupported or unrecognised audio format
+  (audio/L16;rate=44100;channels=2)`, in twelve-point grey, on a screen whose
+  stated job is being read from across a room. Both audiences are real, so the
+  screen now carries a plain sentence at a size that survives the distance and
+  keeps the engine's wording beneath it.
+
+### What building the sweep taught us
+
+- **Two verdicts were not enough.** Pass and fail assume something measured the
+  clock. The UAC1 device has no feedback endpoint and reports its rate to
+  nobody, so a clean sweep there proves the digital path was faultless and
+  proves nothing whatever about the clock. Calling that a pass would be the app
+  asserting what it cannot see, which is the failure mode this whole document
+  keeps warning about — so it is its own verdict, `unverified`, said plainly
+  rather than footnoted.
+- **Start-up noise is not device noise.** An isochronous stream that is still
+  filling reports glitches that say nothing about the hardware. Measurement
+  begins after a settle and counts only what accrues from there; folding the
+  two together would fail every device for the cost of starting up.
+- **A test signal has to loop in phase.** The sweep needs rates no music exists
+  at, so the tone is generated — and a tone whose period does not divide the
+  rate clicks once per loop. A click is indistinguishable from the dropout the
+  sweep exists to detect, so getting it wrong would not look untidy, it would
+  make the test lie. The period is chosen first, as a whole number of frames,
+  and the frequency derived from it.
+
 ### Format negotiation, as measured
 
 The renderer advertises the attached DAC's real capabilities and refuses what
@@ -420,9 +499,29 @@ metadata before any bytes are fetched, with the reason on screen. Fetching
 first was costing megabytes of a stream that could not play, repeated on every
 controller retry, over a metered connection.
 
+There is now a second mechanism, and unlike negotiation it works. With "accept
+only PCM streams" on, the renderer advertises nothing but LPCM at the rates the
+DAC can clock, and a **server** — as opposed to a controller — does convert to
+fit what it was told. The rate ceiling then stops being something a track can
+violate, because every track is converted to a rate inside it before it is ever
+sent. Measured on the UAC1 device: six entries offered, L16 and L24 at 44.1 and
+48 kHz, and BubbleUPnP Server duly sent L16 at 44.1.
+
+That only holds while the advertisement is exactly and only what the DAC can
+clock. A stray container format would be sent as-is and might exceed the
+ceiling. A stray rate would be worse: the server would transcode *to* something
+unplayable, having spent its effort producing a stream that cannot play, and
+the failure would look like ours.
+
+The two modes are a real trade and the switch now says so rather than naming
+only its consequence. Off, files arrive untouched and impossible ones are
+refused. On, everything plays and nothing is bit-perfect — including tracks the
+DAC could have played untouched.
+
 ### Next up
 
-First-run onboarding and M8.
+First-run onboarding, and M8's remaining two parts: the file-picker source and
+the stability soak.
 
 ---
 
@@ -465,8 +564,18 @@ continuation after controller disconnect, MediaSession, service self-diagnosis c
 
 **M8 — DAC verification feature.** Rate sweep with pass/fail report, generated
 signals plus file picker, optional stability soak, copyable report. Specified
-above. The M2 harness (`lib/screens/playback_test_screen.dart`) is the starting
-point — it already drives playback and surfaces stream health.
+above. The M2 harness (`lib/screens/playback_test_screen.dart`) was the starting
+point and is still reachable from the new screen.
+
+*Built:* the sweep itself (`lib/screens/dac_verification_screen.dart`), the
+verdicts and report (`lib/usb/rate_sweep.dart`), and the generated tone
+(`android/app/src/main/cpp/ToneSource.cpp`, reached through `playTone`).
+Verdicts are pass / fail / **unverified**, the last for a DAC with no feedback
+endpoint to confirm the clock with.
+
+*Not built:* the file-picker source, and the stability soak. The soak is the
+one that catches slow drift and thermal throttling, none of which four seconds
+per rate can show.
 
 ---
 
@@ -493,6 +602,13 @@ instrument the native engine to count underruns and log them.
 > counters are blind to most real dropouts. And **never log from the libusb event thread**:
 > `__android_log_print` can block for milliseconds and causes the very dropouts it is measuring.
 > Still to do at 192 kHz, which is four times the bus bandwidth of this run.
+
+**Native decoding, off-device.** `test/native/run.sh` builds `PcmDecoder` and
+`ToneSource` on the host against a small `android/log.h` shim and runs 53
+checks. Both units fail *silently* rather than loudly — a byte order or sign
+read backwards is noise, not a crash, and a tone that does not loop in phase is
+a click — so they are exactly the code worth checking without a phone, a DAC
+and a media server in the loop. Neither needs any of the three.
 
 **DLNA interop.** Test against at least two controllers with different quirks — BubbleUPnP (Android)
 and one desktop controller (foobar2000 UPnP or JRiver). Verify discovery, transport controls, metadata
