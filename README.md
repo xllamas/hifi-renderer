@@ -34,10 +34,24 @@ USB DAC
 | Format | Decoder | Notes |
 |---|---|---|
 | FLAC | dr_flac (native) | The main case; lossless throughout |
-| WAV / LPCM | dr_wav (native) | No decode step at all |
+| WAV (local file) | dr_wav (native) | No decode step at all |
+| L16 / L24 | PcmDecoder (native) | What a server transcodes to; big-endian per RFC 2586 |
+| WAV / AIFF (streamed) | PcmDecoder (native) | Chunk list parsed, then the same raw samples |
 | MP3 | minimp3 (native) | Lossy source, but never resampled |
 | AAC / M4A | Android MediaCodec | See below |
 | Anything else the platform knows | Android MediaCodec | Opus, Vorbis, ALAC where supported |
+
+The three raw-PCM rows share one decoder, because past the header they are the
+same thing. What differs is what must not be guessed: L16, L24 and AIFF are
+big-endian, WAV and AIFC's `sowt` are little-endian, and 8-bit samples are
+unsigned in WAV and signed everywhere else. Getting any of those backwards
+produces full-scale noise rather than an obvious failure, so each combination
+is covered by a test rather than by inspection: `test/native/run.sh` builds the
+decoder on the host and checks every one of them.
+
+L16 matters more than its obscurity suggests: it is what a media server
+converts *to* when "let the server convert" is on, so without it that switch
+withholds every format the renderer can decode and leaves only one it cannot.
 
 AAC uses the platform decoder rather than a bundled one. That costs nothing in
 fidelity: MediaCodec is a *decoder*, not the system mixer, so its PCM output

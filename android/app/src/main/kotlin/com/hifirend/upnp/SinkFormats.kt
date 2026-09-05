@@ -34,7 +34,7 @@ object SinkFormats {
         "audio/mpeg",
         "audio/mp4", "audio/aac", "audio/x-m4a",
         "audio/wav", "audio/x-wav", "audio/wave",
-        "audio/x-aiff",
+        "audio/aiff", "audio/x-aiff",
     )
 
     /**

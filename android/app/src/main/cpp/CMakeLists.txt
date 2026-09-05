@@ -13,6 +13,7 @@ add_library(hifirend SHARED
     decode/Decoder.cpp
     decode/FlacDecoder.cpp
     decode/Mp3Decoder.cpp
+    decode/PcmDecoder.cpp
     usb/UacProbe.cpp
     usb/UacCapabilities.cpp
     usb/UsbSink.cpp

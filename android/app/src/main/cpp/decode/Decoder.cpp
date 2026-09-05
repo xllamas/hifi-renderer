@@ -16,8 +16,14 @@ SourceFormat formatFromMime(const std::string &mimeRaw) {
 
     if (contains(mime, "flac")) return SourceFormat::Flac;
     if (contains(mime, "mpeg") || contains(mime, "mp3")) return SourceFormat::Mp3;
-    // L16/L24 are raw PCM; wav is handled by the file player, not here.
-    if (contains(mime, "l16") || contains(mime, "l24")) return SourceFormat::Pcm;
+    // L16 and L24 are headerless PCM; WAV and AIFF are PCM behind a chunk
+    // list. PcmDecoder takes all three: it sniffs for the RIFF and FORM
+    // signatures and falls back to the MIME parameters, which is also what a
+    // server labelling one of those bodies as L16 needs.
+    if (contains(mime, "l16") || contains(mime, "l24") ||
+        contains(mime, "wav") || contains(mime, "aif")) {
+        return SourceFormat::Pcm;
+    }
     return SourceFormat::Unknown;
 }
 

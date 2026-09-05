@@ -26,6 +26,7 @@
 #include "decode/Decoder.h"
 #include "decode/FlacDecoder.h"
 #include "decode/Mp3Decoder.h"
+#include "decode/PcmDecoder.h"
 #include "usb/UsbSink.h"
 #include "sink/OboeSink.h"
 
@@ -358,13 +359,19 @@ private:
 
         // Blocks until enough of the stream has arrived to read the headers.
         // Formats differ in how they announce themselves: FLAC has a global
-        // header, MP3 carries one per frame. The decoder handles that; this
-        // only has to pick the right one. An unknown or generic MIME type is
-        // tried as FLAC first, because that is what a hi-fi source almost
-        // always is, then MP3.
+        // header, MP3 carries one per frame, and raw PCM has none at all. The
+        // decoder handles that; this only has to pick the right one. An unknown
+        // or generic MIME type is tried as FLAC first, because that is what a
+        // hi-fi source almost always is, then MP3.
         std::unique_ptr<Decoder> decoder;
         std::string err;
-        if (format_ == SourceFormat::Mp3) {
+        if (format_ == SourceFormat::Pcm) {
+            // Raw PCM announces nothing: for L16 and L24 the rate and channel
+            // count are in the MIME type and nowhere else, which is why the
+            // type is handed to the decoder rather than only classified by it.
+            decoder = std::make_unique<PcmDecoder>(mime_);
+            if (!decoder->open(stream_.get(), &err)) decoder.reset();
+        } else if (format_ == SourceFormat::Mp3) {
             decoder = std::make_unique<Mp3Decoder>();
             if (!decoder->open(stream_.get(), &err)) decoder.reset();
         } else if (format_ == SourceFormat::Flac) {

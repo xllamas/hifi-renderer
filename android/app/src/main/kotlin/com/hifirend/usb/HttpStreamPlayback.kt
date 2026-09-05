@@ -46,7 +46,8 @@ class HttpStreamPlayback(private val context: Context) {
         val m = mime.lowercase()
         if (m.contains("flac")) return false
         if (m.contains("mpeg") || m.contains("mp3")) return false
-        if (m.contains("wav") || m.contains("l16") || m.contains("l24")) return false
+        if (m.contains("wav") || m.contains("l16") || m.contains("l24") ||
+            m.contains("aif")) return false
         return m.contains("aac") || m.contains("mp4") || m.contains("m4a") ||
                m.contains("ogg") || m.contains("opus") || m.contains("vorbis")
     }
