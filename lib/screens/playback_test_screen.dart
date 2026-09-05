@@ -4,11 +4,19 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// M2 harness: play a local WAV bit-perfectly and watch the stream health.
+import '../usb/rate_sweep.dart';
+
+/// M8's other source: play one of the user's own files and watch it.
 ///
-/// The numbers matter more than the sound here. Underruns and transfer errors
-/// are how dropouts show up before they are audible, and the measured rate from
-/// the DAC's feedback endpoint is the evidence that clock tracking is working.
+/// The sweep and the soak use generated tones, which is the only way to reach
+/// rates nobody owns music at. This answers the different question — "does my
+/// actual library play cleanly" — and it is restricted to whatever rates that
+/// material happens to contain, which is the point of having both.
+///
+/// A picked file goes through the *streaming* engine rather than the file
+/// player, because that is where the decoders are: the file player only knows
+/// WAV, and a real library is FLAC. The WAV list below it is the M2 harness,
+/// kept because it is the only remote-debugging tool for a DAC we do not own.
 class PlaybackTestScreen extends StatefulWidget {
   const PlaybackTestScreen({super.key});
 
@@ -16,12 +24,17 @@ class PlaybackTestScreen extends StatefulWidget {
   State<PlaybackTestScreen> createState() => _PlaybackTestScreenState();
 }
 
+/// Which engine is running, and so which counters mean anything.
+enum _Source { none, picked, cached }
+
 class _PlaybackTestScreenState extends State<PlaybackTestScreen> {
   static const _channel = MethodChannel('com.hifirend/renderer');
 
   List<String> _files = [];
   String _message = '';
   Map<String, dynamic> _status = const {};
+  _Source _source = _Source.none;
+  String? _pickedName;
   Timer? _poll;
   bool _busy = false;
 
@@ -35,18 +48,25 @@ class _PlaybackTestScreenState extends State<PlaybackTestScreen> {
   @override
   void dispose() {
     _poll?.cancel();
+    // A file left playing would hold the DAC open behind a screen that has
+    // gone.
+    _channel.invokeMethod('stopPlayback');
     super.dispose();
   }
 
   Future<void> _loadFiles() async {
     final raw = await _channel.invokeMethod<String>('listTestFiles') ?? '';
+    if (!mounted) return;
     setState(() {
       _files = raw.split('\n').where((s) => s.trim().isNotEmpty).toList();
     });
   }
 
   Future<void> _refresh() async {
-    final raw = await _channel.invokeMethod<String>('playbackStatus') ?? '{}';
+    if (_source == _Source.none) return;
+    final method =
+        _source == _Source.picked ? 'fileStatus' : 'playbackStatus';
+    final raw = await _channel.invokeMethod<String>(method) ?? '{}';
     if (!mounted) return;
     setState(() => _status = _decode(raw));
   }
@@ -59,17 +79,54 @@ class _PlaybackTestScreenState extends State<PlaybackTestScreen> {
     }
   }
 
-  Future<void> _play(String path) async {
+  int _int(String k) => (_status[k] as num?)?.toInt() ?? 0;
+
+  Future<void> _pick() async {
+    setState(() => _busy = true);
+    final raw = await _channel.invokeMethod<String>('pickAudioFile') ?? '{}';
+    final picked = _decode(raw);
+    final uri = picked['uri'] as String?;
+    if (uri == null || uri.isEmpty) {
+      if (mounted) setState(() => _busy = false);
+      return; // cancelled
+    }
+
+    setState(() {
+      _pickedName = picked['name'] as String?;
+      _message = 'starting...';
+      _status = const {};
+    });
+    final r = await _channel.invokeMethod<String>('playFile', {
+          'uri': uri,
+          'mime': picked['mime'] ?? '',
+        }) ??
+        '';
+    if (!mounted) return;
+    final result = _decode(r);
+    setState(() {
+      _busy = false;
+      _source = result['ok'] == true ? _Source.picked : _Source.none;
+      _message = result['ok'] == true
+          ? 'playing ${_pickedName ?? ''}'
+          : (result['message'] as String?) ?? r;
+    });
+  }
+
+  Future<void> _playCached(String path) async {
     setState(() {
       _busy = true;
       _message = 'starting...';
+      _status = const {};
     });
-    final r = await _channel.invokeMethod<String>(
-        'playWav', {'path': path, 'loop': true});
+    final r = await _channel
+        .invokeMethod<String>('playWav', {'path': path, 'loop': true});
     if (!mounted) return;
+    final result = _decode(r ?? '');
     setState(() {
-      _message = r ?? '';
       _busy = false;
+      _source = result['ok'] == true ? _Source.cached : _Source.none;
+      _pickedName = path.split('/').last;
+      _message = r ?? '';
     });
   }
 
@@ -78,39 +135,118 @@ class _PlaybackTestScreenState extends State<PlaybackTestScreen> {
     if (mounted) setState(() => _message = 'stopped');
   }
 
+  /// The run so far, expressed the same way a swept rate is.
+  ///
+  /// A file check asks exactly what one rate of a sweep asks — did it
+  /// configure, did it stay clean, and did the clock land where it was asked —
+  /// so it gets the same three verdicts, including `unverified` for a DAC with
+  /// no feedback endpoint to answer with.
+  RateResult? get _result {
+    if (_source == _Source.none || _status.isEmpty) return null;
+    if (_status['running'] != true) return null;
+    return RateResult(
+      rate: _int('rate'),
+      requestedBits: _int('sourceBits'),
+      configured: true,
+      altSetting: _int('altSetting'),
+      deviceBits: _int('deviceBits'),
+      subslot: _int('subslot'),
+      measuredRateHz: (_status['measuredRateHz'] as num?)?.toDouble() ?? 0,
+      feedbackSeen: _int('feedbackAccepted') > 0,
+      underruns: _int('underruns'),
+      transferErrors: _int('transferErrors'),
+      packetErrors: _int('packetErrors'),
+      packetsSubmitted: _int('packetsSubmitted'),
+    );
+  }
+
+  Future<void> _copy() async {
+    final r = _result;
+    if (r == null) return;
+    final b = StringBuffer()
+      ..writeln('HiFi Renderer -- file check')
+      ..writeln(_pickedName ?? 'file')
+      ..writeln(DateTime.now().toIso8601String())
+      ..writeln()
+      ..writeln('Source     ${_status['sourceFormat'] ?? '-'} '
+          '${r.requestedBits}-bit ${_int('channels')}ch at ${r.rate} Hz')
+      ..writeln('Container  ${r.deviceBits}-bit in ${r.subslot} bytes, '
+          'alt ${r.altSetting}')
+      ..writeln('Measured   ${r.feedbackSeen ? '${r.measuredRateHz.toStringAsFixed(1)} Hz' : 'not reported'}')
+      ..writeln('Underruns  ${r.underruns}')
+      ..writeln('Transfer   ${r.transferErrors}')
+      ..writeln('Packets    ${r.packetErrors} bad of ${r.packetsSubmitted}')
+      ..writeln()
+      ..writeln(r.summary)
+      ..writeln()
+      ..writeln('Digital path only. If this reads clean and still sounds '
+          'wrong, the data reached')
+      ..writeln('the DAC intact and the fault is after conversion.');
+    await Clipboard.setData(ClipboardData(text: b.toString()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Report copied')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final running = _status['running'] == true;
+    final r = _result;
     return Scaffold(
-      appBar: AppBar(title: const Text('Bit-perfect playback test')),
+      appBar: AppBar(title: const Text('Play a file')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (_files.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(12),
-                child: Text('No test files found.\n\nPush WAVs with:\n'
-                    'adb push test.wav /sdcard/Android/data/com.hifirend/cache/',
-                    style: TextStyle(fontFamily: 'monospace', fontSize: 12)),
-              ),
+          const Text(
+            'Plays one of your own files through the DAC and watches the '
+            'stream, which is the question the tone tests cannot ask: whether '
+            'the material you actually own plays cleanly. Only the rates that '
+            'material contains get tested.',
+            style: TextStyle(color: Colors.white54, fontSize: 12.5, height: 1.35),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _busy ? null : _pick,
+            icon: const Icon(Icons.folder_open),
+            label: const Text('Choose a file'),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'FLAC, WAV, AIFF, MP3 and anything else the engine decodes.',
+            style: TextStyle(color: Colors.white38, fontSize: 11.5),
+          ),
+
+          if (_files.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Text('Pushed to the app cache',
+                style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            const Text(
+              'The M2 harness. WAV only, and the fastest way to put a known '
+              'file on a phone you are debugging over adb.',
+              style: TextStyle(color: Colors.white38, fontSize: 11.5),
             ),
-          for (final f in _files)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.play_arrow),
-                title: Text(f.split('/').last),
-                enabled: !_busy,
-                onTap: () => _play(f),
+            const SizedBox(height: 8),
+            for (final f in _files)
+              Card(
+                child: ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.play_arrow),
+                  title: Text(f.split('/').last),
+                  enabled: !_busy,
+                  onTap: () => _playCached(f),
+                ),
               ),
-            ),
-          const SizedBox(height: 12),
+          ],
+
+          const SizedBox(height: 16),
           FilledButton.tonalIcon(
             onPressed: _stop,
             icon: const Icon(Icons.stop),
             label: const Text('Stop'),
           ),
-          const SizedBox(height: 20),
+
+          const SizedBox(height: 24),
           Text('Stream health', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Container(
@@ -124,21 +260,52 @@ class _PlaybackTestScreenState extends State<PlaybackTestScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _row('Running', running ? 'yes' : 'no'),
-                _row('Source', '${_status['sourceRate'] ?? '-'} Hz '
+                if (_source == _Source.picked)
+                  _row('Decoded as', '${_status['sourceFormat'] ?? '-'}'),
+                _row('Source', '${_status['sourceRate'] ?? _status['rate'] ?? '-'} Hz '
                     '${_status['sourceBits'] ?? '-'}-bit'),
                 _row('DAC container',
                     '${_status['deviceBits'] ?? '-'}-bit in '
                     '${_status['subslot'] ?? '-'} bytes (alt ${_status['altSetting'] ?? '-'})'),
                 _row('Measured rate', '${_status['measuredRateHz'] ?? '-'} Hz'),
-                _row('Frames sent', '${_status['framesSubmitted'] ?? 0}'),
                 _row('Underruns', '${_status['underruns'] ?? 0}',
                     bad: (_status['underruns'] as num? ?? 0) > 0),
                 _row('Transfer errors', '${_status['transferErrors'] ?? 0}',
                     bad: (_status['transferErrors'] as num? ?? 0) > 0),
+                _row('Bad packets', '${_status['packetErrors'] ?? 0}',
+                    bad: (_status['packetErrors'] as num? ?? 0) > 0),
                 _row('Buffer fill', '${_status['ringFillPercent'] ?? 0}%'),
               ],
             ),
           ),
+
+          if (r != null) ...[
+            const SizedBox(height: 14),
+            Row(children: [
+              Icon(
+                switch (r.verdict) {
+                  SweepVerdict.pass => Icons.check_circle,
+                  SweepVerdict.fail => Icons.error,
+                  SweepVerdict.unverified => Icons.help_outline,
+                },
+                color: switch (r.verdict) {
+                  SweepVerdict.pass => Colors.greenAccent,
+                  SweepVerdict.fail => Colors.redAccent,
+                  SweepVerdict.unverified => Colors.amberAccent,
+                },
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(r.summary,
+                  style: const TextStyle(fontSize: 13))),
+            ]),
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: _copy,
+              icon: const Icon(Icons.copy),
+              label: const Text('Copy report'),
+            ),
+          ],
+
           const SizedBox(height: 16),
           SelectableText(_message,
               style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),

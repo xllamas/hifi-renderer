@@ -4,9 +4,11 @@ import android.content.Context
 import android.hardware.usb.UsbConstants
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbManager
+import android.net.Uri
 import android.os.PowerManager
 import android.util.Log
 import com.hifirend.NativeBridge
+import kotlin.concurrent.thread
 
 private const val TAG = "hifirend"
 
@@ -27,6 +29,10 @@ class UsbPlayback(private val context: Context) {
     // the DAC starves -- the isochronous engine has no way to catch up.
     private var wakeLock: PowerManager.WakeLock? = null
 
+    /** Feeds a picked file into the streaming engine. */
+    private var pump: Thread? = null
+    @Volatile private var pumping = false
+
     fun play(path: String, loop: Boolean): String =
         onOpenDac { fd -> NativeBridge.playWav(fd, path, loop) }
 
@@ -40,6 +46,52 @@ class UsbPlayback(private val context: Context) {
      */
     fun playTone(rate: Int, bits: Int, channels: Int, hz: Int): String =
         onOpenDac { fd -> NativeBridge.playTone(fd, rate, bits, channels, hz) }
+
+    /**
+     * Plays one of the user's own files, to answer "does my actual library
+     * play cleanly".
+     *
+     * Routed through the streaming engine rather than the file player, because
+     * that is where the decoders are: the file player only knows WAV, and a
+     * real library is FLAC. The bytes come from the content resolver instead of
+     * a socket, which is the only difference that matters -- pushStreamData
+     * blocks when the native ring is full, so a local file applies the same
+     * backpressure a slow server would and cannot buffer itself into memory.
+     */
+    fun playFile(uri: String, mime: String): String =
+        onOpenDac { fd ->
+            val result = NativeBridge.startStream(fd, mime = mime)
+            if (result.contains("\"ok\":true")) pumpFile(Uri.parse(uri))
+            result
+        }
+
+    /** Stream health for [playFile]; the file player's counters are separate. */
+    fun fileStatus(): String = NativeBridge.streamStatus()
+
+    private fun pumpFile(uri: Uri) {
+        pumping = true
+        pump = thread(name = "file-source") {
+            var total = 0L
+            try {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val buf = ByteArray(32 * 1024)
+                    while (pumping) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        if (n > 0) {
+                            total += n
+                            if (!NativeBridge.pushStreamData(buf, n)) break
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "file source: ${e::class.java.simpleName}: ${e.message}")
+            } finally {
+                NativeBridge.endStream()
+                Log.i(TAG, "file source: pushed $total bytes")
+            }
+        }
+    }
 
     /**
      * Opens and claims the DAC, runs [body] against its descriptor, and tears
@@ -84,7 +136,15 @@ class UsbPlayback(private val context: Context) {
     }
 
     fun stop() {
+        // Both engines, because this owns the connection either of them wrapped
+        // and neither knows about the other. Stopping the stream is also what
+        // unblocks a pump thread parked in pushStreamData waiting for ring
+        // space that is never going to appear.
+        pumping = false
         NativeBridge.stopPlayback()
+        NativeBridge.stopStream()
+        pump?.join(2_000)
+        pump = null
         connection?.close()
         connection = null
         wakeLock?.let { if (it.isHeld) it.release() }

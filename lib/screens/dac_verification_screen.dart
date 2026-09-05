@@ -243,7 +243,7 @@ class _DacVerificationScreenState extends State<DacVerificationScreen> {
         title: const Text('DAC verification'),
         actions: [
           IconButton(
-            tooltip: 'Play a file instead',
+            tooltip: 'Play one of my files',
             icon: const Icon(Icons.audio_file_outlined),
             onPressed: _sweeping
                 ? null

@@ -6,6 +6,7 @@ import 'package:hifirend/main.dart';
 import 'package:hifirend/renderer_state.dart';
 import 'package:hifirend/screens/dac_verification_screen.dart';
 import 'package:hifirend/screens/onboarding_screen.dart';
+import 'package:hifirend/screens/playback_test_screen.dart';
 import 'package:hifirend/screens/settings_screen.dart';
 import 'package:hifirend/screens/now_playing_screen.dart';
 import 'package:hifirend/usb/dac_capabilities.dart';
@@ -234,6 +235,108 @@ void main() {
       await tester.pump();
 
       expect(calls, contains('setOnboardingDone'));
+    });
+  });
+
+  group('FileSource', () {
+    const channel = MethodChannel('com.hifirend/renderer');
+    late TestDefaultBinaryMessenger messenger;
+
+    setUp(() {
+      messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    });
+
+    tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    /// A clean FLAC on a DAC that reports its clock.
+    const streaming = '{"running":true,"rate":96000,"altSetting":2,'
+        '"deviceBits":24,"subslot":4,"measuredRateHz":95999.0,'
+        '"feedbackAccepted":900,"underruns":0,"transferErrors":0,'
+        '"packetErrors":0,"packetsSubmitted":40000,"sourceFormat":"FLAC",'
+        '"sourceBits":24,"channels":2,"ringFillPercent":98}';
+
+    testWidgets('plays a picked file and judges it like a swept rate',
+        (tester) async {
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        return switch (call.method) {
+          'listTestFiles' => '',
+          'pickAudioFile' =>
+            '{"uri":"content://x/1","name":"Babel.flac","mime":"audio/flac"}',
+          'playFile' => '{"ok":true}',
+          'fileStatus' => streaming,
+          _ => null,
+        };
+      });
+
+      await tester.pumpWidget(const MaterialApp(home: PlaybackTestScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Choose a file'));
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // The picked MIME must reach the engine: the decoder is chosen from it,
+      // and a wrong one silently falls back to "try FLAC, then give up".
+      final play = calls.firstWhere((c) => c.method == 'playFile');
+      expect(play.arguments['uri'], 'content://x/1');
+      expect(play.arguments['mime'], 'audio/flac');
+
+      // Status comes from the streaming engine, not the WAV file player.
+      expect(calls.any((c) => c.method == 'fileStatus'), isTrue);
+      expect(calls.any((c) => c.method == 'playbackStatus'), isFalse);
+
+      // 'FLAC' also appears in the blurb listing supported formats, so match
+      // the status row's value exactly.
+      expect(find.text('FLAC'), findsOneWidget);
+      await tester.scrollUntilVisible(
+          find.textContaining('clean, clock within'), 200,
+          scrollable: find.byType(Scrollable).first);
+      expect(find.textContaining('clean, clock within'), findsOneWidget);
+    });
+
+    testWidgets('cancelling the picker changes nothing', (tester) async {
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call.method);
+        return switch (call.method) {
+          'listTestFiles' => '',
+          'pickAudioFile' => '{}',
+          _ => null,
+        };
+      });
+
+      await tester.pumpWidget(const MaterialApp(home: PlaybackTestScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Choose a file'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(calls, isNot(contains('playFile')));
+      expect(find.text('Choose a file'), findsOneWidget);
+    });
+
+    testWidgets('shows why a file was refused rather than looking idle',
+        (tester) async {
+      messenger.setMockMethodCallHandler(channel, (call) async =>
+          switch (call.method) {
+            'listTestFiles' => '',
+            'pickAudioFile' =>
+              '{"uri":"content://x/2","name":"x.dsf","mime":"audio/dsd"}',
+            'playFile' =>
+              '{"ok":false,"message":"Stop playback before testing a file."}',
+            _ => null,
+          });
+
+      await tester.pumpWidget(const MaterialApp(home: PlaybackTestScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Choose a file'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await tester.scrollUntilVisible(
+          find.textContaining('Stop playback before testing'), 200,
+          scrollable: find.byType(Scrollable).first);
+      expect(find.textContaining('Stop playback before testing'),
+          findsOneWidget);
     });
   });
 

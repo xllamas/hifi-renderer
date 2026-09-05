@@ -3,7 +3,9 @@ package com.hifirend
 import android.content.Intent
 import android.hardware.usb.UsbManager
 import android.os.Build
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.view.WindowManager
 import com.hifirend.usb.UsbAudioProbe
 import com.hifirend.RendererControl
@@ -104,6 +106,41 @@ class MainActivity : FlutterActivity() {
                     // detaches them from any stream already running and kills
                     // its transfers mid-flight. Refuse rather than corrupt what
                     // is playing.
+                    "pickAudioFile" -> {
+                        pickResult?.success("{}")   // a picker left open
+                        pickResult = result
+                        // "*/*" with an audio hint rather than "audio/*": some
+                        // providers type a FLAC as octet-stream, and a picker
+                        // that hides the file the user came for is worse than
+                        // one that shows too much.
+                        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "*/*"
+                            putExtra(Intent.EXTRA_MIME_TYPES,
+                                arrayOf("audio/*", "application/octet-stream"))
+                        }
+                        runCatching { startActivityForResult(intent, PICK_AUDIO) }
+                            .onFailure {
+                                Log.w("hifirend", "no document picker: ${it.message}")
+                                pickResult = null
+                                result.success("{}")
+                            }
+                    }
+                    "playFile" -> scope.launch {
+                        val uri = call.argument<String>("uri") ?: ""
+                        val mime = call.argument<String>("mime") ?: ""
+                        val r = if (RendererState.isPlaying) {
+                            """{"ok":false,"message":"Stop playback before testing a file."}"""
+                        } else if (uri.isEmpty()) {
+                            """{"ok":false,"message":"No file chosen."}"""
+                        } else try {
+                            withContext(Dispatchers.IO) { playback.playFile(uri, mime) }
+                        } catch (e: Throwable) {
+                            """{"ok":false,"message":"${e::class.java.simpleName}: ${e.message}"}"""
+                        }
+                        result.success(r)
+                    }
+                    "fileStatus" -> result.success(playback.fileStatus())
                     "playTone" -> scope.launch {
                         val r = if (RendererState.isPlaying) {
                             """{"ok":false,"message":"Stop playback before running the sweep."}"""
@@ -230,6 +267,58 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+
+    /** Held across the picker Activity, which answers in onActivityResult. */
+    private var pickResult: MethodChannel.Result? = null
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != PICK_AUDIO) return
+        val pending = pickResult ?: return
+        pickResult = null
+
+        val uri = data?.data
+        if (resultCode != RESULT_OK || uri == null) {
+            pending.success("{}")
+            return
+        }
+        val name = displayName(uri) ?: uri.lastPathSegment ?: "file"
+        // The extension wins over the provider's answer. Providers routinely
+        // report a FLAC as application/octet-stream, and the decoder is chosen
+        // from this string -- a generic type means "try FLAC, then give up",
+        // which is exactly wrong for the MP3 in someone's library.
+        val mime = mimeFromName(name) ?: contentResolver.getType(uri) ?: ""
+        Log.i("hifirend", "picked '$name' as $mime")
+        pending.success(
+            """{"uri":"""" + esc(uri.toString()) +
+            """","name":"""" + esc(name) + """","mime":"""" + esc(mime) + """"}""")
+    }
+
+    private fun displayName(uri: Uri): String? = runCatching {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull()
+
+    /**
+     * Extension to MIME, covering what the engine can actually decode. Anything
+     * unrecognised returns null so the provider's own answer is used, and an
+     * empty type still works -- the decoder falls back to sniffing.
+     */
+    private fun mimeFromName(name: String): String? =
+        when (name.substringAfterLast('.', "").lowercase()) {
+            "flac" -> "audio/flac"
+            "mp3" -> "audio/mpeg"
+            "wav", "wave" -> "audio/wav"
+            "aif", "aiff", "aifc" -> "audio/aiff"
+            "m4a", "mp4" -> "audio/mp4"
+            "aac" -> "audio/aac"
+            "ogg", "oga" -> "audio/ogg"
+            "opus" -> "audio/opus"
+            else -> null
+        }
+
+    private fun esc(s: String) = s.replace("\\", "\\\\").replace("\"", "\\\"")
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val playback by lazy { UsbPlayback(applicationContext) }
 
@@ -240,5 +329,6 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val CHANNEL = "com.hifirend/renderer"
+        private const val PICK_AUDIO = 4802
     }
 }

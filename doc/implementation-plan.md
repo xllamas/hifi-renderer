@@ -337,6 +337,8 @@ hardware we do not own can send us.
   loop point is phase-continuous and does not click.
 - **The user's own file**, via a picker, for "does my actual library play
   cleanly". Restricted to whatever rates that material happens to contain.
+  Built through the streaming engine so every decoder is available, not just
+  WAV.
 
 ### Stability soak
 
@@ -374,7 +376,7 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 | M6 appliance | ✅ foreground service, boot start, wake locks, vendor autostart |
 | M7 widget | ✅ 4x2, art, transport, pushed from the service |
 | Device icon | ✅ launcher + DLNA iconList (PNG/JPEG, 48 and 120) |
-| M8 DAC verification | 🟡 rate sweep, stability soak, verdicts and report · ❌ file source |
+| M8 DAC verification | ✅ rate sweep, stability soak, file source, verdicts and reports |
 
 ### Exercised on hardware
 
@@ -615,9 +617,10 @@ DAC could have played untouched.
 
 ### Next up
 
-M8's last part: the file-picker source. That is the whole of the outstanding
-work — M8 closes when the app can run every test it specifies, not when any
-particular DAC has passed them.
+Every milestone in this plan is now built. What is left is not a feature list:
+it is use. The app exists to be pointed at hardware nobody here owns, and the
+reports it produces are the only thing that can turn "works on two DACs in one
+room" into evidence.
 
 ---
 
@@ -678,9 +681,18 @@ cannot see. Ten minutes clean is surfaced as `meetsBar`, so the plan's own
 requirement is something the app answers rather than something this document
 asserts.
 
-*Not built:* the file-picker source, for "does my actual library play cleanly".
+The file source (`lib/screens/playback_test_screen.dart`) answers the different
+question — "does my actual library play cleanly" — from a document picked
+through the storage framework, so it needs no storage permission and no
+plugin. A picked file goes through the *streaming* engine rather than the file
+player, because that is where the decoders are: the file player only knows WAV,
+and a real library is FLAC. The MIME type is taken from the file's extension in
+preference to the provider's answer, since providers routinely report a FLAC as
+`application/octet-stream` and the decoder is chosen from that string. Its
+verdict is a `RateResult`, the same three-way judgement a swept rate gets,
+because it asks the same question of one rate.
 
-M8 is done when the app can run each of these against whatever is plugged in.
+M8 is complete: the app can run each of these against whatever is plugged in.
 Hardware outcomes are what the finished tool is *for*, not a condition of
 finishing it — see design rule 3.
 
