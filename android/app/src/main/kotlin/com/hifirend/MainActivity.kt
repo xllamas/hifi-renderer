@@ -100,6 +100,27 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(r)
                     }
+                    // The sweep force-claims the audio interfaces, which
+                    // detaches them from any stream already running and kills
+                    // its transfers mid-flight. Refuse rather than corrupt what
+                    // is playing.
+                    "playTone" -> scope.launch {
+                        val r = if (RendererState.isPlaying) {
+                            """{"ok":false,"message":"Stop playback before running the sweep."}"""
+                        } else try {
+                            withContext(Dispatchers.IO) {
+                                playback.playTone(
+                                    call.argument<Int>("rate") ?: 44100,
+                                    call.argument<Int>("bits") ?: 16,
+                                    call.argument<Int>("channels") ?: 2,
+                                    call.argument<Int>("hz") ?: 1000,
+                                )
+                            }
+                        } catch (e: Throwable) {
+                            """{"ok":false,"message":"${e::class.java.simpleName}: ${e.message}"}"""
+                        }
+                        result.success(r)
+                    }
                     "stopPlayback" -> scope.launch {
                         withContext(Dispatchers.IO) { playback.stop() }
                         result.success(null)

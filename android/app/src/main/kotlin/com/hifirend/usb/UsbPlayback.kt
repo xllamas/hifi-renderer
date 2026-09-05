@@ -27,7 +27,28 @@ class UsbPlayback(private val context: Context) {
     // the DAC starves -- the isochronous engine has no way to catch up.
     private var wakeLock: PowerManager.WakeLock? = null
 
-    fun play(path: String, loop: Boolean): String {
+    fun play(path: String, loop: Boolean): String =
+        onOpenDac { fd -> NativeBridge.playWav(fd, path, loop) }
+
+    /**
+     * Streams a generated tone, for the rate sweep.
+     *
+     * [bits] is the source depth, which is what selects the alt-setting; the
+     * sweep passes a depth the DAC declared rather than a fixed one, because
+     * asking a 16-bit device for 24 fails at configure and would be reported as
+     * the rate failing.
+     */
+    fun playTone(rate: Int, bits: Int, channels: Int, hz: Int): String =
+        onOpenDac { fd -> NativeBridge.playTone(fd, rate, bits, channels, hz) }
+
+    /**
+     * Opens and claims the DAC, runs [body] against its descriptor, and tears
+     * the whole thing down again if the engine did not take.
+     *
+     * The connection must outlive the stream -- native wraps the descriptor but
+     * does not own it -- so it is held here rather than by the caller.
+     */
+    private inline fun onOpenDac(body: (Int) -> String): String {
         stop()
 
         val probe = UsbAudioProbe(context)
@@ -57,7 +78,7 @@ class UsbPlayback(private val context: Context) {
             setReferenceCounted(false)
             acquire(4 * 60 * 60 * 1000L)  // bounded so a leak cannot drain the battery
         }
-        val result = NativeBridge.playWav(conn.fileDescriptor, path, loop)
+        val result = body(conn.fileDescriptor)
         if (!result.contains("\"ok\":true")) stop()
         return result
     }

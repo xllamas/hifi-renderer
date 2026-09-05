@@ -25,6 +25,8 @@ object NativeBridge {
 
     private external fun nativePlayWav(fd: Int, path: String, loop: Boolean): String
 
+    private external fun nativePlayTone(fd: Int, rate: Int, bits: Int, channels: Int, hz: Int): String
+
     private external fun nativeStopPlayback()
 
     private external fun nativePlaybackStatus(): String
@@ -59,6 +61,18 @@ object NativeBridge {
     fun playWav(fd: Int, path: String, loop: Boolean): String =
         loadError?.let { """{"ok":false,"message":"native library failed to load: $it"}""" }
             ?: nativePlayWav(fd, path, loop)
+
+    /**
+     * Streams a generated tone at [rate] for the DAC rate sweep.
+     *
+     * [hz] is a target: the tone lands on the nearest frequency whose period is
+     * a whole number of frames, so looping it is phase-continuous. A tone that
+     * clicked once per loop would be indistinguishable from the dropout the
+     * sweep exists to detect.
+     */
+    fun playTone(fd: Int, rate: Int, bits: Int, channels: Int, hz: Int): String =
+        loadError?.let { """{"ok":false,"message":"native library failed to load: $it"}""" }
+            ?: nativePlayTone(fd, rate, bits, channels, hz)
 
     fun stopPlayback() {
         if (isLoaded) nativeStopPlayback()

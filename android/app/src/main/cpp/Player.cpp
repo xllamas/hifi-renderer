@@ -15,7 +15,9 @@
 #include <sys/resource.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -27,6 +29,7 @@
 #define DR_WAV_NO_STDIO_WCHAR
 #include "third_party/dr_libs/dr_wav.h"
 
+#include "ToneSource.h"
 #include "usb/UsbSink.h"
 
 #define LOG_TAG "hifirend"
@@ -54,6 +57,73 @@ public:
     static Player &instance() {
         static Player p;
         return p;
+    }
+
+    /**
+     * Streams a generated tone at an exact rate, for the DAC rate sweep.
+     *
+     * A file cannot serve this: the point is to test every rate the DAC
+     * advertises, including ones no music exists at -- 705.6 and 768 kHz on the
+     * AL400 -- and requiring the user to source material at each would make the
+     * feature unusable exactly where it is most needed.
+     *
+     * [approxHz] is a target, not a promise. The tone lands on the nearest
+     * frequency whose period is a whole number of frames, so the buffer holds
+     * an exact number of cycles and looping it is phase-continuous. A tone that
+     * did not divide evenly would click once per loop, and a click is
+     * indistinguishable from the dropout this test exists to detect.
+     */
+    std::string playTone(int fd, uint32_t rate, int bits, int channels, int approxHz) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stopLocked();
+
+        // -20 dBFS. Loud enough to hear that something is playing, quiet
+        // enough not to punish whoever left the amplifier turned up: the
+        // counters this test reads do not care about level.
+        tone_.build(rate, approxHz, channels, 0.1 * 2147483647.0);
+        if (tone_.empty()) return errorJson("bad tone parameters");
+
+        auto sink = std::make_unique<UsbSink>();
+        std::string err;
+        if (!sink->open(fd, &err)) return errorJson("open: " + err);
+        if (!sink->configure(rate, bits, channels, &err)) {
+            return errorJson("configure: " + err);
+        }
+
+        sink_ = std::move(sink);
+        useTone_ = true;
+        feeding_.store(true);
+        loop_ = true;
+        sourceRate_ = rate;
+        sourceBits_ = bits;
+        sourceChannels_ = channels;
+        sourceFrames_ = 0;
+        framesRead_.store(0);
+
+        feeder_ = std::thread(&Player::feed, this);
+
+        const size_t target = sink_->ringSpace() / 2;
+        for (int i = 0; i < 200 && sink_->ringAvailable() < target; i++) usleep(5000);
+
+        if (!sink_->start(&err)) {
+            feeding_.store(false);
+            if (feeder_.joinable()) feeder_.join();
+            sink_->close();
+            sink_.reset();
+            useTone_ = false;
+            return errorJson("start: " + err);
+        }
+
+        LOGI("tone: %.1f Hz at %u Hz %d-bit %dch (%u frames/cycle, alt %d)",
+             tone_.toneHz(), rate, bits, channels, tone_.framesPerCycle(),
+             sink_->altSetting());
+
+        return std::string("{\"ok\":true,\"sourceRate\":") + std::to_string(rate) +
+               ",\"sourceBits\":" + std::to_string(bits) +
+               ",\"channels\":" + std::to_string(channels) +
+               ",\"toneHz\":" + std::to_string(tone_.toneHz()) +
+               ",\"deviceBits\":" + std::to_string(sink_->deviceBits()) +
+               ",\"altSetting\":" + std::to_string(sink_->altSetting()) + "}";
     }
 
     std::string play(int fd, const std::string &path, bool loop) {
@@ -91,6 +161,8 @@ public:
         sourceChannels_ = channels;
         sourceFrames_ = totalFrames;
         memcpy(&wav_, &wav, sizeof(drwav));
+        wavOpen_ = true;
+        useTone_ = false;
 
         feeder_ = std::thread(&Player::feed, this);
 
@@ -111,6 +183,7 @@ public:
             sink_->close();
             sink_.reset();
             drwav_uninit(&wav_);
+            wavOpen_ = false;
             return errorJson("start: " + err);
         }
 
@@ -143,8 +216,14 @@ private:
             sink_->stop();
             sink_->close();
             sink_.reset();
-            drwav_uninit(&wav_);
         }
+        // Only the file path has a decoder to tear down. Calling this on the
+        // tone path would hand dr_wav a structure it never initialised.
+        if (wavOpen_) {
+            drwav_uninit(&wav_);
+            wavOpen_ = false;
+        }
+        useTone_ = false;
     }
 
     std::string statusLocked() {
@@ -187,7 +266,16 @@ private:
             }
             size_t wantFrames = std::min<size_t>(kChunkFrames, space / frameBytes);
 
-            drwav_uint64 got = drwav_read_pcm_frames_s32(&wav_, wantFrames, scratch.data());
+            // The tone never runs out: it is a whole number of cycles and
+            // wraps in phase, so the loop below only ever sees the file case
+            // reach an end.
+            drwav_uint64 got;
+            if (useTone_) {
+                tone_.read(scratch.data(), wantFrames);
+                got = wantFrames;
+            } else {
+                got = drwav_read_pcm_frames_s32(&wav_, wantFrames, scratch.data());
+            }
             if (got == 0) {
                 if (loop_) {
                     drwav_seek_to_pcm_frame(&wav_, 0);
@@ -225,6 +313,9 @@ private:
     std::mutex mutex_;
     std::unique_ptr<UsbSink> sink_;
     drwav wav_{};
+    bool wavOpen_ = false;
+    ToneSource tone_;
+    bool useTone_ = false;
     std::thread feeder_;
     std::atomic<bool> feeding_{false};
     std::atomic<uint64_t> framesRead_{0};
@@ -242,6 +333,15 @@ Java_com_hifirend_NativeBridge_nativePlayWav(JNIEnv *env, jobject, jint fd,
     const char *p = env->GetStringUTFChars(path, nullptr);
     std::string result = Player::instance().play(static_cast<int>(fd), p, loop == JNI_TRUE);
     env->ReleaseStringUTFChars(path, p);
+    return env->NewStringUTF(result.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hifirend_NativeBridge_nativePlayTone(JNIEnv *env, jobject, jint fd, jint rate,
+                                              jint bits, jint channels, jint hz) {
+    std::string result = Player::instance().playTone(
+        static_cast<int>(fd), static_cast<uint32_t>(rate), static_cast<int>(bits),
+        static_cast<int>(channels), static_cast<int>(hz));
     return env->NewStringUTF(result.c_str());
 }
 
