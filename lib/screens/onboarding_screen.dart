@@ -150,11 +150,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 ? 'Autostart${_manufacturer.isEmpty ? '' : ' ($_manufacturer)'}'
                 : 'Your phone maker\'s own restrictions',
             detail: hasVendor
-                ? 'Your phone has background-app restrictions of its own, '
-                    'separate from Android\'s, and they are what stops the '
-                    'renderer coming back after a reboot. This opens that '
-                    'screen; the app cannot tell whether you granted it, so it '
-                    'stays unticked either way.'
+                ? 'Phones from this maker usually add background-app '
+                    'restrictions of their own, separate from Android\'s, and '
+                    'they are the usual reason a renderer does not come back '
+                    'after a reboot. The app cannot detect them — it only '
+                    'knows this maker has such a screen — and it cannot tell '
+                    'whether you granted anything there, so this step never '
+                    'ticks.'
                 : 'We have no known settings screen for this phone. If the '
                     'renderer stops when idle or does not return after a '
                     'reboot, look for "autostart", "background apps" or '

@@ -285,9 +285,18 @@ state is now read from the notification manager rather than the permission,
 because a user who granted it and later switched notifications off is in the
 same position as one who never granted it.
 
-Step 5's self-diagnosis now reaches the now-playing screen and not only
-settings: a renderer being killed in the background looks, from across the
-room, exactly like one that works — right up until the music stops.
+Step 5's self-diagnosis lives in settings, above the permissions that fix it,
+because it is the reason someone opens that section. It is also the only
+manufacturer-independent signal the app has: the vendor step is inferred from
+`Build.MANUFACTURER` being in a table, while this is the service observing that
+it was actually killed — which is what makes it the part that works on phones
+nobody here owns.
+
+The vendor step is worded as the inference it is. The app cannot detect a
+background-app restriction; there is no API for it. It knows the make of the
+phone and whether a known Intent resolves, so it says phones from this maker
+*usually* add such restrictions, and says outright that it cannot detect them.
+Claiming otherwise would be design rule 2 broken in the copy.
 
 ---
 

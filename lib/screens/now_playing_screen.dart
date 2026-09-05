@@ -59,46 +59,6 @@ class NowPlayingScreen extends StatelessWidget {
 
   bool get _hasProblem => status.lastError != null && !status.isPlaying;
 
-  /// Something on this phone has been killing the renderer.
-  ///
-  /// This belongs on the main screen rather than only in settings. A renderer
-  /// killed in the background looks, from across the room, exactly like one
-  /// that works -- right up until the music stops and nobody knows why. The
-  /// OEM device matrix cannot be tested directly, so the app noticing and
-  /// saying so is the whole of the mitigation.
-  bool get _isBeingKilled => status.unexpectedDeaths > 0;
-
-  /// A quieter banner than [_problem]: this is a standing condition to fix at
-  /// leisure, not a track that just failed.
-  Widget _killed() => GestureDetector(
-        onTap: onOpenSettings,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.orange.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.orange.withValues(alpha: 0.28)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.battery_alert_outlined,
-                  size: 18, color: Colors.orangeAccent),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'This phone has stopped the renderer '
-                  '${status.unexpectedDeaths} '
-                  'time${status.unexpectedDeaths == 1 ? '' : 's'} in the '
-                  'background. Tap to finish setup.',
-                  style: const TextStyle(fontSize: 12.5, color: Colors.white70),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
   /// Why the last track did not play.
   ///
   /// A refusal that shows nothing is indistinguishable from the app being
@@ -181,13 +141,6 @@ class NowPlayingScreen extends StatelessWidget {
                 child: _problem(),
               ),
             ],
-            if (_isBeingKilled) ...[
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: _edge * 2),
-                child: _killed(),
-              ),
-            ],
           ],
         ),
       );
@@ -228,10 +181,6 @@ class NowPlayingScreen extends StatelessWidget {
           if (_hasProblem) ...[
             const SizedBox(height: 18),
             _problem(),
-          ],
-          if (_isBeingKilled) ...[
-            const SizedBox(height: 12),
-            _killed(),
           ],
           const Spacer(),
         ],
@@ -274,10 +223,6 @@ class NowPlayingScreen extends StatelessWidget {
                 if (_hasProblem) ...[
                   const SizedBox(height: 16),
                   _problem(),
-                ],
-                if (_isBeingKilled) ...[
-                  const SizedBox(height: 10),
-                  _killed(),
                 ],
               ],
             ),

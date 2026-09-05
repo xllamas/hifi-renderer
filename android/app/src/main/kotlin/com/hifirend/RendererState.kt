@@ -72,12 +72,6 @@ object RendererState {
     @Volatile var underruns: Long = 0
 
     /**
-     * How many times the service started while a previous run had not recorded
-     * a clean stop -- i.e. how often something on this phone killed it.
-     */
-    @Volatile var unexpectedDeaths: Int = 0
-
-    /**
      * Why the last track did not play, in words meant for the screen. The
      * engine's own wording is kept in [lastErrorDetail] rather than shown as
      * the headline -- see [com.hifirend.upnp.Problem].
@@ -134,7 +128,6 @@ object RendererState {
         append(",\"dacVolumeSupported\":").append(dacVolumeSupported)
         append(",\"dacVolumeReadback\":").append(q(dacVolumeReadback))
         append(",\"underruns\":").append(underruns)
-        append(",\"unexpectedDeaths\":").append(unexpectedDeaths)
         append(",\"lastError\":").append(q(lastError))
         append(",\"lastErrorDetail\":").append(q(lastErrorDetail))
         append("}")

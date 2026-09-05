@@ -333,10 +333,6 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         RendererNotification.ensureChannel(this)
         startForegroundSafely(null, null, playing = false)
         health.recordServiceStart()
-        // Surfaced on the now-playing screen, not only in settings. A renderer
-        // being killed in the background looks from across the room exactly
-        // like a renderer that works, right up until the music stops.
-        com.hifirend.RendererState.unexpectedDeaths = health.unexpectedDeaths
 
         try {
             // jUPnP 3.x separates construction from startup: the base class

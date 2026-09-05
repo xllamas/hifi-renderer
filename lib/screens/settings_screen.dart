@@ -266,6 +266,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: TextStyle(color: Colors.white54, fontSize: 13),
           ),
           const SizedBox(height: 12),
+          // Above the fixes, because it is the reason to be reading them. This
+          // is also the only manufacturer-independent signal here: everything
+          // else on this screen is inferred from the phone's make, while this
+          // is the app observing that it was actually killed.
+          if (deaths > 0)
+            _check(
+              ok: false,
+              title: 'This phone has stopped the renderer $deaths time(s)',
+              detail: 'Each one is a start that followed a run which never '
+                  'recorded a clean stop, so something killed it in the '
+                  'background. Granting what is below usually fixes it.',
+            ),
           _check(
             ok: ignoringBattery,
             title: 'Battery optimisation exemption',
@@ -282,9 +294,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _check(
               ok: null,
               title: 'Autostart (${manufacturer.isEmpty ? "vendor" : manufacturer})',
-              detail: 'Your phone has its own background-app restrictions, '
-                  'separate from Android\'s. Without this the renderer will not '
-                  'start after a reboot.',
+              detail: 'Phones from this maker usually add background-app '
+                  'restrictions of their own, separate from Android\'s, and '
+                  'they are the usual reason a renderer does not start after a '
+                  'reboot. The app cannot detect them, only that this maker '
+                  'has such a screen.',
               action: 'Open settings',
               onAction: () async {
                 final messenger = ScaffoldMessenger.of(context);
@@ -311,13 +325,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          if (deaths > 0)
-            _check(
-              ok: false,
-              title: 'The renderer has been stopped $deaths time(s)',
-              detail: 'Something on this phone is killing it in the background. '
-                  'Granting the permissions above usually fixes it.',
-            ),
         ],
       ),
     );

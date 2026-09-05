@@ -6,6 +6,7 @@ import 'package:hifirend/main.dart';
 import 'package:hifirend/renderer_state.dart';
 import 'package:hifirend/screens/dac_verification_screen.dart';
 import 'package:hifirend/screens/onboarding_screen.dart';
+import 'package:hifirend/screens/settings_screen.dart';
 import 'package:hifirend/screens/now_playing_screen.dart';
 import 'package:hifirend/usb/dac_capabilities.dart';
 import 'package:hifirend/usb/rate_sweep.dart';
@@ -233,6 +234,88 @@ void main() {
       await tester.pump();
 
       expect(calls, contains('setOnboardingDone'));
+    });
+  });
+
+  group('SettingsScreen', () {
+    const channel = MethodChannel('com.hifirend/renderer');
+    late TestDefaultBinaryMessenger messenger;
+
+    setUp(() {
+      messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    });
+
+    tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    void mock({required int deaths, String manufacturer = 'xiaomi'}) {
+      messenger.setMockMethodCallHandler(channel, (call) async =>
+          switch (call.method) {
+            'applianceStatus' =>
+              '{"health":{"unexpectedDeaths":$deaths,"bootStarts":2,'
+                  '"lastBootBlocked":null},"manufacturer":"$manufacturer",'
+                  '"hasVendorSettings":true,'
+                  '"ignoringBatteryOptimizations":false}',
+            'getServerConversion' => false,
+            'listDacs' => '{"devices":[]}',
+            _ => null,
+          });
+    }
+
+    testWidgets('reports being killed, above the settings that fix it',
+        (tester) async {
+      mock(deaths: 3);
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          status: const RendererStatus(),
+          probe: ValueNotifier(const DacProbeState()),
+          onRefreshCaps: () async {},
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await tester.scrollUntilVisible(
+          find.textContaining('stopped the renderer 3'), 200,
+          scrollable: find.byType(Scrollable).first);
+      expect(find.textContaining('stopped the renderer 3'), findsOneWidget);
+      // Observed, not inferred from the make of the phone -- which is what
+      // makes it the one signal that works on hardware nobody here owns.
+      expect(find.textContaining('never recorded a clean stop'), findsOneWidget);
+    });
+
+    testWidgets('says nothing when it has never been killed', (tester) async {
+      mock(deaths: 0);
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          status: const RendererStatus(),
+          probe: ValueNotifier(const DacProbeState()),
+          onRefreshCaps: () async {},
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.textContaining('stopped the renderer'), findsNothing);
+    });
+
+    testWidgets('states the vendor restriction as an inference, not a fact',
+        (tester) async {
+      mock(deaths: 0);
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          status: const RendererStatus(),
+          probe: ValueNotifier(const DacProbeState()),
+          onRefreshCaps: () async {},
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await tester.scrollUntilVisible(
+          find.textContaining('Phones from this maker'), 200,
+          scrollable: find.byType(Scrollable).first);
+      // The app knows the make and that a screen exists for it. It cannot
+      // detect the restriction, and must not claim to.
+      expect(find.textContaining('usually add background-app'), findsOneWidget);
+      expect(find.textContaining('cannot detect them'), findsOneWidget);
     });
   });
 
@@ -781,14 +864,13 @@ void main() {
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
     });
 
-    testWidgets('says on the main screen when the phone keeps killing it',
+    testWidgets('keeps the kill notice off the now-playing screen',
         (tester) async {
       messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
             'rendererState' =>
               '{"rendererName":"Living Room","transportState":"PLAYING",'
                   '"title":"Excursions","dacConnected":true,'
-                  '"dacName":"SMSL USB AUDIO","dacCount":1,'
-                  '"unexpectedDeaths":3}',
+                  '"dacName":"SMSL USB AUDIO","dacCount":1}',
             'probeUsb' => _al400,
             _ => null,
           });
@@ -796,24 +878,11 @@ void main() {
       await tester.pumpWidget(const HifiRendApp());
       await tester.pump(const Duration(milliseconds: 600));
 
-      // Being killed in the background looks exactly like working, from the
-      // one place this screen is meant to be read from.
-      expect(find.textContaining('stopped the renderer 3 times'),
-          findsOneWidget);
-      expect(find.textContaining('Tap to finish setup'), findsOneWidget);
-    });
-
-    testWidgets('stays quiet when nothing has killed it', (tester) async {
-      messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
-            'rendererState' => _playing,
-            'probeUsb' => _al400,
-            _ => null,
-          });
-
-      await tester.pumpWidget(const HifiRendApp());
-      await tester.pump(const Duration(milliseconds: 600));
-
+      // Being killed in the background is a standing configuration fault, and
+      // it lives in settings with the fixes for it. This screen is for the
+      // music.
       expect(find.textContaining('stopped the renderer'), findsNothing);
+      expect(find.text('Excursions'), findsOneWidget);
     });
 
     testWidgets('idle screen names the connected DAC', (tester) async {
