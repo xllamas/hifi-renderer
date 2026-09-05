@@ -32,7 +32,13 @@ class RendererStatus {
   /// trusted | untrusted | unknown -- whether the DAC reports its own volume.
   final String dacVolumeReadback;
   final int underruns;
+
+  /// Why the last track did not play, in words meant to be read from across a
+  /// room. The engine's own wording is in [lastErrorDetail].
   final String? lastError;
+
+  /// The technical message behind [lastError], when there is one.
+  final String? lastErrorDetail;
 
   const RendererStatus({
     this.rendererName = 'HiFi Renderer',
@@ -59,6 +65,7 @@ class RendererStatus {
     this.dacVolumeReadback = 'unknown',
     this.underruns = 0,
     this.lastError,
+    this.lastErrorDetail,
   });
 
   static RendererStatus parse(String source) {
@@ -89,6 +96,7 @@ class RendererStatus {
         dacVolumeReadback: j['dacVolumeReadback'] as String? ?? 'unknown',
         underruns: (j['underruns'] as num?)?.toInt() ?? 0,
         lastError: j['lastError'] as String?,
+        lastErrorDetail: j['lastErrorDetail'] as String?,
       );
     } catch (_) {
       return const RendererStatus();
@@ -142,6 +150,7 @@ class RendererStatus {
         dacVolumeReadback: dacVolumeReadback,
         underruns: underruns,
         lastError: lastError,
+        lastErrorDetail: lastErrorDetail,
       );
 
   static String formatTime(int seconds) {

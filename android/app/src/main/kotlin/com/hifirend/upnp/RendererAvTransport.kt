@@ -191,7 +191,10 @@ class RendererAvTransport(
      */
     fun onPlaybackFailed(message: String) {
         Log.e(TAG, "engine failed during playback: $message")
-        com.hifirend.RendererState.lastError = message
+        Problem.describe(message).let {
+            com.hifirend.RendererState.lastError = it.headline
+            com.hifirend.RendererState.lastErrorDetail = it.detail
+        }
         // Tear the stream down. Since a gapless hand-over leaves the sink
         // running, a failure after one would otherwise leave it playing an
         // empty ring for ever -- silence that reports itself as playback.
@@ -253,6 +256,7 @@ class RendererAvTransport(
             unplayableRate(next.track.sampleFrequency)?.let { why ->
                 Log.i(TAG, "auto-advance refused before fetch: $why")
                 com.hifirend.RendererState.lastError = why
+                com.hifirend.RendererState.lastErrorDetail = null
                 playback?.stop()
                 transportState = TransportState.STOPPED
                 publishState()
@@ -304,6 +308,7 @@ class RendererAvTransport(
         unplayableRate(queue.current?.track?.sampleFrequency ?: 0)?.let { why ->
             Log.i(TAG, "refusing before fetch: $why")
             com.hifirend.RendererState.lastError = why
+            com.hifirend.RendererState.lastErrorDetail = null
             transportState = TransportState.STOPPED
             publishState()
             return

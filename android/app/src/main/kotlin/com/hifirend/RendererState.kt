@@ -70,7 +70,16 @@ object RendererState {
     @Volatile var dacVolumeReadback: String = "unknown"
 
     @Volatile var underruns: Long = 0
+
+    /**
+     * Why the last track did not play, in words meant for the screen. The
+     * engine's own wording is kept in [lastErrorDetail] rather than shown as
+     * the headline -- see [com.hifirend.upnp.Problem].
+     */
     @Volatile var lastError: String? = null
+
+    /** The technical message behind [lastError], or null when there is none. */
+    @Volatile var lastErrorDetail: String? = null
 
     val isPlaying: Boolean get() = transportState == "PLAYING"
 
@@ -120,6 +129,7 @@ object RendererState {
         append(",\"dacVolumeReadback\":").append(q(dacVolumeReadback))
         append(",\"underruns\":").append(underruns)
         append(",\"lastError\":").append(q(lastError))
+        append(",\"lastErrorDetail\":").append(q(lastErrorDetail))
         append("}")
     }
 }

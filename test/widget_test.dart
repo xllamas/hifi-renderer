@@ -216,6 +216,54 @@ void main() {
       expect(find.text('SMSL USB AUDIO'), findsOneWidget);
     });
 
+    testWidgets('a refused track explains itself in plain language', (tester) async {
+      messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
+            'rendererState' =>
+              '{"rendererName":"Living Room","transportState":"STOPPED",'
+                  '"title":"Below My Feet","artist":"Mumford & Sons",'
+                  '"dacConnected":true,"dacName":"SPACETOUCH USB Audio","dacCount":1,'
+                  '"lastError":"This track is in a format the renderer cannot decode.",'
+                  '"lastErrorDetail":"unsupported or unrecognised audio format '
+                  '(audio/L16;rate=44100;channels=2)"}',
+            'probeUsb' => _al400,
+            _ => null,
+          });
+
+      await tester.pumpWidget(const HifiRendApp());
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // The headline is what has to carry across a room; the engine's own
+      // wording is there for whoever walks over, not instead of a sentence.
+      expect(find.text('This track is in a format the renderer cannot decode.'),
+          findsOneWidget);
+      expect(
+          find.text('unsupported or unrecognised audio format '
+              '(audio/L16;rate=44100;channels=2)'),
+          findsOneWidget);
+      // And it must not have replaced the track it failed on.
+      expect(find.text('Below My Feet'), findsOneWidget);
+    });
+
+    testWidgets('a problem with no technical detail shows only the sentence',
+        (tester) async {
+      messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
+            'rendererState' =>
+              '{"rendererName":"Living Room","transportState":"STOPPED",'
+                  '"title":"Bird Machine","dacConnected":true,'
+                  '"dacName":"SPACETOUCH USB Audio","dacCount":1,'
+                  '"lastError":"This DAC cannot play 192 kHz; its highest rate is 48 kHz."}',
+            'probeUsb' => _al400,
+            _ => null,
+          });
+
+      await tester.pumpWidget(const HifiRendApp());
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(find.text('This DAC cannot play 192 kHz; its highest rate is 48 kHz.'),
+          findsOneWidget);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    });
+
     testWidgets('idle screen names the connected DAC', (tester) async {
       messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
             'rendererState' =>

@@ -42,13 +42,6 @@ class NowPlayingScreen extends StatelessWidget {
                     : _portrait(context, constraints);
               },
             ),
-            if (status.lastError != null && !status.isPlaying)
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: 8,
-                child: _problem(status.lastError!),
-              ),
             Positioned(
               top: 4,
               right: 4,
@@ -64,27 +57,59 @@ class NowPlayingScreen extends StatelessWidget {
     );
   }
 
+  bool get _hasProblem => status.lastError != null && !status.isPlaying;
+
   /// Why the last track did not play.
   ///
   /// A refusal that shows nothing is indistinguishable from the app being
   /// broken -- which is exactly what a track silently failing to start looks
-  /// like from across the room.
-  Widget _problem(String message) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  /// like from across the room. So the sentence that says what happened is
+  /// sized to be read from there, and the engine's own wording sits beneath it
+  /// in the size it deserves: there for whoever walks over, and not competing
+  /// with the part that is actually legible at a distance.
+  ///
+  /// It takes space in the layout rather than floating over it. As an overlay
+  /// it landed on top of the format badge, so the two things the screen was
+  /// meant to be answering -- what is playing, and why nothing is -- obscured
+  /// each other.
+  Widget _problem() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.amber.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+          color: Colors.amber.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.amber.withValues(alpha: 0.28)),
         ),
-        child: Row(children: [
-          const Icon(Icons.warning_amber_outlined,
-              size: 18, color: Colors.amberAccent),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(message,
-                style: const TextStyle(fontSize: 12, color: Colors.white70)),
-          ),
-        ]),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.error_outline, size: 20, color: Colors.amberAccent),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    status.lastError!,
+                    style: const TextStyle(
+                        fontSize: 17,
+                        height: 1.25,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white),
+                  ),
+                  if (status.lastErrorDetail != null) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      status.lastErrorDetail!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: Colors.white38),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       );
 
   Widget _idle(BuildContext context) => Center(
@@ -105,6 +130,16 @@ class NowPlayingScreen extends StatelessWidget {
             if (status.dacConnected && status.dacName != null) ...[
               const SizedBox(height: 18),
               _outputDevice(),
+            ],
+            // A refusal that emptied the queue leaves nothing playing, and the
+            // reason has to survive that or the screen goes back to looking
+            // idle as though nothing had been asked of it.
+            if (_hasProblem) ...[
+              const SizedBox(height: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: _edge * 2),
+                child: _problem(),
+              ),
             ],
           ],
         ),
@@ -143,6 +178,10 @@ class NowPlayingScreen extends StatelessWidget {
             const SizedBox(height: 10),
             Center(child: _outputDevice()),
           ],
+          if (_hasProblem) ...[
+            const SizedBox(height: 18),
+            _problem(),
+          ],
           const Spacer(),
         ],
       ),
@@ -180,6 +219,10 @@ class NowPlayingScreen extends StatelessWidget {
                 ] else if (status.dacName != null) ...[
                   const SizedBox(height: 10),
                   _outputDevice(),
+                ],
+                if (_hasProblem) ...[
+                  const SizedBox(height: 16),
+                  _problem(),
                 ],
               ],
             ),
