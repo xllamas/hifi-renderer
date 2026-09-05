@@ -622,6 +622,14 @@ it is use. The app exists to be pointed at hardware nobody here owns, and the
 reports it produces are the only thing that can turn "works on two DACs in one
 room" into evidence.
 
+The open question beyond that is a second way in, assessed in
+`doc/protocols-beyond-dlna.md`. The short of it: this is an appliance in a
+home, and a home has guests who will not learn what DLNA is. That is a
+different product from the owner's, sharing one box — and the guest path does
+not compete with the bit-perfect claim, it protects it. Nothing is committed
+to; the first step is an hour deciding whether Android will let this app be a
+Bluetooth speaker at all.
+
 ---
 
 ## Milestones
