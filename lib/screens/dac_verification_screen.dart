@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../usb/dac_capabilities.dart';
 import '../usb/rate_sweep.dart';
+import 'stability_soak_screen.dart';
 import 'playback_test_screen.dart';
 
 /// M8: walk every rate the DAC claims and report what it actually did.
@@ -292,6 +293,19 @@ class _DacVerificationScreenState extends State<DacVerificationScreen> {
                 ),
                 const SizedBox(height: 12),
                 _controls(caps),
+                const SizedBox(height: 12),
+                // The sweep answers bandwidth; the soak answers endurance.
+                // Offered here because this is where someone has just seen
+                // four seconds a rate and may want rather more than that.
+                OutlinedButton.icon(
+                  onPressed: _sweeping
+                      ? null
+                      : () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => StabilitySoakScreen(caps: caps),
+                          )),
+                  icon: const Icon(Icons.timer_outlined),
+                  label: const Text('Stability soak'),
+                ),
               ],
               const SizedBox(height: 20),
               if (_results.isNotEmpty || _running != null) ...[

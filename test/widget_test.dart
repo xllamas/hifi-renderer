@@ -8,6 +8,7 @@ import 'package:hifirend/screens/dac_verification_screen.dart';
 import 'package:hifirend/screens/now_playing_screen.dart';
 import 'package:hifirend/usb/dac_capabilities.dart';
 import 'package:hifirend/usb/rate_sweep.dart';
+import 'package:hifirend/usb/stability_soak.dart';
 
 /// Modelled on the real AL400 probe output.
 const _al400 = '''
@@ -414,6 +415,120 @@ void main() {
       expect(report.unverified, 1);
       expect(report.nothingMeasured, isFalse);
       expect(report.headline, contains('1 of 3 rates failed'));
+    });
+  });
+
+  group('StabilitySoak', () {
+    /// A run of [minutes] with a sample every 5 s, clean unless told otherwise.
+    SoakResult soak({
+      int minutes = 10,
+      int rate = 768000,
+      double measured = 768000,
+      bool feedback = true,
+      bool completed = true,
+      String? failure,
+      Map<int, int> underrunsAt = const {},
+      double drift = 0,
+    }) {
+      final samples = <SoakSample>[];
+      final ticks = minutes * 12;
+      var underruns = 0;
+      for (var i = 1; i <= ticks; i++) {
+        underruns += underrunsAt[i * 5] ?? 0;
+        samples.add(SoakSample(
+          at: Duration(seconds: i * 5),
+          // Drift ramps across the run, which is the shape a warming clock has.
+          measuredRateHz:
+              feedback ? measured + drift * (i / ticks) : 0,
+          underruns: underruns,
+          ringFillPercent: 90,
+        ));
+      }
+      return SoakResult(
+        deviceName: 'AL400',
+        uacVersion: '2.0',
+        rate: rate,
+        bits: 32,
+        altSetting: 1,
+        planned: Duration(minutes: minutes),
+        when: DateTime(2026, 9, 5),
+        completed: completed,
+        failure: failure,
+        samples: samples,
+      );
+    }
+
+    test('a clean ten minutes clears the bar the project set itself', () {
+      final r = soak();
+      expect(r.verdict, SweepVerdict.pass);
+      expect(r.isClean, isTrue);
+      expect(r.meetsBar, isTrue);
+      expect(r.actual, const Duration(minutes: 10));
+      expect(r.asText(), contains('Clears the ten-minute'));
+    });
+
+    test('a clean short run is explicitly not a shorter version of the bar', () {
+      final r = soak(minutes: 2);
+      expect(r.isClean, isTrue);
+      expect(r.meetsBar, isFalse);
+      expect(r.asText(), contains('Short of the ten-minute bar'));
+    });
+
+    test('places the first fault in time, which is the point of a soak', () {
+      // One underrun eight minutes in: the kind a four-second test cannot see.
+      final r = soak(underrunsAt: {480: 1});
+      expect(r.verdict, SweepVerdict.fail);
+      expect(r.firstFaultAt, const Duration(seconds: 480));
+      expect(r.meetsBar, isFalse);
+      expect(r.headline, contains('first at 08:00'));
+      expect(r.asText(), contains('Faults appeared at:'));
+    });
+
+    test('reports drift as a spread, not just a worst case', () {
+      // 20 Hz of wander at 768 kHz is far inside tolerance but worth seeing:
+      // a soak that reported only the worst reading would hide the shape.
+      // The ramp starts one tick in, so it spans drift * (ticks - 1) / ticks.
+      const ticks = 10 * 12;
+      const span = 20 * (ticks - 1) / ticks;
+      final r = soak(drift: 20);
+      expect(r.verdict, SweepVerdict.pass);
+      expect(r.rateMax! - r.rateMin!, closeTo(span, 0.01));
+      expect(r.rateSpreadPercent, closeTo(span / 768000 * 100, 1e-9));
+    });
+
+    test('a clock that wanders outside tolerance fails even with no glitches',
+        () {
+      final r = soak(measured: 768000, drift: 8000);
+      expect(r.isClean, isTrue);
+      expect(r.verdict, SweepVerdict.fail);
+    });
+
+    test('no feedback endpoint is unverified over any length of run', () {
+      final r = soak(minutes: 30, feedback: false);
+      expect(r.verdict, SweepVerdict.unverified);
+      expect(r.meetsBar, isTrue, reason: 'the digital path was still faultless');
+      expect(r.asText(), contains('no feedback endpoint'));
+      expect(r.headline, contains('reports no clock'));
+    });
+
+    test('a stream that stops on its own is a fault, not an ending', () {
+      final r = soak(minutes: 3, completed: false,
+          failure: 'the stream stopped on its own');
+      expect(r.isClean, isFalse);
+      expect(r.verdict, SweepVerdict.fail);
+      expect(r.headline, contains('stopped on its own'));
+    });
+
+    test('stopping early keeps what was proven and says it was stopped', () {
+      final r = soak(minutes: 12, completed: false);
+      expect(r.meetsBar, isTrue);
+      expect(r.headline, contains('Stopped at 12:00'));
+      expect(r.asText(), contains('stopped early'));
+    });
+
+    test('the report never lets a pass stand for hardware it never saw', () {
+      expect(soak().asText(), contains('describes this one device'));
+      expect(soak().asText(), contains('a failure is worth reporting'));
     });
   });
 

@@ -339,7 +339,7 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 | M6 appliance | ✅ foreground service, boot start, wake locks, vendor autostart |
 | M7 widget | ✅ 4x2, art, transport, pushed from the service |
 | Device icon | ✅ launcher + DLNA iconList (PNG/JPEG, 48 and 120) |
-| M8 DAC verification | 🟡 rate sweep, verdicts and report built · ❌ file source, soak |
+| M8 DAC verification | 🟡 rate sweep, stability soak, verdicts and report · ❌ file source |
 
 ### Verified on hardware
 
@@ -558,8 +558,12 @@ DAC could have played untouched.
 
 ### Next up
 
-First-run onboarding, and M8's remaining two parts: the file-picker source and
-the stability soak.
+First-run onboarding, and M8's last part: the file-picker source.
+
+The soak itself is built but unrun. A 30-minute soak at 768 kHz/32-bit is the
+obvious next measurement — 6.1 MB/s sustained is where thermal throttling and
+scheduler stalls would show, and it is the one claim the four-second sweep
+cannot support.
 
 ---
 
@@ -611,9 +615,16 @@ verdicts and report (`lib/usb/rate_sweep.dart`), and the generated tone
 Verdicts are pass / fail / **unverified**, the last for a DAC with no feedback
 endpoint to confirm the clock with.
 
-*Not built:* the file-picker source, and the stability soak. The soak is the
-one that catches slow drift and thermal throttling, none of which four seconds
-per rate can show.
+The stability soak (`lib/screens/stability_soak_screen.dart`,
+`lib/usb/stability_soak.dart`) holds one rate — the DAC's highest by default —
+for 10, 30 or 60 minutes, sampling every five seconds. It reports the counters,
+the *time of the first fault*, and the clock's drift as a spread rather than a
+single worst reading, because the shape of the wander is what a short test
+cannot see. Ten minutes clean is surfaced as `meetsBar`, so the plan's own
+requirement is something the app answers rather than something this document
+asserts.
+
+*Not built:* the file-picker source, for "does my actual library play cleanly".
 
 ---
 
@@ -643,8 +654,8 @@ instrument the native engine to count underruns and log them.
 > **192 kHz and beyond settled 2026-09-05** by the M8 rate sweep: all ten AL400
 > rates to 768 kHz at 32-bit, zero underruns, zero packet errors, worst clock
 > deviation 0.001%. Four seconds each rather than 30 minutes, so this answers
-> bandwidth, not endurance — the soak at the top rate is still to do, and is
-> what the M8 stability soak is for.
+> bandwidth, not endurance. The soak that answers endurance is now built and
+> runnable from the app; it has not yet been run at the top rate.
 
 **Native decoding, off-device.** `test/native/run.sh` builds `PcmDecoder` and
 `ToneSource` on the host against a small `android/log.h` shim and runs 53
