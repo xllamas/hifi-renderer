@@ -4,8 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hifirend/main.dart';
 import 'package:hifirend/renderer_state.dart';
+import 'package:hifirend/screens/dac_verification_screen.dart';
 import 'package:hifirend/screens/now_playing_screen.dart';
 import 'package:hifirend/usb/dac_capabilities.dart';
+import 'package:hifirend/usb/rate_sweep.dart';
 
 /// Modelled on the real AL400 probe output.
 const _al400 = '''
@@ -121,6 +123,297 @@ void main() {
       final s = RendererStatus.parse('not json');
       expect(s.transportState, 'NO_MEDIA_PRESENT');
       expect(s.hasTrack, isFalse);
+    });
+  });
+
+  group('DacVerificationScreen', () {
+    const channel = MethodChannel('com.hifirend/renderer');
+    late TestDefaultBinaryMessenger messenger;
+
+    setUp(() {
+      messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    });
+
+    tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    /// Drives a whole sweep against a DAC that starts cleanly and reports no
+    /// clock -- which is the UAC1 case, and the one real hardware here shows.
+    Future<void> runSweep(WidgetTester tester) async {
+      var statusCalls = 0;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        switch (call.method) {
+          case 'probeUsb':
+            return _uac1;
+          case 'playTone':
+            return '{"ok":true}';
+          case 'playbackStatus':
+            statusCalls++;
+            // Five glitches while filling, none afterwards, and no feedback:
+            // the counters a device with no clock report actually produces.
+            return '{"running":true,"altSetting":1,"deviceBits":16,'
+                '"subslot":2,"measuredRateHz":0,"feedbackAccepted":0,'
+                '"underruns":5,"transferErrors":0,"packetErrors":0,'
+                '"packetsSubmitted":${statusCalls * 1000}}';
+          default:
+            return null;
+        }
+      });
+
+      await tester.pumpWidget(
+          const MaterialApp(home: DacVerificationScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.tap(find.text('Run rate sweep'));
+      // Two rates, each settling then measuring. Stepped rather than jumped so
+      // every await in the chain gets a turn.
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+    }
+
+    testWidgets('sweeps every rate and counts only steady-state glitches',
+        (tester) async {
+      await runSweep(tester);
+
+      // The UAC1 fixture claims 44.1 and 48 kHz.
+      expect(find.text('44.1 kHz'), findsOneWidget);
+      expect(find.text('48 kHz'), findsOneWidget);
+
+      // Clean after settling, and no clock to check it against.
+      expect(find.text('unverified'), findsNWidgets(2));
+      expect(find.text('pass'), findsNothing);
+      expect(find.text('fail'), findsNothing);
+
+      // The five start-up glitches are in the baseline, so they must not have
+      // been counted against the device.
+      expect(find.textContaining('underrun'), findsNothing);
+      expect(
+          find.textContaining('no feedback endpoint'), findsNWidgets(2));
+    });
+
+    testWidgets('follows the sweep down the list as rates complete',
+        (tester) async {
+      // The AL400 claims ten rates, which is enough rows to push the running
+      // one off the bottom -- the case that had the user scrolling by hand.
+      messenger.setMockMethodCallHandler(channel, (call) async =>
+          switch (call.method) {
+            'probeUsb' => _al400,
+            'playTone' => '{"ok":true}',
+            'playbackStatus' =>
+              '{"running":true,"altSetting":2,"deviceBits":24,"subslot":4,'
+                  '"measuredRateHz":0,"feedbackAccepted":0,"underruns":0,'
+                  '"transferErrors":0,"packetErrors":0,"packetsSubmitted":9000}',
+            _ => null,
+          });
+
+      await tester.pumpWidget(
+          const MaterialApp(home: DacVerificationScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Run rate sweep'));
+      for (var i = 0; i < 240; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      final scrollable = tester.widget<ListView>(find.byType(ListView));
+      final position = scrollable.controller!.position;
+      expect(position.maxScrollExtent, greaterThan(0),
+          reason: 'ten rates should overflow the viewport');
+      expect(position.pixels, closeTo(position.maxScrollExtent, 1),
+          reason: 'the view should have followed the results down');
+    });
+
+    testWidgets('stops following once the user scrolls back to look',
+        (tester) async {
+      messenger.setMockMethodCallHandler(channel, (call) async =>
+          switch (call.method) {
+            'probeUsb' => _al400,
+            'playTone' => '{"ok":true}',
+            'playbackStatus' =>
+              '{"running":true,"altSetting":2,"deviceBits":24,"subslot":4,'
+                  '"measuredRateHz":0,"feedbackAccepted":0,"underruns":0,'
+                  '"transferErrors":0,"packetErrors":0,"packetsSubmitted":9000}',
+            _ => null,
+          });
+
+      await tester.pumpWidget(
+          const MaterialApp(home: DacVerificationScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Run rate sweep'));
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      // The user drags back up to read an earlier rate. From here the sweep
+      // must leave the view where they put it.
+      await tester.drag(find.byType(ListView), const Offset(0, 400));
+      await tester.pump();
+      final afterDrag =
+          tester.widget<ListView>(find.byType(ListView)).controller!.position;
+      final parked = afterDrag.pixels;
+      expect(parked, lessThan(afterDrag.maxScrollExtent),
+          reason: 'the drag should have moved off the bottom');
+
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      final position =
+          tester.widget<ListView>(find.byType(ListView)).controller!.position;
+      expect(position.pixels, closeTo(parked, 1),
+          reason: 'later results must not snatch the view back');
+      // And the way back is offered rather than left to guesswork.
+      expect(find.text('Follow'), findsOneWidget);
+
+      // Wind the sweep up rather than leaving its timers running past the end
+      // of the test.
+      await tester.tap(find.text('Stop'));
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+    });
+
+    testWidgets('offers the report once the sweep is done', (tester) async {
+      await runSweep(tester);
+      expect(find.text('Copy report'), findsOneWidget);
+      expect(find.textContaining('reports no clock'), findsOneWidget);
+      // "Follow" belongs to a running sweep, not a finished one.
+      expect(find.text('Follow'), findsNothing);
+    });
+
+    testWidgets('leaving mid-sweep stops the tone and does not throw',
+        (tester) async {
+      final stopped = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        stopped.add(call.method);
+        return switch (call.method) {
+          'probeUsb' => _uac1,
+          'playTone' => '{"ok":true}',
+          'playbackStatus' => '{"running":true}',
+          _ => null,
+        };
+      });
+
+      await tester.pumpWidget(
+          const MaterialApp(home: DacVerificationScreen()));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Run rate sweep'));
+      await tester.pump(const Duration(milliseconds: 600));
+
+      // Replace the screen while a rate is still streaming: every setState
+      // after this point is happening on a dead widget.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      expect(stopped, contains('stopPlayback'));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('RateSweep', () {
+    RateResult clean({
+      int rate = 96000,
+      double measured = 96000,
+      bool feedback = true,
+      int underruns = 0,
+      int packetErrors = 0,
+    }) =>
+        RateResult(
+          rate: rate,
+          requestedBits: 24,
+          configured: true,
+          altSetting: 2,
+          deviceBits: 24,
+          subslot: 4,
+          measuredRateHz: measured,
+          feedbackSeen: feedback,
+          underruns: underruns,
+          packetErrors: packetErrors,
+          packetsSubmitted: 100000,
+        );
+
+    test('passes a rate that streamed clean and clocked where it was asked', () {
+      expect(clean().verdict, SweepVerdict.pass);
+    });
+
+    test('fails a DAC that accepted a rate and clocked another', () {
+      // The failure this exists to catch: 96 kHz accepted, 48 delivered.
+      final r = clean(rate: 96000, measured: 48000);
+      expect(r.verdict, SweepVerdict.fail);
+      expect(r.summary, contains('not 96000 Hz'));
+    });
+
+    test('tolerates the drift a correctly tracking DAC actually shows', () {
+      // 0.002% was measured over 30 minutes on the reference hardware.
+      expect(clean(measured: 96001.92).verdict, SweepVerdict.pass);
+    });
+
+    test('a clean stream with no feedback endpoint is unverified, not passed', () {
+      final r = clean(feedback: false, measured: 0);
+      expect(r.verdict, SweepVerdict.unverified);
+      expect(r.deviationPercent, isNull);
+      expect(r.summary, contains('no feedback endpoint'));
+    });
+
+    test('errors fail the rate even when the clock was right', () {
+      expect(clean(underruns: 3).verdict, SweepVerdict.fail);
+      expect(clean(packetErrors: 12).summary, contains('12 bad packets'));
+    });
+
+    test('a rate that would not configure fails with its reason', () {
+      const r = RateResult(
+        rate: 768000,
+        requestedBits: 24,
+        configured: false,
+        failure: 'configure: device does not support 768000 Hz',
+      );
+      expect(r.verdict, SweepVerdict.fail);
+      expect(r.summary, contains('does not support'));
+    });
+
+    test('the report says plainly when nothing could measure the clock', () {
+      final report = SweepReport(
+        deviceName: 'SPACETOUCH USB Audio',
+        uacVersion: '1.0',
+        when: DateTime(2026, 9, 5),
+        seconds: 4,
+        results: [
+          clean(rate: 44100, feedback: false, measured: 0),
+          clean(rate: 48000, feedback: false, measured: 0),
+        ],
+      );
+      expect(report.nothingMeasured, isTrue);
+      expect(report.failed, 0);
+      expect(report.headline, contains('reports no clock'));
+
+      final text = report.asText();
+      expect(text, contains('SPACETOUCH USB Audio'));
+      expect(text, contains('UNVERIFIED'));
+      // The report must never let a clean sweep be read as proof of the clock.
+      expect(text, contains('no measurement here'));
+      // And it must say what it cannot see at all.
+      expect(text, contains('after conversion'));
+    });
+
+    test('a mixed report counts each verdict separately', () {
+      final report = SweepReport(
+        deviceName: 'AL400',
+        uacVersion: '2.0',
+        when: DateTime(2026, 9, 5),
+        seconds: 4,
+        results: [
+          clean(rate: 44100, measured: 44100),
+          clean(rate: 96000, measured: 48000),
+          clean(rate: 192000, feedback: false, measured: 0),
+        ],
+      );
+      expect(report.passed, 1);
+      expect(report.failed, 1);
+      expect(report.unverified, 1);
+      expect(report.nothingMeasured, isFalse);
+      expect(report.headline, contains('1 of 3 rates failed'));
     });
   });
 

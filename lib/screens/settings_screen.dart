@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import '../renderer_state.dart';
 import '../usb/dac_capabilities.dart';
 import 'dac_capabilities_screen.dart';
-import 'playback_test_screen.dart';
+import 'dac_verification_screen.dart';
 
 /// Configuration: the renderer's network name, plus everything operational
 /// that does not belong on the now-playing screen.
@@ -246,11 +246,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Card(
             child: ListTile(
               leading: const Icon(Icons.speed),
-              title: const Text('Playback verification'),
-              subtitle: const Text('Check what this DAC can really do'),
+              title: const Text('DAC verification'),
+              subtitle: const Text('Test every rate this DAC claims'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const PlaybackTestScreen(),
+                builder: (_) => const DacVerificationScreen(),
               )),
             ),
           ),
