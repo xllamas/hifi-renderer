@@ -226,15 +226,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _serverConversion ? Icons.transform : Icons.verified_outlined,
                 color: _serverConversion ? Colors.amberAccent : Colors.greenAccent,
               ),
-              title: const Text('Let the server convert unplayable tracks'),
+              isThreeLine: true,
+              title: const Text(
+                  'Accept only PCM streams and let the server do the '
+                  'decoding/transcoding'),
               subtitle: Text(
                 _serverConversion
-                    ? 'Everything plays, but nothing is bit-perfect: the server '
-                        'decodes and resamples, including tracks this DAC could '
-                        'have played untouched.'
-                    : 'Tracks at rates this DAC cannot clock are refused, and '
-                        'the reason is shown. Everything that does play is '
-                        'bit-perfect.',
+                    ? 'The renderer advertises nothing but LPCM, at the rates '
+                        'this DAC can clock, so the server converts everything '
+                        'to fit. Everything plays and nothing is bit-perfect -- '
+                        'including tracks the DAC could have played untouched.'
+                    : 'The renderer advertises every format it can decode, so '
+                        'files arrive untouched. Tracks at rates this DAC '
+                        'cannot clock are refused, and the reason is shown.',
                 style: const TextStyle(fontSize: 12),
               ),
             ),

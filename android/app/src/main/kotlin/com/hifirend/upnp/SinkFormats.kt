@@ -47,6 +47,13 @@ object SinkFormats {
      * formats, leaving only LPCM at rates the DAC can clock. That is what makes
      * a server transcode rather than send a file the DAC cannot play -- at the
      * cost of the bit-perfect path, since the server is then doing the decoding.
+     *
+     * That mode's guarantee is exactness in both directions: nothing but LPCM,
+     * and no rate the DAC cannot clock. A stray container format would be sent
+     * as-is and might exceed the ceiling; a stray rate would be transcoded
+     * *to* something unplayable, which is worse than refusing the original,
+     * because the server has then spent its effort producing a stream that
+     * cannot play and the failure looks like the renderer's.
      */
     fun build(caps: JSONObject?, allowNativeFormats: Boolean = true): ProtocolInfos {
         val rates = playableRates(caps)
@@ -60,6 +67,10 @@ object SinkFormats {
         // LPCM, qualified by rate. L16 is 16-bit and L24 is 24-bit by
         // definition, so each is only offered when the DAC has a container
         // that wide.
+        // With the DAC unread -- no device, or no permission yet -- there are
+        // no rates to be exact about. 44.1 and 48 kHz are what every DAC ever
+        // made can clock, so they are the safe claim until the probe answers;
+        // the advertisement is rebuilt when it does.
         val lpcmRates = rates.ifEmpty { listOf(44100, 48000) }
         for (rate in lpcmRates) {
             if (depths.isEmpty() || depths.any { it >= 16 }) {
@@ -91,8 +102,13 @@ object SinkFormats {
                     "http-get:*:audio/L16;rate=$rate;channels=2:DLNA.ORG_PN=LPCM"))
             }.onFailure { Log.w(TAG, "bad LPCM protocolInfo: ${it.message}") }
         }
+        // Logged in full, not just counted. This list is the entire contract
+        // with the server, and when it is wrong the symptom appears somewhere
+        // else entirely -- as a track that will not play, or one that was
+        // converted when it needed no converting.
         Log.i(TAG, "protocolInfo: ${infos.size} entries, rates=$lpcmRates " +
             "depths=$depths native=$allowNativeFormats")
+        for (info in infos) Log.i(TAG, "  advertising ${info.contentFormat}")
         return infos
     }
 
