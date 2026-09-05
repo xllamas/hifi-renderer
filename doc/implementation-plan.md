@@ -48,13 +48,20 @@ same directory, not two copies. Work in the `/Volumes/...` path.
 
 ### Design rule: capability-driven, and honest about it
 
-Two rules that override convenience everywhere in this codebase:
+Three rules that override convenience everywhere in this codebase:
 
 1. **Never branch on VID/PID.** Every decision — alt-setting choice, bit depth,
    sample rate, whether volume is offered at all — comes from what was parsed from
    the attached device at runtime. The reference DAC is one sample, not the spec.
 2. **Degrade gracefully and say so.** When a DAC cannot do something, the app does
    the best available thing *and tells the user what it did and why*.
+3. **A failing device is a passing app.** The hardware here — one Redmi, two
+   DACs — is three samples of a population this app will mostly never see, so a
+   green result on them is close to no evidence at all. What earns its keep is
+   what the app detects on hardware nobody here owns. When a verification test
+   fails on a DAC, that is the feature working: it found something the
+   descriptors did not admit to, which is the entire reason the feature exists.
+   Read results that way round, and report them that way round.
 
 Rule 2 has a concrete, user-visible form: a **DAC capabilities screen** in the
 configuration section, showing what the connected hardware actually supports —
@@ -78,7 +85,9 @@ Two things stop being fixed facts and become runtime-detected variables:
 
 - **The DAC.** The UAC capability table must be built by parsing whatever is attached — UAC1 and UAC2,
   any alt-setting set, with or without a Feature Unit volume control, adaptive or asynchronous
-  endpoints. The AL400 is one sample, and the code must not encode anything specific to it.
+  endpoints. The AL400 is one sample, and the code must not encode anything specific to it. Nor
+  should any *conclusion*: "it works" means it works on the two DACs in this room, and saying more
+  than that is the same error as branching on VID/PID, committed in prose instead of code.
 - **The OEM.** Boot-start and background survival differ per vendor, and only Xiaomi/MIUI is directly
   testable. The app must therefore *detect and report* its own failures rather than assume its
   workarounds succeeded.
@@ -342,9 +351,33 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 - **L16 from a transcoding server plays** on the UAC1 device: BubbleUPnP Server
   converting FLAC to `audio/L16;rate=44100;channels=2` over
   `/ffmpegpcmdecode/stream/`, with "accept only PCM" on.
-- **The rate sweep runs end to end** on the UAC1 device. Its per-rate verdicts
-  are `unverified` there by construction — see below — so what this confirms
-  is the mechanism, not any claim about that DAC's clock.
+- **The rate sweep passes all ten AL400 rates**, 44.1 kHz to 768 kHz, at
+  32-bit — every one clean and clock-confirmed:
+
+  | Rate | Measured | Underruns | Packet errors |
+  |---|---|---|---|
+  | 44.1 kHz | 44,099.6 Hz | 0 | 0 / 32,080 |
+  | 48 kHz | 48,000.0 Hz | 0 | 0 / 32,072 |
+  | 88.2 kHz | 88,199.2 Hz | 0 | 0 / 32,088 |
+  | 96 kHz | 95,999.0 Hz | 0 | 0 / 32,136 |
+  | 176.4 kHz | 176,399.4 Hz | 0 | 0 / 32,160 |
+  | 192 kHz | 191,999.0 Hz | 0 | 0 / 32,152 |
+  | 352.8 kHz | 352,797.9 Hz | 0 | 0 / 32,152 |
+  | 384 kHz | 383,996.1 Hz | 0 | 0 / 32,072 |
+  | 705.6 kHz | 705,594.7 Hz | 0 | 0 / 32,080 |
+  | 768 kHz | 767,992.2 Hz | 0 | 0 / 32,088 |
+
+  Worst deviation 0.001%, alt 1 (32-bit in a 4-byte slot) throughout, feedback
+  accepted with none rejected. **This closes the M2 note that 192 kHz was still
+  untested** — and goes four times past it. 768 kHz stereo at 32 bits is
+  6.1 MB/s over the bus, sixteen times the bandwidth of the 96/24 soak, held
+  for four seconds with nothing dropped.
+
+  Read the right way round, this is the *least* informative outcome the sweep
+  can produce (design rule 3): it says this AL400 is well behaved and nothing
+  about anyone else's hardware. The sweep has not yet been run on the UAC1
+  dongle, where every verdict would be `unverified` for want of a feedback
+  endpoint.
 
 ### Known gaps
 
@@ -462,6 +495,11 @@ our side.
 
 ### What building the sweep taught us
 
+- **A failed rate would have been the better result.** All ten AL400 rates came
+  back clean, which is the least informative outcome available: it says this
+  DAC is fine and nothing about the population. The sweep earns its keep the first time it tells a stranger their
+  DAC advertises a rate it cannot clock — so a red row is the feature working,
+  and the screen and report should never be tuned to make red rarer.
 - **Two verdicts were not enough.** Pass and fail assume something measured the
   clock. The UAC1 device has no feedback endpoint and reports its rate to
   nobody, so a clean sweep there proves the digital path was faultless and
@@ -601,7 +639,12 @@ instrument the native engine to count underruns and log them.
 > an isochronous transfer reports COMPLETED while packets inside it fail, so transfer-level
 > counters are blind to most real dropouts. And **never log from the libusb event thread**:
 > `__android_log_print` can block for milliseconds and causes the very dropouts it is measuring.
-> Still to do at 192 kHz, which is four times the bus bandwidth of this run.
+>
+> **192 kHz and beyond settled 2026-09-05** by the M8 rate sweep: all ten AL400
+> rates to 768 kHz at 32-bit, zero underruns, zero packet errors, worst clock
+> deviation 0.001%. Four seconds each rather than 30 minutes, so this answers
+> bandwidth, not endurance — the soak at the top rate is still to do, and is
+> what the M8 stability soak is for.
 
 **Native decoding, off-device.** `test/native/run.sh` builds `PcmDecoder` and
 `ToneSource` on the host against a small `android/log.h` shim and runs 53
