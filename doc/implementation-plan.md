@@ -378,6 +378,20 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
   about anyone else's hardware. The sweep has not yet been run on the UAC1
   dongle, where every verdict would be `unverified` for want of a feedback
   endpoint.
+- **Ten-minute soak passed at 96 kHz/32-bit**, 2026-09-05: 10m 03s, 58,091,844
+  frames, 4,817,304 isochronous packets with none bad, zero underruns, zero
+  transfer errors, and 586,171 feedback readings with none rejected. The clock
+  held 95,999.0 Hz for effectively the whole run and read 96,000.0 Hz at the
+  end — a spread of 1 Hz, 0.001%, which is arguably the feedback quantum
+  rather than the clock moving. Ring fill never fell below 99%, so the feeder
+  was never close to falling behind.
+
+  This clears the project's ten-minute zero-dropout bar, and at 32-bit rather
+  than the 24-bit of the original M2 soak. It does **not** cover the top rate:
+  96 kHz at 32-bit is 768 kB/s, an eighth of what 768 kHz demands, and
+  sustained load is exactly where thermal throttling would appear. A
+  30-minute soak at 768 kHz remains the measurement that would say something
+  new.
 
 ### Known gaps
 
@@ -560,10 +574,10 @@ DAC could have played untouched.
 
 First-run onboarding, and M8's last part: the file-picker source.
 
-The soak itself is built but unrun. A 30-minute soak at 768 kHz/32-bit is the
-obvious next measurement — 6.1 MB/s sustained is where thermal throttling and
-scheduler stalls would show, and it is the one claim the four-second sweep
-cannot support.
+The outstanding *measurement* is a long soak at 768 kHz/32-bit. Ten minutes
+clean at 96 kHz is real but gentle; 6.1 MB/s sustained is where thermal
+throttling and scheduler stalls would show, and it is the one claim neither
+the four-second sweep nor the 96 kHz soak can support.
 
 ---
 
@@ -654,8 +668,9 @@ instrument the native engine to count underruns and log them.
 > **192 kHz and beyond settled 2026-09-05** by the M8 rate sweep: all ten AL400
 > rates to 768 kHz at 32-bit, zero underruns, zero packet errors, worst clock
 > deviation 0.001%. Four seconds each rather than 30 minutes, so this answers
-> bandwidth, not endurance. The soak that answers endurance is now built and
-> runnable from the app; it has not yet been run at the top rate.
+> bandwidth, not endurance. Endurance was answered separately the same day by
+> the M8 soak — ten minutes clean at 96 kHz/32-bit — but not at the top rate,
+> where sustained bandwidth is eight times higher.
 
 **Native decoding, off-device.** `test/native/run.sh` builds `PcmDecoder` and
 `ToneSource` on the host against a small `android/log.h` shim and runs 53
