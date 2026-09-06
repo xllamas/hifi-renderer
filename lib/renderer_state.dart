@@ -40,6 +40,25 @@ class RendererStatus {
   /// The technical message behind [lastError], when there is one.
   final String? lastErrorDetail;
 
+  /// How many tracks the renderer's own playlist holds, and where in it we
+  /// are (1-based). Zero length means there is no local playlist to move
+  /// through -- a DLNA controller sends one track at a time, so the renderer
+  /// genuinely does not know what comes next and must not pretend to.
+  final int playlistLength;
+  final int playlistPosition;
+  final bool playlistRepeat;
+
+  /// Whether the renderer is playing from a playlist it holds itself, and so
+  /// can be skipped through without a controller present.
+  bool get hasLocalPlaylist => playlistLength > 0;
+
+  /// Repeat makes both ends reachable, so the buttons stay live at the edges.
+  bool get canGoNext =>
+      hasLocalPlaylist && (playlistRepeat || playlistPosition < playlistLength);
+
+  bool get canGoPrevious =>
+      hasLocalPlaylist && (playlistRepeat || playlistPosition > 1);
+
   const RendererStatus({
     this.rendererName = 'HiFi Renderer',
     this.transportState = 'NO_MEDIA_PRESENT',
@@ -66,6 +85,9 @@ class RendererStatus {
     this.underruns = 0,
     this.lastError,
     this.lastErrorDetail,
+    this.playlistLength = 0,
+    this.playlistPosition = 0,
+    this.playlistRepeat = false,
   });
 
   static RendererStatus parse(String source) {
@@ -97,6 +119,9 @@ class RendererStatus {
         underruns: (j['underruns'] as num?)?.toInt() ?? 0,
         lastError: j['lastError'] as String?,
         lastErrorDetail: j['lastErrorDetail'] as String?,
+        playlistLength: (j['playlistLength'] as num?)?.toInt() ?? 0,
+        playlistPosition: (j['playlistPosition'] as num?)?.toInt() ?? 0,
+        playlistRepeat: j['playlistRepeat'] as bool? ?? false,
       );
     } catch (_) {
       return const RendererStatus();
@@ -151,6 +176,9 @@ class RendererStatus {
         underruns: underruns,
         lastError: lastError,
         lastErrorDetail: lastErrorDetail,
+        playlistLength: playlistLength,
+        playlistPosition: playlistPosition,
+        playlistRepeat: playlistRepeat,
       );
 
   static String formatTime(int seconds) {

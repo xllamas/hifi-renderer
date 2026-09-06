@@ -57,6 +57,21 @@ object RendererState {
     /** Which output is carrying audio: "usb" or "android". */
     @Volatile var output: String = "usb"
 
+    /**
+     * How many tracks are in the renderer's own playlist, and where in it we
+     * are (1-based; 0 when nothing is current).
+     *
+     * Only the OpenHome source has a playlist to be at a position in. The DLNA
+     * source is told one track at a time and genuinely does not know what comes
+     * next, so the screen must not offer to skip through a list that is not
+     * there -- [playlistLength] is 0 then, and the buttons stay away.
+     */
+    @Volatile var playlistLength: Int = 0
+    @Volatile var playlistPosition: Int = 0
+
+    /** True when repeat is on, which makes next and previous always available. */
+    @Volatile var playlistRepeat: Boolean = false
+
     /** Percent as reported by the DAC, or -1 when it exposes no volume control. */
     @Volatile var dacVolume: Int = -1
     @Volatile var dacVolumeSupported: Boolean = false
@@ -124,6 +139,9 @@ object RendererState {
         append(",\"dacCount\":").append(dacCount)
         append(",\"bitPerfect\":").append(bitPerfect)
         append(",\"output\":").append(q(output))
+        append(",\"playlistLength\":").append(playlistLength)
+        append(",\"playlistPosition\":").append(playlistPosition)
+        append(",\"playlistRepeat\":").append(playlistRepeat)
         append(",\"dacVolume\":").append(dacVolume)
         append(",\"dacVolumeSupported\":").append(dacVolumeSupported)
         append(",\"dacVolumeReadback\":").append(q(dacVolumeReadback))

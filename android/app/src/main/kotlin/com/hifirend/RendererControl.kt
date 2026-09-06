@@ -37,6 +37,9 @@ object RendererControl {
         fun play()
         fun pause()
         fun stop()
+        /** Only meaningful for a source that holds a playlist; false if it cannot. */
+        fun next(): Boolean
+        fun previous(): Boolean
         /** Percent, or null when the DAC has no host-controllable volume. */
         fun dacVolume(): Int?
         fun setDacVolume(percent: Int): Boolean
@@ -52,4 +55,8 @@ object RendererControl {
         transport?.stop() ?: return false
         return true
     }
+
+    fun next(): Boolean = transport?.next() ?: false
+
+    fun previous(): Boolean = transport?.previous() ?: false
 }

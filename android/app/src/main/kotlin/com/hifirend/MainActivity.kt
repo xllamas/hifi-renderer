@@ -171,6 +171,8 @@ class MainActivity : FlutterActivity() {
                     }
                     "playPause" -> result.success(RendererControl.playPause())
                     "stopPlayback2" -> result.success(RendererControl.stop())
+                    "nextTrack" -> result.success(RendererControl.next())
+                    "previousTrack" -> result.success(RendererControl.previous())
                     "setDacVolume" -> {
                         val pct = call.argument<Int>("percent") ?: 0
                         result.success(

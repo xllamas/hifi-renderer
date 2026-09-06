@@ -16,6 +16,8 @@ class NowPlayingScreen extends StatelessWidget {
   final RendererStatus status;
   final VoidCallback onOpenSettings;
   final VoidCallback onPlayPause;
+  final VoidCallback onNext;
+  final VoidCallback onPrevious;
   final ValueChanged<int> onVolumeChanged;
 
   const NowPlayingScreen({
@@ -23,6 +25,8 @@ class NowPlayingScreen extends StatelessWidget {
     required this.status,
     required this.onOpenSettings,
     required this.onPlayPause,
+    required this.onNext,
+    required this.onPrevious,
     required this.onVolumeChanged,
   });
 
@@ -331,10 +335,30 @@ class NowPlayingScreen extends StatelessWidget {
     );
   }
 
+  /// Play/pause, with skip either side when the renderer holds the playlist.
+  ///
+  /// The skip buttons appear only for a local playlist, and that restraint is
+  /// the point: with a DLNA source the renderer is told one track at a time and
+  /// has no idea what comes next, so a next button there would either do
+  /// nothing or do something surprising. They are disabled rather than hidden
+  /// at the ends of a list — the shape of the controls should not change under
+  /// someone's thumb as a playlist advances — unless repeat is on, in which
+  /// case both ends stay reachable.
   Widget _controls({required bool centred}) => Row(
         mainAxisAlignment:
             centred ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: [
+          if (status.hasLocalPlaylist) ...[
+            IconButton(
+              onPressed: status.canGoPrevious ? onPrevious : null,
+              iconSize: 30,
+              icon: const Icon(Icons.skip_previous),
+              color: Colors.white70,
+              disabledColor: Colors.white24,
+              tooltip: 'Previous track',
+            ),
+            const SizedBox(width: 8),
+          ],
           IconButton.filledTonal(
             onPressed: onPlayPause,
             iconSize: 34,
@@ -342,6 +366,17 @@ class NowPlayingScreen extends StatelessWidget {
             icon: Icon(status.isPlaying ? Icons.pause : Icons.play_arrow),
             tooltip: status.isPlaying ? 'Pause' : 'Play',
           ),
+          if (status.hasLocalPlaylist) ...[
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: status.canGoNext ? onNext : null,
+              iconSize: 30,
+              icon: const Icon(Icons.skip_next),
+              color: Colors.white70,
+              disabledColor: Colors.white24,
+              tooltip: 'Next track',
+            ),
+          ],
         ],
       );
 

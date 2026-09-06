@@ -76,6 +76,12 @@ class OpenHomePlaylist(
     var transportState: String = "Stopped"
         private set
 
+    /** Failures since the last track that played through, or the last command. */
+    @Volatile private var consecutiveFailures = 0
+
+    /** Tracks skipped since playback last started, for the end-of-list report. */
+    @Volatile private var skippedThisRun = 0
+
     // ---- Transport ---------------------------------------------------------
 
     @UpnpAction(name = "Play")
@@ -105,6 +111,7 @@ class OpenHomePlaylist(
     @UpnpAction(name = "Stop")
     fun stopAction() {
         Log.i(TAG, "OH.Playlist.Stop")
+        clearFailureRun()
         playback?.stop()
         setTransportState("Stopped")
     }
@@ -112,6 +119,9 @@ class OpenHomePlaylist(
     @UpnpAction(name = "Next")
     fun nextAction() {
         Log.i(TAG, "OH.Playlist.Next")
+        // Someone pressed skip, which is a fresh start even though it must not
+        // re-anchor the shuffle order the way picking a track does.
+        clearFailureRun()
         val n = list.next()
         if (n == null) {
             stopAction()
@@ -124,6 +134,7 @@ class OpenHomePlaylist(
     @UpnpAction(name = "Previous")
     fun previousAction() {
         Log.i(TAG, "OH.Playlist.Previous")
+        clearFailureRun()
         val p = list.previous() ?: return
         claimSource()
         startTrack(p)
@@ -240,6 +251,7 @@ class OpenHomePlaylist(
     fun deleteAll() {
         Log.i(TAG, "OH.Playlist.DeleteAll")
         list.deleteAll()
+        clearFailureRun()
         playback?.stop()
         setTransportState("Stopped")
         RendererState.clearTrack()
@@ -322,33 +334,41 @@ class OpenHomePlaylist(
      * megabytes of a track that was never going to play.
      */
     private fun startTrack(track: OpenHomeTrack, explicit: Boolean = false) {
+        // Someone asking for a track by hand is a fresh start: they have seen
+        // whatever went wrong and are telling us to go again.
+        if (explicit) clearFailureRun()
         list.setCurrent(track.id, anchorShuffle = explicit)
         publishTrack()
         unplayableRate(track.track.sampleFrequency)?.let { why ->
             Log.i(TAG, "OH refusing before fetch: $why")
-            RendererState.lastError = why
-            RendererState.lastErrorDetail = null
-            playback?.stop()
-            setTransportState("Stopped")
+            skipAfterFailure(Problem.plain(why))
             return
         }
         playback?.onTrackChanged()
         val result = playback?.play(track.uri, track.track.mimeType)
         if (result != null && !result.contains("\"ok\":true")) {
             Log.e(TAG, "OH play failed: $result")
-            setTransportState("Stopped")
+            skipAfterFailure(Problem.describe(result))
             return
         }
+        // The track is away. A problem from an earlier track is history now,
+        // and leaving it set would put a stale banner back on the screen the
+        // moment this playlist stopped for any reason at all.
+        RendererState.lastError = null
+        RendererState.lastErrorDetail = null
         setTransportState("Playing")
     }
 
     /** A track ended naturally; advance without anyone asking us to. */
     fun onTrackFinished() {
+        // A track that played to its end ends any run of failures: the three
+        // are meant to catch a dead source, not to accumulate over an evening.
+        consecutiveFailures = 0
         val n = list.next()
         if (n == null) {
             Log.i(TAG, "OH playlist exhausted; stopping")
             playback?.stop()
-            setTransportState("Stopped")
+            endOfPlaylist()
             return
         }
         Log.i(TAG, "OH auto-advancing to ${n.uri}")
@@ -378,11 +398,75 @@ class OpenHomePlaylist(
 
     fun onPlaybackFailed(message: String) {
         Log.e(TAG, "OH engine failed: $message")
-        Problem.describe(message).let {
-            RendererState.lastError = it.headline
-            RendererState.lastErrorDetail = it.detail
-        }
+        skipAfterFailure(Problem.describe(message))
+    }
+
+    /**
+     * A track could not be played: move past it, up to a point.
+     *
+     * One dead link in a fifty-track album should cost that track, not the
+     * evening -- stopping the whole playlist on it is the controller-dependent
+     * behaviour OpenHome was added to get away from. But the far more common
+     * cause of a track failing is that the *source* went away, and then every
+     * remaining track will fail too; skipping blindly would tear through fifty
+     * tracks in a few seconds and land on "stopped" with the reason long
+     * scrolled away.
+     *
+     * So: skip, but give up after [MAX_CONSECUTIVE_FAILURES] in a row. A track
+     * that plays to its end resets the count, so scattered bad tracks never
+     * accumulate into a stop.
+     */
+    /** Forgets a run of failures, so a deliberate command starts clean. */
+    private fun clearFailureRun() {
+        consecutiveFailures = 0
+        skippedThisRun = 0
+    }
+
+    private fun skipAfterFailure(problem: Problem.Described) {
+        consecutiveFailures++
+        skippedThisRun++
+        RendererState.lastError = problem.headline
+        RendererState.lastErrorDetail = problem.detail
         playback?.stop()
+
+        val failedTitle = list.current()?.track?.title ?: list.current()?.uri
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            Log.e(TAG, "OH giving up after $consecutiveFailures tracks in a row failed")
+            // Say what actually happened. "Stopped" with the last track's
+            // technical message would suggest one bad file, when the shape of
+            // the failure -- three in a row -- says the source is gone.
+            RendererState.lastError =
+                "Stopped after $consecutiveFailures tracks in a row could not be played."
+            RendererState.lastErrorDetail = problem.detail ?: problem.headline
+            setTransportState("Stopped")
+            return
+        }
+
+        val next = list.next()
+        if (next == null) {
+            Log.i(TAG, "OH nothing left to skip to after $failedTitle failed")
+            endOfPlaylist()
+            return
+        }
+        Log.i(TAG, "OH skipping $failedTitle (failure $consecutiveFailures of " +
+            "$MAX_CONSECUTIVE_FAILURES); trying ${next.uri}")
+        startTrack(next)
+    }
+
+    /**
+     * The playlist ran out. Reports skipped tracks rather than ending in
+     * silence as though nothing had gone wrong -- the listener is entitled to
+     * know the album they heard had gaps in it.
+     */
+    private fun endOfPlaylist() {
+        if (skippedThisRun > 0) {
+            val n = skippedThisRun
+            RendererState.lastError =
+                if (n == 1) "One track was skipped because it could not be played."
+                else "$n tracks were skipped because they could not be played."
+        }
+        skippedThisRun = 0
+        consecutiveFailures = 0
         setTransportState("Stopped")
     }
 
@@ -444,5 +528,15 @@ class OpenHomePlaylist(
         // LastChange publish follows, for the same reason.
         runCatching { propertyChangeSupport.firePropertyChange(name, null, value) }
             .onFailure { Log.w(TAG, "OH event $name failed: ${it.message}") }
+    }
+
+    private companion object {
+        /**
+         * How many tracks may fail in a row before the playlist stops.
+         *
+         * Three is enough to step over a run of bad files without letting a
+         * dead server march through the whole list before anyone notices.
+         */
+        const val MAX_CONSECUTIVE_FAILURES = 3
     }
 }

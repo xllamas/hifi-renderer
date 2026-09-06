@@ -319,6 +319,8 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                     .onFailure { Log.w(TAG, "openhome track publish failed: ${it.message}") }
                 runCatching { openHomeTime?.tick() }
                     .onFailure { Log.w(TAG, "openhome time tick failed: ${it.message}") }
+                runCatching { publishPlaylistPosition() }
+                    .onFailure { Log.w(TAG, "playlist position publish failed: ${it.message}") }
             }, 500, 500, TimeUnit.MILLISECONDS)
         }
         Log.i(TAG, "LastChange event flusher started")
@@ -331,6 +333,25 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         renderingControl?.onVolumeObserved(v)
         // The same knob, told to the other protocol's subscribers.
         openHomeVolume?.publishVolume(v)
+    }
+
+    /**
+     * Tells the screen how long the local playlist is and where in it we are.
+     *
+     * Zero length is what keeps the skip buttons off the screen for a DLNA
+     * source, which has no list to skip through.
+     */
+    private fun publishPlaylistPosition() {
+        val st = com.hifirend.RendererState
+        if (!playlistSourceActive()) {
+            st.playlistLength = 0
+            st.playlistPosition = 0
+            st.playlistRepeat = false
+            return
+        }
+        st.playlistLength = openHomeList.size
+        st.playlistPosition = openHomeList.indexOfId(openHomeList.currentId) + 1
+        st.playlistRepeat = openHomeList.repeat
     }
 
     /** The last track URI announced to OpenHome's Info and Time counters. */
@@ -508,6 +529,25 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             override fun stop() {
                 val oh = openHomePlaylist
                 if (playlistSourceActive() && oh != null) oh.stopAction() else av.stop(null)
+            }
+            /**
+             * Only the OpenHome source can honour these. AVTransport has at
+             * most a "next" the controller happened to announce and no notion
+             * of a previous track at all, so rather than half-work from the
+             * screen the buttons are simply not offered there -- see
+             * RendererState.playlistLength.
+             */
+            override fun next(): Boolean {
+                val oh = openHomePlaylist ?: return false
+                if (!playlistSourceActive() || openHomeList.size == 0) return false
+                oh.nextAction()
+                return true
+            }
+            override fun previous(): Boolean {
+                val oh = openHomePlaylist ?: return false
+                if (!playlistSourceActive() || openHomeList.size == 0) return false
+                oh.previousAction()
+                return true
             }
             override fun dacVolume(): Int? = NativeBridge.getDacVolume().takeIf { it >= 0 }
             override fun setDacVolume(percent: Int): Boolean {

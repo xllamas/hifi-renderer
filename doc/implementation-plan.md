@@ -738,11 +738,51 @@ errors, 0 bad packets throughout**, with nothing connected. A DLNA controller
 interrupting mid-playlist logged `source changed: 0 -> 1` / `OH.Playlist.Stop`
 / `AVTransport.Play` with no collision.
 
-31 JVM unit tests cover the parts that fail silently rather than loudly
+**Confirmed by the owner on a real playlist, 2026-09-06:** filled from a NAS,
+the controller killed outright, playback continued to the end, and when the
+controller came back it picked up the correct now-playing state and could stop
+it. That is the requirement met, not approximated.
+
+**One caveat that will trip up anyone testing this, and is not a renderer
+problem.** The guarantee is that the renderer does not need the controller *for
+control*. It cannot conjure audio the controller alone could serve. The first
+attempt at this test used a Tidal playlist through BubbleUPnP, whose `res` URLs
+point back at BubbleUPnP's own proxy — it holds the Tidal credentials, so it
+must proxy — and killing the controller therefore removed the media server too.
+Every track failed, correctly. **Before any leave-the-controller test, check
+which host serves the tracks** (`ohplay.py list` in the test rig prints it): if
+that host dies with the controller, the test can only fail and says nothing
+about the renderer. For Tidal specifically the property holds only when
+BubbleUPnP *Server* runs somewhere persistent rather than as the phone app.
+
+**A failed track is skipped, up to three in a row.** One dead link in a
+fifty-track album should cost that track, not the evening — stopping there is
+the controller-dependent behaviour this milestone exists to remove. But a
+source that has gone away fails *every* remaining track, and skipping blindly
+would tear through the list in seconds and land on "stopped" with the reason
+scrolled away. So the playlist gives up after three consecutive failures and
+says so in those terms — *"Stopped after 3 tracks in a row could not be
+played."* — because the shape of the failure is the useful part: three in a row
+points at the source, one points at a file. A track that plays to its end, or
+any deliberate command, forgives the run. Reaching the end having skipped
+something reports that too, rather than ending in silence as though nothing had
+happened. Verified on the phone: a 404 mid-playlist is stepped over and the
+next track plays; a playlist of dead links stops after exactly three, leaving
+the remaining tracks untouched.
+
+**The now-playing screen gains previous/next** — but only for a local playlist.
+A DLNA source is told one track at a time and genuinely does not know what comes
+next, so the buttons are absent there rather than present and useless. At the
+ends of a list they are disabled rather than hidden, so the controls do not
+change shape under a thumb as the playlist advances; repeat makes both ends
+reachable again.
+
+38 JVM unit tests cover the parts that fail silently rather than loudly
 (`android/app/src/test/kotlin/`): the IdArray byte order, insert-after
-semantics, id reuse, shuffle as a permutation — and that jUPnP can bind every
-service, since a bad annotation is caught by the registration try/catch and
-shows up only as a renderer that never appears on the network.
+semantics, id reuse, shuffle as a permutation, the skip policy's two opposite
+cases — and that jUPnP can bind every service, since a bad annotation is caught
+by the registration try/catch and shows up only as a renderer that never
+appears on the network.
 
 ---
 

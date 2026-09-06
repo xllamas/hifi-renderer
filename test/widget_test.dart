@@ -947,6 +947,83 @@ void main() {
       expect(find.text('Below My Feet'), findsOneWidget);
     });
 
+    testWidgets('skip buttons appear only for a playlist the renderer holds',
+        (tester) async {
+      // A DLNA controller sends one track at a time, so the renderer does not
+      // know what comes next. Offering a next button there would either do
+      // nothing or do something surprising.
+      final dlna = RendererStatus.parse(
+        '{"rendererName":"Living Room","transportState":"PLAYING",'
+        '"title":"Chameleon","dacConnected":true,"dacName":"SMSL USB AUDIO",'
+        '"dacCount":1,"playlistLength":0}',
+      );
+      expect(dlna.hasLocalPlaylist, isFalse);
+
+      await tester.pumpWidget(MaterialApp(
+        home: NowPlayingScreen(
+          status: dlna,
+          onOpenSettings: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
+          onVolumeChanged: (_) {},
+        ),
+      ));
+      expect(find.byIcon(Icons.skip_next), findsNothing);
+      expect(find.byIcon(Icons.skip_previous), findsNothing);
+    });
+
+    testWidgets('skip buttons are live, and disabled at the ends of the list',
+        (tester) async {
+      Future<void> show(RendererStatus s, {VoidCallback? onNext}) =>
+          tester.pumpWidget(MaterialApp(
+            home: NowPlayingScreen(
+              status: s,
+              onOpenSettings: () {},
+              onPlayPause: () {},
+              onNext: onNext ?? () {},
+              onPrevious: () {},
+              onVolumeChanged: (_) {},
+            ),
+          ));
+
+      String state(int position, int length, {bool repeat = false}) =>
+          '{"rendererName":"Living Room","transportState":"PLAYING",'
+          '"title":"Chameleon","dacConnected":true,"dacName":"SMSL USB AUDIO",'
+          '"dacCount":1,"playlistLength":$length,"playlistPosition":$position,'
+          '"playlistRepeat":$repeat}';
+
+      // Middle of the list: both ways available, and next actually fires.
+      var tapped = false;
+      await show(RendererStatus.parse(state(2, 3)), onNext: () => tapped = true);
+      expect(find.byIcon(Icons.skip_next), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.skip_next));
+      expect(tapped, isTrue);
+
+      // First track: previous is disabled but still shown -- the controls must
+      // not change shape under a thumb as the playlist advances.
+      await show(RendererStatus.parse(state(1, 3)));
+      expect(find.byIcon(Icons.skip_previous), findsOneWidget);
+      expect(
+          tester.widget<IconButton>(find.ancestor(
+              of: find.byIcon(Icons.skip_previous),
+              matching: find.byType(IconButton))).onPressed,
+          isNull);
+
+      // Last track: next is disabled.
+      await show(RendererStatus.parse(state(3, 3)));
+      expect(
+          tester.widget<IconButton>(find.ancestor(
+              of: find.byIcon(Icons.skip_next),
+              matching: find.byType(IconButton))).onPressed,
+          isNull);
+
+      // Repeat makes both ends reachable again.
+      final wrapping = RendererStatus.parse(state(3, 3, repeat: true));
+      expect(wrapping.canGoNext, isTrue);
+      expect(wrapping.canGoPrevious, isTrue);
+    });
+
     testWidgets('the problem banner fits on the screen it appears on',
         (tester) async {
       // A real failure overflowed the bottom of a 1080x2400 phone by 20px, and
@@ -980,6 +1057,8 @@ void main() {
           status: status,
           onOpenSettings: () {},
           onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
           onVolumeChanged: (_) {},
         ),
       ));
@@ -1104,6 +1183,8 @@ void main() {
           status: status,
           onOpenSettings: () {},
           onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
           onVolumeChanged: (_) {},
         ),
       ));

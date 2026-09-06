@@ -153,6 +153,11 @@ class _RendererHomeState extends State<RendererHome> {
     _refresh();
   }
 
+  Future<void> _skip(bool forward) async {
+    await _channel.invokeMethod(forward ? 'nextTrack' : 'previousTrack');
+    _refresh();
+  }
+
   /// While a drag is settling, the poll must not overwrite the slider.
   ///
   /// The hardware is still the authority -- a DAC's own knob can move
@@ -181,6 +186,8 @@ class _RendererHomeState extends State<RendererHome> {
   Widget build(BuildContext context) => NowPlayingScreen(
         status: _status,
         onPlayPause: _playPause,
+        onNext: () => _skip(true),
+        onPrevious: () => _skip(false),
         onVolumeChanged: _setVolume,
         onOpenSettings: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => SettingsScreen(
