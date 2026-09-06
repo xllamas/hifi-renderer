@@ -59,6 +59,8 @@ private const val KEY_SERVER_CONVERSION = "allow_server_conversion"
 private const val SOURCE_PLAYLIST = 0
 private const val SOURCE_UPNP_AV = 1
 
+
+
 /**
  * Hosts the UPnP MediaRenderer device.
  *
@@ -334,6 +336,8 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                     com.hifirend.RendererState.screenWakeRefused = screenPolicy.wakeRefused
                 }.onFailure { Log.w(TAG, "screen policy tick failed: ${it.message}") }
                 runCatching { deviceOnlyFactory?.logIfDue() }
+                runCatching { healMulticastIfLost() }
+                    .onFailure { Log.w(TAG, "multicast health check failed: ${it.message}") }
             }, 500, 500, TimeUnit.MILLISECONDS)
         }
         Log.i(TAG, "LastChange event flusher started")
@@ -826,6 +830,44 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             Log.w(TAG, "could not update sink protocolInfo: ${e::class.java.simpleName}: ${e.message}")
         }
         reannounce("output device changed")
+    }
+
+    /** When the multicast watchdog last acted, so it cannot loop. */
+    @Volatile private var lastMulticastHealAt = 0L
+
+    /**
+     * Rejoins the SSDP group when other people's announcements stop arriving.
+     *
+     * The renderer goes undiscoverable while everything about it still works:
+     * unicast M-SEARCH to port 1900 is answered, the device description is
+     * served, the socket is bound and the group is joined as far as the phone
+     * is concerned -- but multicast to that same socket is never delivered.
+     * The membership has lapsed above us, in the Wi-Fi driver or the access
+     * point's IGMP snooping, and only rejoining the group fixes it.
+     *
+     * There is no API to ask whether we are still really in the group, so this
+     * infers it from what *should* be arriving: on a home network SSDP
+     * announcements are constant -- twenty-odd devices here, several a minute.
+     * Silence for [MULTICAST_SILENCE_MS] on a network that was previously
+     * noisy means we have stopped hearing it, not that everyone stopped
+     * talking. Requiring that we heard multicast at least once is what keeps
+     * this from firing for ever on a genuinely quiet network.
+     *
+     * The cure is the same rebind the network watcher does, and it is not
+     * free: it changes the stream server's port, so controllers holding the
+     * old description URL have to rediscover. That is why it waits for real
+     * evidence rather than running on a timer.
+     */
+    private fun healMulticastIfLost() {
+        val factory = deviceOnlyFactory ?: return
+        val heard = factory.lastMulticastAt
+        if (heard == 0L) return                       // never heard any; nothing to compare
+        val now = System.currentTimeMillis()
+        if (!MulticastWatchdog.shouldHeal(heard, lastMulticastHealAt, now)) return
+        lastMulticastHealAt = now
+        Log.w(TAG, "ssdp: no multicast for ${(now - heard) / 1000}s though the network " +
+            "was noisy; rejoining the group")
+        rebindRouter("multicast reception lost")
     }
 
     /**

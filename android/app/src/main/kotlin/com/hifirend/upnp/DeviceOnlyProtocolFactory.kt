@@ -8,6 +8,9 @@ import org.jupnp.protocol.ReceivingAsync
 
 private const val TAG = "hifirend"
 
+/** How often the SSDP census is logged. Often enough to watch, rare enough to ignore. */
+private const val CENSUS_INTERVAL_MS = 60_000L
+
 /**
  * Stops the renderer behaving like a control point.
  *
@@ -39,12 +42,26 @@ class DeviceOnlyProtocolFactory(
 
     override fun createReceivingAsync(message: IncomingDatagramMessage<*>?): ReceivingAsync<*>? {
         val operation = message?.operation
+        if (operation is UpnpRequest && operation.method == UpnpRequest.Method.MSEARCH) {
+            // Counted, never dropped. This is the traffic the renderer exists
+            // to answer, and knowing whether it *arrives* is what separates
+            // "the network stopped delivering to us" from "we stopped
+            // replying" -- two faults that look identical from a controller
+            // and have completely different cures.
+            searchesSeen++
+            lastMulticastAt = System.currentTimeMillis()
+        }
         if (operation is UpnpRequest) {
             // NOTIFY is another device announcing itself, which is the whole
             // source of the problem. M-SEARCH is a controller looking for us,
             // and is the one thing here that must always get through.
             if (operation.method == UpnpRequest.Method.NOTIFY) {
+                // Dropped, but counted first. A NOTIFY is by definition sent to
+                // the SSDP group, so seeing one is proof that multicast is
+                // still reaching this phone -- which is the one thing that
+                // stops working, and the reason for [lastMulticastAt].
                 ignored++
+                lastMulticastAt = System.currentTimeMillis()
                 return null
             }
         } else if (operation != null) {
@@ -60,11 +77,62 @@ class DeviceOnlyProtocolFactory(
     var ignored: Long = 0
         private set
 
-    /** Logged occasionally: silence would make this impossible to tell from a dead network. */
+    /**
+     * When multicast last reached us, or 0 if it never has.
+     *
+     * The renderer stops being discoverable long before anything in it fails:
+     * measured, unicast M-SEARCH to port 1900 is still answered while
+     * multicast to the same socket gets nothing, so the packets are not being
+     * delivered at all. The socket is alive, the group is joined as far as
+     * `/proc/net/igmp` is concerned, and the multicast lock is held -- the
+     * membership has lapsed somewhere above us, in the Wi-Fi driver or the
+     * access point's IGMP snooping. Restarting the app rejoins the group and
+     * cures it, which is why this looked intermittent for so long.
+     *
+     * Nothing in the app can see that directly. What it can see is that other
+     * people's announcements have stopped arriving, on a network where they
+     * arrive constantly.
+     */
+    @Volatile
+    var lastMulticastAt: Long = 0
+        private set
+
+    /** Incoming M-SEARCH requests, the traffic a renderer must answer. */
+    @Volatile
+    var searchesSeen: Long = 0
+        private set
+
+    /**
+     * Logged at the first announcement and then rarely.
+     *
+     * The first one matters on its own: it is the proof that multicast is
+     * reaching this phone at all, and so that the silence watchdog has a
+     * baseline to compare against. Without that line a network where nothing
+     * ever arrives looks exactly like one where everything is fine.
+     */
+    @Volatile private var loggedFirst = false
+
     fun logIfDue() {
         val n = ignored
-        if (n > 0 && n % 500 == 0L) {
-            Log.i(TAG, "upnp: ignored $n remote-device announcements (renderer, not control point)")
+        // Not `n == 1`: the tick samples twice a second and several
+        // announcements can arrive between two samples, so an equality test
+        // silently never fires.
+        if (n > 0 && !loggedFirst) {
+            loggedFirst = true
+            Log.i(TAG, "ssdp: multicast is reaching us; first remote-device " +
+                "announcement seen (this is a renderer, not a control point)")
+            return
+        }
+        // A periodic census. On a network with other UPnP devices both
+        // numbers climb steadily; a stalled search count with announcements
+        // still arriving would mean something quite different from both
+        // stalling together.
+        val now = System.currentTimeMillis()
+        if (now - lastCensusAt >= CENSUS_INTERVAL_MS) {
+            lastCensusAt = now
+            Log.i(TAG, "ssdp census: $searchesSeen searches seen, $n announcements ignored")
         }
     }
+
+    @Volatile private var lastCensusAt = 0L
 }
