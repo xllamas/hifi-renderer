@@ -197,6 +197,7 @@ class HttpStreamPlayback(private val context: Context) {
         // A new track starts with a clean slate; the engine clears its own
         // error, and a stale one here would be read as this track failing.
         lastEngineError = null
+        fetchFailure = null
         engineRunning = false
         RendererState.lastError = null
         RendererState.lastErrorDetail = null
@@ -326,6 +327,7 @@ class HttpStreamPlayback(private val context: Context) {
             val code = conn.responseCode
             if (code !in 200..299) {
                 Log.e(TAG, "stream: HTTP $code for $uri")
+                noteFetchFailure(mine, "the server answered HTTP $code for this track")
                 NativeBridge.endStream()
                 return
             }
@@ -382,11 +384,31 @@ class HttpStreamPlayback(private val context: Context) {
             Log.i(TAG, "stream: fetched $total bytes")
         } catch (e: Throwable) {
             Log.e(TAG, "stream: fetch failed: ${e::class.java.simpleName}: ${e.message}")
+            noteFetchFailure(mine, when (e) {
+                is java.net.UnknownHostException -> "the media server's address could not be resolved"
+                is java.net.SocketTimeoutException -> "the media server stopped responding"
+                is java.net.ConnectException -> "the media server could not be reached"
+                else -> "the track could not be fetched (${e::class.java.simpleName})"
+            } + ": ${e.message}")
         } finally {
             runCatching { stream?.close() }
             runCatching { conn?.disconnect() }
             NativeBridge.endStream()
         }
+    }
+
+    /**
+     * Records a fetch failure against the track that was being fetched.
+     *
+     * The generation check matters after a gapless hand-over: the outgoing
+     * track's fetch thread is still alive, and a failure it hits belongs to
+     * the track that has already finished, not to the one now playing. Without
+     * this, a server dropping at exactly the wrong moment would blame the next
+     * track for the previous one's problem.
+     */
+    private fun noteFetchFailure(mine: Int, reason: String) {
+        if (generation != mine) return
+        fetchFailure = reason
     }
 
     /** Real pause: the stream stays open and keeps its place. */
@@ -548,6 +570,20 @@ class HttpStreamPlayback(private val context: Context) {
 
     @Volatile private var generation = 0
 
+    /**
+     * Why the fetch stopped, when it stopped for a reason of its own.
+     *
+     * The decoder cannot tell a server that vanished from a file that was
+     * never FLAC: both reach it as a stream that ended early, so it reports
+     * what it sees -- "not a decodable FLAC stream". That message then went to
+     * the screen and told someone whose media server had dropped off the
+     * network that their track was in an unsupported format, which is both
+     * wrong and sends them looking in the wrong place. The fetch knows the
+     * real reason; this is where it is kept so it can outrank the decoder's
+     * downstream complaint.
+     */
+    @Volatile private var fetchFailure: String? = null
+
     private fun startWatcher() {
         val mine = generation
         watcher = thread(name = "track-watcher", isDaemon = true) {
@@ -574,7 +610,11 @@ class HttpStreamPlayback(private val context: Context) {
                 // has failed -- most often because the DAC refused the format
                 // or the alt-setting. Silence with a PLAYING transport is the
                 // worst possible way to report that.
-                val failure = engineError
+                // A failed fetch is the cause; whatever the decoder made of
+                // the truncated stream is only the symptom. Reporting the
+                // symptom sends people looking at their files when the problem
+                // is their network.
+                val failure = fetchFailure ?: engineError
                 if (failure != null) {
                     Log.e(TAG, "engine stopped with error: $failure")
                     fetching.set(false)

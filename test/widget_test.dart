@@ -947,6 +947,49 @@ void main() {
       expect(find.text('Below My Feet'), findsOneWidget);
     });
 
+    testWidgets('the problem banner fits on the screen it appears on',
+        (tester) async {
+      // A real failure overflowed the bottom of a 1080x2400 phone by 20px, and
+      // Flutter drew its overflow stripes straight across the message the user
+      // needed to read. The art has to give way to the banner, not the other
+      // way round.
+      // The Redmi it happened on: 1080x2400 at density 440 (DPR 2.75), less
+      // the status and navigation bars that SafeArea takes out. Guessing the
+      // geometry instead produces a *different* overflow -- a narrower logical
+      // width overflows horizontally, which is not the bug being fixed.
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.75;
+      tester.view.padding = const FakeViewPadding(top: 108, bottom: 130);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPadding);
+
+      final status = RendererStatus.parse(
+        '{"rendererName":"Living Room","transportState":"STOPPED",'
+        '"title":"Chameleon","artist":"Herbie Hancock","album":"Head Hunters",'
+        '"durationSeconds":945,"formatBadge":"FLAC 16/44.1","sourceFormat":"FLAC",'
+        '"sourceRate":44100,"sourceBits":16,"bitPerfect":true,'
+        '"dacConnected":true,"dacName":"SMSL USB AUDIO","dacCount":1,'
+        '"lastError":"The renderer lost contact with the media server.",'
+        '"lastErrorDetail":"the media server could not be reached: '
+        'Failed to connect to /192.168.100.41:57645"}',
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: NowPlayingScreen(
+          status: status,
+          onOpenSettings: () {},
+          onPlayPause: () {},
+          onVolumeChanged: (_) {},
+        ),
+      ));
+
+      expect(tester.takeException(), isNull,
+          reason: 'the banner must not overflow the layout');
+      expect(find.text('The renderer lost contact with the media server.'),
+          findsOneWidget);
+    });
+
     testWidgets('a problem with no technical detail shows only the sentence',
         (tester) async {
       messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {

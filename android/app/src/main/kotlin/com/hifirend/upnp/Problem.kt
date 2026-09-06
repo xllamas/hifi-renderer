@@ -26,6 +26,22 @@ object Problem {
     fun describe(technical: String): Described {
         val m = technical.lowercase()
         val headline = when {
+            // Checked first, and deliberately so. A server that goes away
+            // mid-playlist reaches the decoder as a stream that ended early,
+            // and the decoder's honest report of that ("not a decodable FLAC
+            // stream") would otherwise match the format case below and send
+            // someone to look at their files when the fault is their network.
+            m.contains("media server could not be reached") ||
+                m.contains("media server stopped responding") ||
+                m.contains("address could not be resolved") ->
+                "The renderer lost contact with the media server."
+
+            m.contains("server answered http") ->
+                "The media server refused this track."
+
+            m.contains("could not be fetched") ->
+                "This track could not be downloaded from the server."
+
             m.contains("unsupported or unrecognised") ||
                 m.contains("not a decodable") ||
                 m.contains("not integer pcm") ||

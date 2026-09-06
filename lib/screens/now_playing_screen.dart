@@ -90,6 +90,11 @@ class NowPlayingScreen extends StatelessWidget {
                 children: [
                   Text(
                     status.lastError!,
+                    // Bounded so an unusually long headline cannot push the
+                    // banner off the screen again. Three lines is enough for
+                    // every message Problem composes.
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         fontSize: 17,
                         height: 1.25,
@@ -150,8 +155,12 @@ class NowPlayingScreen extends StatelessWidget {
 
   Widget _portrait(BuildContext context, BoxConstraints c) {
     // Art fills the width less the margins, capped so it cannot crowd out the
-    // text and controls on short screens.
-    final art = (c.maxWidth - _edge * 2).clamp(0.0, c.maxHeight * 0.52);
+    // text and controls on short screens -- and capped harder when the problem
+    // banner is up, because that is a third block of text competing for the
+    // same column. Without this the banner overflowed the bottom of the screen
+    // and Flutter drew its stripes over the very message the user needed.
+    final art = (c.maxWidth - _edge * 2)
+        .clamp(0.0, c.maxHeight * (_hasProblem ? 0.34 : 0.52));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: _edge, vertical: 12),
       child: Column(
@@ -189,7 +198,8 @@ class NowPlayingScreen extends StatelessWidget {
   }
 
   Widget _landscape(BuildContext context, BoxConstraints c) {
-    final art = (c.maxHeight - _edge * 2).clamp(0.0, c.maxWidth * 0.45);
+    final art = (c.maxHeight - _edge * 2)
+        .clamp(0.0, c.maxWidth * (_hasProblem ? 0.34 : 0.45));
     return Padding(
       padding: const EdgeInsets.all(_edge),
       child: Row(
