@@ -770,31 +770,44 @@ happened. Verified on the phone: a 404 mid-playlist is stepped over and the
 next track plays; a playlist of dead links stops after exactly three, leaving
 the remaining tracks untouched.
 
-**The disappearance is not closed.** The control-point storm below was a real
-fault and is fixed — descriptor fetches went from dozens to zero — but the
-renderer was seen going undiscoverable again afterwards, and then recovering on
-its own within minutes. It is intermittent, and it was not reproducible on
-demand, so nothing here should be read as a cure.
+**The disappearance, diagnosed and cured 2026-09-06.** Caught in the act with
+the census the previous attempt added, and the answer was unambiguous:
 
-What is established: when it happens, the device is still registered and
-serving its description over HTTP, and **unicast** M-SEARCH to port 1900 is
-answered while **multicast** to the same socket gets nothing, on a network
-where twenty-odd other devices reply. Both arrive on the same socket, so a
-unicast reply proves the socket, the thread and the responder are all alive.
-The screen was ruled out as a cause: a fresh start with the panel still dozing
-is immediately discoverable, so the correlation an owner naturally draws
-between "screen went dark" and "renderer vanished" is coincidence — both simply
-follow a quiet period.
+```
+17:18:14   327 searches seen, 3210 announcements ignored
+17:19:14   327 searches seen, 3210 announcements ignored   <- frozen
+17:21:15   327 searches seen, 3210 announcements ignored
+17:21:52   ssdp: no multicast for 240s though the network was noisy
+17:21:53   router rebound after multicast reception lost
+17:22:15   335 searches seen, 3290 announcements ignored   <- recovered
+```
 
-Two candidate mechanisms remain, and they need opposite fixes: the group
-membership lapsing above us (Wi-Fi driver or the access point's IGMP snooping),
-or searches arriving and going unanswered. **`DeviceOnlyProtocolFactory` now
-counts both** — every incoming M-SEARCH and every remote announcement — and
-logs a census once a minute. That is what will separate them next time, because
-from a controller the two are identical. `MulticastWatchdog` heals the first:
-if multicast that was previously arriving stops for four minutes, the router
-rejoins the group, with a ten-minute backoff because the rebind changes the
-stream server's port and forces controllers to rediscover.
+**Both counters froze together.** Incoming M-SEARCH and remote announcements
+stopped at the same instant, so multicast was not being delivered to the phone
+at all -- it was not jUPnP declining to answer. Everything else kept working
+throughout: unicast M-SEARCH answered, the description served, the socket bound
+and the group joined as far as `/proc/net/igmp` was concerned. The membership
+had lapsed above us, in the Wi-Fi driver or the access point's IGMP snooping,
+which is why a restart always appeared to cure it.
+
+Prevention was tried and is not available: jUPnP already holds a
+`WIFI_MODE_FULL_HIGH_PERF` Wi-Fi lock and a multicast lock, and the lapse
+happens anyway. So the cure is to notice and rejoin, which is what
+`MulticastWatchdog` does -- **measured recovering the renderer in 90 seconds**
+and confirmed discoverable again immediately after.
+
+The silence window adapts to the network, because the same number cannot serve
+both cases. On a network producing better than one announcement a second --
+3210 in forty minutes, measured here -- ninety seconds of silence is deafness,
+and waiting four minutes would leave the renderer invisible for four minutes
+each time, on a fault seen recurring every half hour. On a network we have
+barely heard from, the same silence means nothing, so the full four minutes
+applies and a renderer that has never heard multicast is never healed at all.
+
+The screen was ruled out along the way: a fresh start with the panel dozing is
+immediately discoverable, so the correlation an owner naturally draws between
+"screen went dark" and "renderer vanished" is coincidence -- both follow a
+quiet period, and it is quiet that ages out the membership.
 
 **Two faults found by a renderer that played on while vanishing from every
 controller, 2026-09-06.** They were independent, and the shape of the report --

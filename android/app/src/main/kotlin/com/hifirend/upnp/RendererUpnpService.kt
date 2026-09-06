@@ -863,7 +863,8 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         val heard = factory.lastMulticastAt
         if (heard == 0L) return                       // never heard any; nothing to compare
         val now = System.currentTimeMillis()
-        if (!MulticastWatchdog.shouldHeal(heard, lastMulticastHealAt, now)) return
+        val heardCount = factory.ignored + factory.searchesSeen
+        if (!MulticastWatchdog.shouldHeal(heard, lastMulticastHealAt, now, heardCount)) return
         lastMulticastHealAt = now
         Log.w(TAG, "ssdp: no multicast for ${(now - heard) / 1000}s though the network " +
             "was noisy; rejoining the group")

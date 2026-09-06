@@ -59,4 +59,38 @@ class MulticastWatchdogTest {
         assertFalse(MulticastWatchdog.shouldHeal(
             lastHeardAt = now - 10_000L, lastHealAt = 0L, now = now))
     }
+
+    @Test
+    fun `a busy network is judged deaf sooner`() {
+        val now = 100 * minute
+        // Two minutes' silence on a network that produces more than one
+        // announcement a second is not a quiet patch.
+        assertTrue(MulticastWatchdog.shouldHeal(
+            lastHeardAt = now - 2 * minute, lastHealAt = 0L, now = now,
+            heardCount = 3000L))
+        // The same silence on a network we have barely heard from is not yet
+        // evidence of anything.
+        assertFalse(MulticastWatchdog.shouldHeal(
+            lastHeardAt = now - 2 * minute, lastHealAt = 0L, now = now,
+            heardCount = 3L))
+    }
+
+    @Test
+    fun `even a busy network gets a grace period`() {
+        val now = 100 * minute
+        assertFalse(MulticastWatchdog.shouldHeal(
+            lastHeardAt = now - 60_000L, lastHealAt = 0L, now = now,
+            heardCount = 3000L))
+    }
+
+    @Test
+    fun `a quiet network still waits the full window`() {
+        val now = 100 * minute
+        assertFalse(MulticastWatchdog.shouldHeal(
+            lastHeardAt = now - 3 * minute, lastHealAt = 0L, now = now,
+            heardCount = 5L))
+        assertTrue(MulticastWatchdog.shouldHeal(
+            lastHeardAt = now - 5 * minute, lastHealAt = 0L, now = now,
+            heardCount = 5L))
+    }
 }

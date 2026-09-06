@@ -13,13 +13,31 @@ package com.hifirend.upnp
 object MulticastWatchdog {
 
     /**
-     * Silence beyond this means we have stopped hearing the network rather
-     * than the network having gone quiet. Announcements arrive every few
-     * seconds on a real home network -- twenty-odd devices on the one this was
-     * measured on -- so four minutes is far outside normal variation while
-     * still recovering long before anybody reaches for the phone.
+     * Silence that condemns a network we have barely heard from.
+     *
+     * Four minutes is far outside normal variation while still recovering long
+     * before anybody reaches for the phone, and it is the safe figure to use
+     * when there is not yet enough traffic to judge by.
      */
     const val SILENCE_MS = 4 * 60_000L
+
+    /**
+     * Silence that condemns a *demonstrably busy* network.
+     *
+     * Measured on the network this was found on: 3210 announcements in forty
+     * minutes, better than one a second. Ninety seconds of silence there is
+     * not a quiet patch, it is deafness -- and waiting four minutes to say so
+     * leaves the renderer invisible for four minutes each time, which on a
+     * fault seen recurring every half hour is a tenth of the evening.
+     */
+    const val BUSY_SILENCE_MS = 90_000L
+
+    /**
+     * Multicasts that make a network "busy" enough to trust the shorter
+     * window. Twenty is more than a lone neighbour announcing occasionally and
+     * far less than a real network manages in a minute.
+     */
+    const val BUSY_THRESHOLD = 20L
 
     /** Never rebind more often than this, whatever the network is doing. */
     const val BACKOFF_MS = 10 * 60_000L
@@ -27,13 +45,22 @@ object MulticastWatchdog {
     /**
      * @param lastHeardAt when multicast last arrived, or 0 if it never has.
      * @param lastHealAt when this last rebound, or 0 if never.
+     * @param heardCount how much multicast has ever arrived, which is what
+     *   decides whether the network is busy enough to judge quickly.
      */
-    fun shouldHeal(lastHeardAt: Long, lastHealAt: Long, now: Long): Boolean {
+    @JvmOverloads
+    fun shouldHeal(
+        lastHeardAt: Long,
+        lastHealAt: Long,
+        now: Long,
+        heardCount: Long = 0L,
+    ): Boolean {
         // Never having heard multicast is not evidence of losing it. A network
         // with nothing else on it would otherwise rebind for ever, and the
         // renderer would be *less* reliable for being watched.
         if (lastHeardAt == 0L) return false
-        if (now - lastHeardAt < SILENCE_MS) return false
+        val silence = if (heardCount >= BUSY_THRESHOLD) BUSY_SILENCE_MS else SILENCE_MS
+        if (now - lastHeardAt < silence) return false
         if (lastHealAt != 0L && now - lastHealAt < BACKOFF_MS) return false
         return true
     }
