@@ -1,6 +1,8 @@
 # Protocols beyond DLNA — an assessment
 
 Written 2026-09-05, with every milestone in `implementation-plan.md` built.
+Bluetooth spiked and closed 2026-09-06; that section is now measurement rather
+than recollection, and the recommendation below moved with it.
 **Nothing here is committed to.** It is a decision record for the point at
 which a second protocol is worth starting, and it records the reasoning so the
 next person does not have to redo it — including the reasoning that turned out
@@ -40,7 +42,7 @@ By that metric the ranking inverts almost completely.
 
 | Protocol | Guest friction | Buildable? |
 |---|---|---|
-| **Bluetooth** | None. Every phone, no app, no network. | **Unknown — resolve first** |
+| **Bluetooth** | None. Every phone, no app, no network. | **No — closed on facts, 2026-09-06** |
 | **AirPlay** | None for iPhone. Built into Control Centre. | Yes, with caveats |
 | **Chromecast** | None for Android. Built into Spotify, YouTube Music. | Effectively no |
 | DLNA | High. Needs a controller app and knowledge. | Built |
@@ -53,30 +55,83 @@ dismissed hardest.
 
 ## The four, reconsidered
 
-### Bluetooth — highest value, and the biggest unknown
+### Bluetooth — closed, on facts
 
-Under the household model this is **the** guest path. Universal, zero setup,
-works from any phone anyone brings, needs no explanation to anybody. The
-fidelity objection is irrelevant: nobody pairing over Bluetooth expects
-bit-perfect, and the app would say so plainly on screen.
+Under the household model this *would* be **the** guest path: universal, zero
+setup, works from any phone anyone brings. The fidelity objection was never the
+problem — nobody pairing over Bluetooth expects bit-perfect, and the app would
+say so plainly on screen.
 
-What stands is the platform question, and it is asserted here from memory
-rather than measurement. `A2DP_SINK` is a system-side profile on Android: disabled in most
-stock builds, enabled by a system overlay rather than an app permission, and
-where the sink role does run, the Bluetooth stack decodes into the audio HAL
-with no supported API handing an app raw PCM — which is the only form this
-engine takes.
+**Spiked 2026-09-06 on the Redmi (M2101K6G, Android 13, MIUI V140). The answer
+is no, on two independent grounds — and the second holds on every device, not
+just this one.**
 
-**This is the single most important thing to resolve, and it is cheap.** A
-short spike on the Redmi: attempt
-`BluetoothAdapter.getProfileProxy(context, listener, BluetoothProfile.A2DP_SINK)`
-and see whether it binds; if it does, find out where the audio actually routes.
-Perhaps an hour. It either opens the most valuable protocol on the list or
-closes it on facts, and every other decision here is cheaper to make once it is
-answered.
+**1. The profile is not enabled here, and no app can enable it.** Android 13
+gates profile services on `bluetooth.profile.*` system properties. This build
+sets `a2dp.source.enabled=true`, sets `avrcp.controller.enabled=false`
+explicitly, and has no `a2dp.sink.enabled` key at all. The running service set
+matches exactly: `A2dpService` is up, `A2dpSinkService` and
+`AvrcpControllerService` are not.
 
-If it is blocked, that is worth saying in the app rather than leaving people to
-wonder why the obvious thing is missing.
+They are not missing from the build — both are declared in `Bluetooth.apk`.
+They are *disabled components*, which intent resolution shows directly:
+
+| Profile action | resolveSystemService | enabled | incl. disabled |
+|---|---|---|---|
+| `IBluetoothA2dp` (control) | resolves | 1 | 1 |
+| `IBluetoothHeadset` (control) | resolves | 1 | 1 |
+| `IBluetoothA2dpSink` | **null** | **0** | 1 |
+| `IBluetoothAvrcpController` | **null** | **0** | 1 |
+
+Present in the package, switched off. Flipping that needs
+`CHANGE_COMPONENT_ENABLED_STATE`, which is `signature|privileged` — a build or
+overlay change, not something an app can request. The first pass called this a
+system overlay rather than an app permission, and that was right.
+
+**2. Even where the sink does run, no API hands an app PCM.** This is the part
+that generalises, and it is what actually closes the option. The complete
+public surface of `BluetoothA2dpSink` is:
+
+```
+connect            disconnect              getConnectionState
+getConnectedDevices                        getDevicesMatchingConnectionStates
+getConnectionPolicy                        setConnectionPolicy
+getPriority        setPriority             isAudioPlaying
+getAudioConfig
+```
+
+Connection management, end to end. `getAudioConfig` returns a
+`BluetoothAudioConfig` — sample rate, channel config, encoding — which
+*describes* the stream and hands over none of it. No read call, no callback, no
+file descriptor. The stack decodes SBC internally and puts the result into the
+audio HAL.
+
+So the audio never reaches this engine, which only consumes PCM
+(`nativePushPcm`). And the best case is worse than useless: Android's own mixer
+routes the decoded stream to the USB DAC — resampled, not bit-perfect — while
+`UsbPlayback` holds an exclusive claim on the same interfaces, which is the
+collision `HttpStreamPlayback` already documents at 14 transfer errors and 107
+bad packets. The app would be bypassed and broken at the same time.
+
+**What the spike could not show, and why it does not matter.**
+`getProfileProxy(context, listener, A2DP_SINK)` returned `true` and then never
+called `onServiceConnected` — but so did the A2DP *source* control, because the
+probe ran under `app_process`, which has no app record and therefore cannot
+complete `bindService` (`SecurityException: Unable to find app for caller`).
+That result is evidence of nothing, which is exactly what the controls were
+there to reveal. The two findings above rest on intent resolution and the API
+surface instead, which the harness measures cleanly and which the controls pass.
+
+**Reproducing it** needs no app install and about a minute:
+
+```sh
+adb shell getprop | grep bluetooth.profile      # no a2dp.sink key
+adb shell svc bluetooth enable
+adb shell dumpsys activity services com.android.bluetooth | grep -i sink   # nothing
+```
+
+The doc's own earlier suggestion now stands as work: **say this in the app**,
+rather than leaving people to wonder why the obvious thing is missing.
 
 ### AirPlay — the buildable guest path
 
@@ -119,8 +174,13 @@ certificate, the protobuf CASTV2 protocol, the receiver and media-namespace
 state machines, and then tracking whatever Google changes, with the sender side
 wholly under their control.
 
-If Bluetooth works, it covers this need well enough that Chromecast stops
-mattering — another reason to answer that question first.
+The fallback argument is now gone. This section previously rested on "if
+Bluetooth works, it covers this need well enough that Chromecast stops
+mattering" — Bluetooth does not work, so nothing covers it. **The Android guest
+is the half of the household with no buildable path at all**: AirPlay serves the
+iPhone, DLNA serves the owner, and the person holding an Android phone with
+Spotify open has neither. That is a real gap, and the honest position is that it
+stays open rather than that it was closed.
 
 ### Tidal Connect — still the owner's problem, already solved
 
@@ -193,25 +253,32 @@ are already implemented:
 
 - **Pull** (DLNA, OpenHome, Cast, SlimProto): the protocol yields a URL →
   `HttpStreamPlayback` unchanged.
-- **Push** (AirPlay, Bluetooth): the protocol yields decoded PCM →
-  `nativeStartPcmStream` / `nativePushPcm`, already built for AAC.
+- **Push** (AirPlay): the protocol yields decoded PCM →
+  `nativeStartPcmStream` / `nativePushPcm`, already built for AAC. Bluetooth
+  belonged in this row until the spike showed the sink profile never yields the
+  PCM to an app at all — which is precisely why it is not buildable here.
 
 ---
 
 ## Recommendation
 
-1. **Answer the Bluetooth question.** About an hour of spike work on the Redmi.
-   Highest-value guest path, only genuine unknown, and everything else is
-   cheaper to decide once it is settled.
+1. ~~Answer the Bluetooth question.~~ **Done 2026-09-06: no.** Not available
+   on this build, and not reachable by any app on any build, because the sink
+   profile exposes no PCM.
 2. **Decide the arbitration policy.** Who wins when a guest arrives, how the
-   owner gets back, what the screen says.
+   owner gets back, what the screen says. Unchanged, and now unblocked.
 3. **Extract the appliance shell**, with that policy designed in.
-4. **Build the guest path**: Bluetooth if the spike says yes, AirPlay
-   otherwise — or AirPlay regardless, since it is the iPhone half of the
-   household and Bluetooth cannot cover that as gracefully.
-5. **OpenHome** afterwards, as an owner-lane improvement.
-6. **Chromecast** only if Google's position changed; **Tidal Connect** never,
-   absent a commercial relationship.
+4. **Build the guest path: AirPlay.** No longer a choice between two — it is the
+   only frictionless guest path that can actually be built, and it happens to be
+   lossless. Confirm the `shairport-sync` licence and legal posture first, as
+   the section above sets out.
+5. **Say that Bluetooth is unavailable, in the app.** Cheap, and it stops both
+   classes of user hunting for a setting that cannot exist.
+6. **OpenHome** afterwards, as an owner-lane improvement.
+7. **Chromecast** — reopen only if Google's position changed. It is now the only
+   candidate for the Android guest, so it is worth a look rather than a
+   dismissal, even though the feasibility finding has not moved.
+8. **Tidal Connect** never, absent a commercial relationship.
 
 The thing to hold onto: the guest path does not compete with the bit-perfect
 claim, it protects it. Without one, the owner ends up unplugging the DAC and
