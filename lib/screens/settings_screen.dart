@@ -138,6 +138,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ignoringBattery = _appliance['ignoringBatteryOptimizations'] as bool? ?? false;
     final hasVendor = _appliance['hasVendorSettings'] as bool? ?? false;
     final manufacturer = _appliance['manufacturer'] as String? ?? '';
+    // Shown only when it has actually been seen failing. Warning every owner of
+    // a Xiaomi phone about a permission they may not need is how a settings
+    // screen becomes something people scroll past.
+    final wakeRefused = _appliance['screenWakeRefused'] as bool? ?? false;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -358,6 +362,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 final messenger = ScaffoldMessenger.of(context);
                 final opened =
                     await _channel.invokeMethod<String>('openVendorAutostart') ?? '';
+                if (opened.isEmpty) {
+                  messenger.showSnackBar(const SnackBar(
+                    content: Text('Could not open that screen on this phone.'),
+                  ));
+                }
+              },
+            ),
+          if (wakeRefused)
+            _check(
+              ok: false,
+              title: 'Wake the screen when music starts',
+              detail: 'Music has played here while the screen stayed dark. '
+                  'Android switches off a screen hold from an app with no '
+                  'window on display, and this phone refused to let the '
+                  'renderer bring its own window up, so the panel lit for a '
+                  'moment and went back to sleep. The permission is usually '
+                  'called something like "Display pop-up windows while running '
+                  'in the background", and it is separate from autostart.',
+              action: 'Open settings',
+              onAction: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final opened =
+                    await _channel.invokeMethod<String>('openBackgroundWindow') ?? '';
                 if (opened.isEmpty) {
                   messenger.showSnackBar(const SnackBar(
                     content: Text('Could not open that screen on this phone.'),

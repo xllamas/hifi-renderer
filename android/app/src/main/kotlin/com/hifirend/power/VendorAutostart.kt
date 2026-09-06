@@ -72,6 +72,84 @@ object VendorAutostart {
         ),
     )
 
+    /**
+     * The vendor screen that allows an app to start an activity from the
+     * background -- a different permission from autostart, and separately off
+     * by default.
+     *
+     * It is what decides whether the now-playing screen can appear when music
+     * starts on a sleeping phone. Measured on the test phone: without it the
+     * activity launch is refused (`SYSTEM_ALERT_WINDOW: rejectTime`), so the
+     * panel is woken by the wake lock and then dozes again with nothing on it,
+     * because Android disables a screen wake lock held by a process with no
+     * visible window. Granting it is the difference between the music starting
+     * in the dark and the track appearing on screen.
+     */
+    private val backgroundWindowTargets: Map<String, List<Target>> = mapOf(
+        "xiaomi" to listOf(
+            Target("MIUI other permissions", ComponentName(
+                "com.miui.securitycenter",
+                "com.miui.permcenter.permissions.PermissionsEditorActivity")),
+        ),
+        "oppo" to listOf(
+            Target("Floating window manager", ComponentName(
+                "com.coloros.safecenter",
+                "com.coloros.safecenter.sysfloatwindow.FloatWindowListActivity")),
+        ),
+        "vivo" to listOf(
+            Target("Background pop-up", ComponentName(
+                "com.vivo.permissionmanager",
+                "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")),
+        ),
+    )
+
+    fun hasBackgroundWindowSettings(context: Context): Boolean =
+        resolveBackgroundWindowTarget(context) != null
+
+    private fun resolveBackgroundWindowTarget(context: Context): Target? {
+        val list = backgroundWindowTargets[manufacturer()] ?: return null
+        return list.firstOrNull { t ->
+            Intent().setComponent(t.component)
+                .resolveActivity(context.packageManager) != null
+        }
+    }
+
+    /**
+     * Opens the background-window permission screen, falling back to the
+     * standard per-app settings page, which is at least somewhere the user can
+     * find the permission by hand.
+     */
+    fun openBackgroundWindow(context: Context): String? {
+        resolveBackgroundWindowTarget(context)?.let { t ->
+            return try {
+                context.startActivity(
+                    Intent().setComponent(t.component)
+                        // MIUI's editor needs to be told which app.
+                        .putExtra("extra_pkgname", context.packageName)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                Log.i(TAG, "background-window: opened ${t.label}")
+                t.label
+            } catch (e: Throwable) {
+                Log.w(TAG, "background-window: ${t.label} refused: ${e.message}")
+                openAppDetails(context)
+            }
+        }
+        return openAppDetails(context)
+    }
+
+    private fun openAppDetails(context: Context): String? = try {
+        context.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(Uri.fromParts("package", context.packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        "App info"
+    } catch (e: Throwable) {
+        Log.w(TAG, "background-window: no settings screen available: ${e.message}")
+        null
+    }
+
     fun manufacturer(): String = Build.MANUFACTURER.lowercase()
 
     /** True when this device is one of the OEMs known to need extra permission. */

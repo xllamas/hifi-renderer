@@ -210,6 +210,9 @@ class MainActivity : FlutterActivity() {
                             ""","manufacturer":"${VendorAutostart.manufacturer()}"""" +
                             ""","hasVendorSettings":${
                                 VendorAutostart.hasVendorSettings(this)}""" +
+                            ""","hasBackgroundWindowSettings":${
+                                VendorAutostart.hasBackgroundWindowSettings(this)}""" +
+                            ""","screenWakeRefused":${RendererState.screenWakeRefused}""" +
                             ""","unexpectedDeaths":${health.unexpectedDeaths}}"""
                         )
                     }
@@ -228,6 +231,9 @@ class MainActivity : FlutterActivity() {
                             """{"health":${health.toJson()},""" +
                             ""","manufacturer":"${VendorAutostart.manufacturer()}"""" +
                             ""","hasVendorSettings":${VendorAutostart.hasVendorSettings(this)}""" +
+                            ""","hasBackgroundWindowSettings":${
+                                VendorAutostart.hasBackgroundWindowSettings(this)}""" +
+                            ""","screenWakeRefused":${RendererState.screenWakeRefused}""" +
                             ""","ignoringBatteryOptimizations":${
                                 VendorAutostart.isIgnoringBatteryOptimizations(this)}}"""
                         )
@@ -270,6 +276,8 @@ class MainActivity : FlutterActivity() {
                     }
                     "openVendorAutostart" ->
                         result.success(VendorAutostart.open(this) ?: "")
+                    "openBackgroundWindow" ->
+                        result.success(VendorAutostart.openBackgroundWindow(this) ?: "")
                     "requestBatteryExemption" ->
                         result.success(VendorAutostart.requestIgnoreBatteryOptimizations(this))
                     "startUpnp" -> {

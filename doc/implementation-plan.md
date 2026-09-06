@@ -827,6 +827,30 @@ service, which owns playback, to the activity, which owns the window — as
 state rather than a listener, because neither reliably outlives the other and
 depending on which started first is how the previous attempt broke.
 
+**Waking on playback needed a vendor permission, and says so when it does
+not have one.** The original wake started the activity and relied on
+`setTurnScreenOn`. That is a *background activity start*, which MIUI gates
+behind "Display pop-up windows while running in the background" -- off by
+default, and observed being refused on the test phone
+(`SYSTEM_ALERT_WINDOW: rejectTime`). Music therefore started into a dark
+screen.
+
+The service now holds its own `SCREEN_BRIGHT_WAKE_LOCK` rather than depending
+on a window, which fixes the related gap that the panel could only ever be held
+while an activity existed -- and this renderer plays for hours with none.
+Acquiring it with `ACQUIRE_CAUSES_WAKEUP` genuinely wakes the panel:
+measured `Dozing -> Awake` on the phone. But Android *disables* a screen wake
+lock held by a process with no visible window, so without the vendor permission
+the panel lights for ten seconds and dozes again -- also measured, the lock
+reading `DISABLED` throughout.
+
+So the permission is the fix, and only the user can grant it. Rather than
+warning every owner of a Xiaomi phone, the app **watches for the symptom**:
+music playing while the panel stays dark for five seconds. Only then does the
+settings screen offer the deep link, on the same "observed, not inferred"
+principle as the kill counter -- whether waking works cannot be decided from
+the make of the phone or from any permission the app is allowed to query.
+
 **The timeout is a setting** — 1, 2, 5, 10 or 30 minutes, or Never — because
 the right answer belongs to the room rather than the app: a phone across a
 listening room wants to go dark quickly, one on a desk being read wants to stay

@@ -329,8 +329,10 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 // knows about it whichever protocol is driving. Passing the
                 // state every time rather than on transitions means a missed
                 // edge cannot strand the panel on all night or dark mid-album.
-                runCatching { screenPolicy.tick(com.hifirend.RendererState.isPlaying) }
-                    .onFailure { Log.w(TAG, "screen policy tick failed: ${it.message}") }
+                runCatching {
+                    screenPolicy.tick(com.hifirend.RendererState.isPlaying)
+                    com.hifirend.RendererState.screenWakeRefused = screenPolicy.wakeRefused
+                }.onFailure { Log.w(TAG, "screen policy tick failed: ${it.message}") }
                 runCatching { deviceOnlyFactory?.logIfDue() }
             }, 500, 500, TimeUnit.MILLISECONDS)
         }

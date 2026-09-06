@@ -72,6 +72,12 @@ object RendererState {
     /** True when repeat is on, which makes next and previous always available. */
     @Volatile var playlistRepeat: Boolean = false
 
+    /**
+     * Seen: music playing while the panel stayed dark. Only the vendor's
+     * background-activity permission fixes it, and only the user can grant it.
+     */
+    @Volatile var screenWakeRefused: Boolean = false
+
     /** Percent as reported by the DAC, or -1 when it exposes no volume control. */
     @Volatile var dacVolume: Int = -1
     @Volatile var dacVolumeSupported: Boolean = false
