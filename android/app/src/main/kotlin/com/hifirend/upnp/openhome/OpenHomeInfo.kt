@@ -43,9 +43,19 @@ class OpenHomeInfo(private val currentTrack: () -> OpenHomeTrack?) {
 
     fun getPropertyChangeSupport() = propertyChangeSupport
 
-    /** Bumped so a polling controller can tell one track from the next. */
-    @Volatile private var trackCount = 0
-    @Volatile private var detailsCount = 0
+    /**
+     * Bumped so a polling controller can tell one track from the next.
+     *
+     * Deliberately *not* named after the state variables they feed. jUPnP
+     * resolves an evented variable's accessor by name and takes a matching
+     * field in preference to the getter, so a private `trackCount: Int` beside
+     * `getTrackCount(): UnsignedIntegerFourBytes` meant every event carried a
+     * raw Integer for a ui4 variable. Eventing then died on the first track
+     * change with "Value is not valid: 1", and controllers that lose their
+     * subscription drop the renderer.
+     */
+    @Volatile private var trackChanges = 0
+    @Volatile private var detailChanges = 0
 
     @UpnpAction(
         name = "Counters",
@@ -56,8 +66,8 @@ class OpenHomeInfo(private val currentTrack: () -> OpenHomeTrack?) {
         ],
     )
     fun getCounters() = Counters(
-        UnsignedIntegerFourBytes(trackCount.toLong()),
-        UnsignedIntegerFourBytes(detailsCount.toLong()),
+        UnsignedIntegerFourBytes(trackChanges.toLong()),
+        UnsignedIntegerFourBytes(detailChanges.toLong()),
         UnsignedIntegerFourBytes(0L),
     )
 
@@ -128,8 +138,8 @@ class OpenHomeInfo(private val currentTrack: () -> OpenHomeTrack?) {
     // Accessors for the evented variables. jUPnP reads these to build the
     // NOTIFY a controller gets the moment it subscribes -- which for OpenHome
     // is how it learns what is playing, rather than by polling the actions.
-    fun getTrackCount(): UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(trackCount.toLong())
-    fun getDetailsCount(): UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(detailsCount.toLong())
+    fun getTrackCount(): UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(trackChanges.toLong())
+    fun getDetailsCount(): UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(detailChanges.toLong())
     fun getMetatextCount(): UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(0L)
     fun getUri(): String = currentTrack()?.uri ?: ""
     fun getMetadata(): String = currentTrack()?.metadata ?: ""
@@ -145,14 +155,14 @@ class OpenHomeInfo(private val currentTrack: () -> OpenHomeTrack?) {
 
     /** The track changed; tell subscribers what it is now. */
     fun onTrackChanged() {
-        trackCount++
-        detailsCount++
+        trackChanges++
+        detailChanges++
         val t = currentTrack()
         runCatching {
             propertyChangeSupport.firePropertyChange("Uri", null, t?.uri ?: "")
             propertyChangeSupport.firePropertyChange("Metadata", null, t?.metadata ?: "")
             propertyChangeSupport.firePropertyChange(
-                "TrackCount", null, UnsignedIntegerFourBytes(trackCount.toLong()))
+                "TrackCount", null, UnsignedIntegerFourBytes(trackChanges.toLong()))
         }
     }
 

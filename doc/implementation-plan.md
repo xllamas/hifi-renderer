@@ -770,6 +770,40 @@ happened. Verified on the phone: a 404 mid-playlist is stepped over and the
 next track plays; a playlist of dead links stops after exactly three, leaving
 the remaining tracks untouched.
 
+**Two faults found by a renderer that played on while vanishing from every
+controller, 2026-09-06.** They were independent, and the shape of the report --
+audio fine, DLNA gone -- is what pointed at both: SOAP is served by Jetty's own
+thread pool, so anything already connected keeps working while the UPnP
+discovery side dies quietly.
+
+*The renderer was behaving as a control point.* jUPnP runs both halves of
+UPnP, and this app only ever needed to be a device -- nothing in it touches a
+remote device, a control point or a registry listener. But every `ssdp:alive`
+on the network made it fetch that device's description, and BubbleUPnP
+advertises `127.0.0.1` and a VPN address alongside its real one. Each
+announcement therefore queued fetches that blocked six or seven seconds before
+failing, for ever. Incoming M-SEARCH is handled on that same async executor and
+must be answered inside the controller's MX window, a second or two, so once
+enough dead fetches were queued ahead of it the renderer stopped being found at
+all. Measured: unicast M-SEARCH answered, multicast M-SEARCH ignored while
+eight other devices replied, the SSDP socket bound and the group joined in
+`/proc/net/igmp` — a renderer that was listening and simply never got a thread
+in time. `DeviceOnlyProtocolFactory` now drops remote-device chatter at the
+router's door; searches *for* us are untouched. Fetch attempts went from dozens
+to zero.
+
+*Eventing was broken by a name collision.* jUPnP resolves an evented state
+variable's accessor by name and prefers a **field** over the getter, so
+`OpenHomeInfo`'s private `trackCount: Int` bound in preference to
+`getTrackCount(): UnsignedIntegerFourBytes`. Every event then tried to write a
+raw Integer into a `ui4`, and GENA died on the first track change with "Value
+is not valid: 1" — controllers that lose their subscription drop the renderer.
+Nothing failed at binding time and every action worked, which is why the
+binding tests passed throughout. The counters are renamed, and the new test
+reads every evented variable through *jUPnP's own accessor* and asserts its
+datatype accepts the result: checking the getters would have passed, because
+the getters were never the problem.
+
 **The screen policy was connected, 2026-09-06.** It had been half-built:
 `MainActivity` added `FLAG_KEEP_SCREEN_ON` in `onCreate` and nothing ever
 removed it, because nothing subscribed to `ScreenPolicy.onKeepScreenOnChanged`.

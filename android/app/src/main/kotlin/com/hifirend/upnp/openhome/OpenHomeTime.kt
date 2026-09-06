@@ -36,7 +36,10 @@ class OpenHomeTime(
 
     fun getPropertyChangeSupport() = propertyChangeSupport
 
-    @Volatile private var trackCount = 0
+    // Not named after the TrackCount state variable: jUPnP binds a matching
+    // field in preference to the getter, and would then event a raw Int for a
+    // ui4. See OpenHomeInfo for what that failure looks like from a controller.
+    @Volatile private var trackChanges = 0
     @Volatile private var lastSeconds = -1
 
     @UpnpAction(
@@ -48,7 +51,7 @@ class OpenHomeTime(
         ],
     )
     fun getTime() = TimeResult(
-        UnsignedIntegerFourBytes(trackCount.toLong()),
+        UnsignedIntegerFourBytes(trackChanges.toLong()),
         UnsignedIntegerFourBytes(durationSeconds().coerceAtLeast(0).toLong()),
         UnsignedIntegerFourBytes(positionSeconds().coerceAtLeast(0).toLong()),
     )
@@ -64,14 +67,14 @@ class OpenHomeTime(
     }
 
     // Accessors for the evented variables; see OpenHomeInfo for why.
-    fun getTrackCount(): UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(trackCount.toLong())
+    fun getTrackCount(): UnsignedIntegerFourBytes = UnsignedIntegerFourBytes(trackChanges.toLong())
     fun getDuration(): UnsignedIntegerFourBytes =
         UnsignedIntegerFourBytes(durationSeconds().coerceAtLeast(0).toLong())
     fun getSeconds(): UnsignedIntegerFourBytes =
         UnsignedIntegerFourBytes(positionSeconds().coerceAtLeast(0).toLong())
 
     fun onTrackChanged() {
-        trackCount++
+        trackChanges++
         lastSeconds = -1
     }
 

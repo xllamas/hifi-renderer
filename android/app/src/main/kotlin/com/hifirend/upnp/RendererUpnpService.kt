@@ -25,7 +25,10 @@ import com.hifirend.upnp.openhome.OpenHomeTrackList
 import com.hifirend.upnp.openhome.OpenHomeVolume
 import com.hifirend.usb.HttpStreamPlayback
 import com.hifirend.widget.RendererWidget
+import org.jupnp.android.AndroidRouter
 import org.jupnp.android.AndroidUpnpServiceImpl
+import org.jupnp.UpnpServiceConfiguration
+import org.jupnp.protocol.ProtocolFactory
 import org.jupnp.binding.annotations.AnnotationLocalServiceBinder
 import org.jupnp.model.DefaultServiceManager
 import org.jupnp.model.meta.DeviceDetails
@@ -328,6 +331,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 // edge cannot strand the panel on all night or dark mid-album.
                 runCatching { screenPolicy.tick(com.hifirend.RendererState.isPlaying) }
                     .onFailure { Log.w(TAG, "screen policy tick failed: ${it.message}") }
+                runCatching { deviceOnlyFactory?.logIfDue() }
             }, 500, 500, TimeUnit.MILLISECONDS)
         }
         Log.i(TAG, "LastChange event flusher started")
@@ -454,6 +458,26 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return Service.START_STICKY
     }
+
+    /**
+     * Hands the router a protocol factory that ignores other people's devices.
+     *
+     * This is a renderer, not a control point, and discovering remote devices
+     * was costing it the ability to be discovered itself -- see
+     * [DeviceOnlyProtocolFactory]. createRouter is jUPnP's own hook for this
+     * and is the only place the factory the router uses can be substituted.
+     */
+    override fun createRouter(
+        configuration: UpnpServiceConfiguration,
+        protocolFactory: ProtocolFactory,
+        context: Context,
+    ): AndroidRouter {
+        val deviceOnly = DeviceOnlyProtocolFactory(protocolFactory)
+        this.deviceOnlyFactory = deviceOnly
+        return AndroidRouter(configuration, deviceOnly, context)
+    }
+
+    @Volatile private var deviceOnlyFactory: DeviceOnlyProtocolFactory? = null
 
     override fun onCreate() {
         super.onCreate()
