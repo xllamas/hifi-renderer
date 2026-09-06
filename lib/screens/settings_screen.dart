@@ -37,13 +37,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _saved = false;
   bool _serverConversion = false;
 
+  /// Minutes of quiet before the screen is let go; 0 means never.
+  int _screenTimeout = 5;
+
   @override
   void initState() {
     super.initState();
     _loadAppliance();
     _loadDacs();
     _loadServerConversion();
+    _loadScreenTimeout();
   }
+
+  Future<void> _loadScreenTimeout() async {
+    try {
+      final m = await _channel.invokeMethod<int>('getScreenTimeout') ?? 5;
+      if (mounted) setState(() => _screenTimeout = m);
+    } catch (_) {
+      // Absent means the default, which is what the field already holds.
+    }
+  }
+
+  Future<void> _setScreenTimeout(int minutes) async {
+    setState(() => _screenTimeout = minutes);
+    await _channel.invokeMethod('setScreenTimeout', {'minutes': minutes});
+  }
+
+  static String _describeTimeout(int minutes) => switch (minutes) {
+        0 => 'Never',
+        1 => '1 minute',
+        _ => '$minutes minutes',
+      };
 
   Future<void> _loadServerConversion() async {
     try {
@@ -241,6 +265,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         'files arrive untouched. Tracks at rates this DAC '
                         'cannot clock are refused, and the reason is shown.',
                 style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: Icon(_screenTimeout == 0
+                  ? Icons.brightness_high
+                  : Icons.brightness_medium),
+              title: const Text('Turn the screen off after'),
+              subtitle: Text(
+                _screenTimeout == 0
+                    ? 'The screen stays on. Fine on a permanently powered '
+                        'phone, but an OLED panel showing the same screen for '
+                        'months is how it acquires a permanent one.'
+                    : 'Counted from when the music stops -- a long track never '
+                        'blanks the screen mid-play. Playback turns it back on.',
+                style: const TextStyle(fontSize: 12),
+              ),
+              trailing: DropdownButton<int>(
+                value: _screenTimeout,
+                underline: const SizedBox.shrink(),
+                items: const [1, 2, 5, 10, 30, 0]
+                    .map((m) => DropdownMenuItem(
+                          value: m,
+                          child: Text(_describeTimeout(m)),
+                        ))
+                    .toList(),
+                onChanged: (m) {
+                  if (m != null) _setScreenTimeout(m);
+                },
               ),
             ),
           ),

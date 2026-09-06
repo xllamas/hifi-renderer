@@ -793,8 +793,18 @@ service, which owns playback, to the activity, which owns the window — as
 state rather than a listener, because neither reliably outlives the other and
 depending on which started first is how the previous attempt broke.
 
+**The timeout is a setting** — 1, 2, 5, 10 or 30 minutes, or Never — because
+the right answer belongs to the room rather than the app: a phone across a
+listening room wants to go dark quickly, one on a desk being read wants to stay
+up. Never is offered and is reasonable on a permanently powered phone, with the
+warning it deserves, since an OLED showing the same now-playing screen for
+months is how it acquires a permanent one. Changing it restarts the countdown
+from the change rather than from the last track, so shortening the timeout
+cannot blank the panel under the hand of the person who just shortened it.
+
 *Measured on the Redmi:* the panel was released after 295 s idle and the window
-flag genuinely cleared, then re-held the moment playback started. **What the
+flag genuinely cleared, then re-held the moment playback started — and the
+owner confirmed the screen did go dark and woke on the next track. **What the
 app can do here stops at the flag.** Turning the panel off is the system's
 decision, taken on its own display timeout counting from the last touch (10
 minutes on this phone), so the observed delay is ours plus whatever the system

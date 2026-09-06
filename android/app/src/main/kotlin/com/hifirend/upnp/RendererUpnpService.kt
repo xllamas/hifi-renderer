@@ -430,6 +430,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         networkExecutor.shutdownNow()
         RendererControl.transport = null
         RendererControl.onOutputDeviceChanged = null
+        RendererControl.onScreenTimeoutChanged = null
         screenPolicy.shutdown()
         eventFlusher?.shutdownNow()
         playback.stop()
@@ -461,6 +462,11 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         // outlive the UI, and an ordinary started service is killed as soon as
         // the app leaves the screen -- MIUI especially.
         com.hifirend.RendererState.rendererName = friendlyName()
+        // Load the user's screen timeout before anything can start playing, or
+        // the first idle period would run on the default rather than on what
+        // they chose.
+        screenPolicy.setIdleTimeoutMinutes(
+            com.hifirend.power.ScreenTimeout.minutes(applicationContext))
         RendererNotification.ensureChannel(this)
         startForegroundSafely(null, null, playing = false)
         health.recordServiceStart()
@@ -571,6 +577,9 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             }
         }
         RendererControl.onOutputDeviceChanged = { force -> onOutputDeviceChanged(force) }
+        RendererControl.onScreenTimeoutChanged = { minutes ->
+            screenPolicy.setIdleTimeoutMinutes(minutes)
+        }
         // One engine, two protocols: every callback goes to the source that
         // actually started the stream. Sending them all to AVTransport would
         // make an OpenHome playlist stop dead at the first track boundary --

@@ -256,6 +256,18 @@ class MainActivity : FlutterActivity() {
                         RendererControl.outputDeviceChanged()
                         result.success(true)
                     }
+                    "getScreenTimeout" ->
+                        result.success(
+                            com.hifirend.power.ScreenTimeout.minutes(applicationContext))
+                    "setScreenTimeout" -> {
+                        val minutes = call.argument<Int>("minutes")
+                            ?: com.hifirend.power.ScreenTimeout.DEFAULT_MINUTES
+                        com.hifirend.power.ScreenTimeout.setMinutes(applicationContext, minutes)
+                        // Apply it to the policy already running, or the change
+                        // would not take until the service was restarted.
+                        RendererControl.onScreenTimeoutChanged?.invoke(minutes)
+                        result.success(true)
+                    }
                     "openVendorAutostart" ->
                         result.success(VendorAutostart.open(this) ?: "")
                     "requestBatteryExemption" ->

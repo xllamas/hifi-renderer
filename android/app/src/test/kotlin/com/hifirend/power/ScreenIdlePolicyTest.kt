@@ -133,6 +133,35 @@ class ScreenIdlePolicyTest {
     }
 
     @Test
+    fun `the settings choices are all usable timeouts`() {
+        // Every value the settings screen offers must survive the policy's
+        // clamp unchanged, or the screen would show one number and the
+        // renderer would use another.
+        for (minutes in ScreenTimeout.CHOICES.filter { it != ScreenTimeout.NEVER }) {
+            val p = ScreenIdlePolicy()
+            p.idleMillis = minutes * 60_000L
+            assertEquals(
+                "$minutes minutes was clamped",
+                minutes * 60_000L,
+                p.idleMillis,
+            )
+        }
+    }
+
+    @Test
+    fun `the offered wording matches the values`() {
+        assertEquals("Never", ScreenTimeout.describe(ScreenTimeout.NEVER))
+        assertEquals("1 minute", ScreenTimeout.describe(1))
+        assertEquals("30 minutes", ScreenTimeout.describe(30))
+        // The default the policy uses and the default the setting reports must
+        // be the same number, or a fresh install disagrees with itself.
+        assertEquals(
+            ScreenIdlePolicy.DEFAULT_IDLE_MILLIS,
+            ScreenTimeout.DEFAULT_MINUTES * 60_000L,
+        )
+    }
+
+    @Test
     fun `millisUntilBlank counts down and reads null once it has blanked`() {
         val p = ScreenIdlePolicy()
         p.update(playing = false, now = 0)

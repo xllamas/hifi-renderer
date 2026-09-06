@@ -360,6 +360,7 @@ void main() {
                   '"hasVendorSettings":true,'
                   '"ignoringBatteryOptimizations":false}',
             'getServerConversion' => false,
+            'getScreenTimeout' => 5,
             'listDacs' => '{"devices":[]}',
             _ => null,
           });
@@ -384,6 +385,53 @@ void main() {
       // Observed, not inferred from the make of the phone -- which is what
       // makes it the one signal that works on hardware nobody here owns.
       expect(find.textContaining('never recorded a clean stop'), findsOneWidget);
+    });
+
+    testWidgets('the screen timeout shows the stored value and can be changed',
+        (tester) async {
+      int? sent;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'setScreenTimeout') {
+          sent = (call.arguments as Map)['minutes'] as int;
+          return true;
+        }
+        return switch (call.method) {
+          'applianceStatus' =>
+            '{"health":{"unexpectedDeaths":0,"bootStarts":1,'
+                '"lastBootBlocked":null},"manufacturer":"xiaomi",'
+                '"hasVendorSettings":true,'
+                '"ignoringBatteryOptimizations":true}',
+          'getServerConversion' => false,
+          // Stored as ten, so the control must not simply show its own default.
+          'getScreenTimeout' => 10,
+          'listDacs' => '{"devices":[]}',
+          _ => null,
+        };
+      });
+
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          status: const RendererStatus(),
+          probe: ValueNotifier(const DacProbeState()),
+          onRefreshCaps: () async {},
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await tester.scrollUntilVisible(
+          find.text('Turn the screen off after'), 200,
+          scrollable: find.byType(Scrollable).first);
+      expect(find.text('10 minutes'), findsOneWidget);
+
+      await tester.tap(find.byType(DropdownButton<int>));
+      await tester.pumpAndSettle();
+      // "Never" is offered, and is a real choice for a powered phone.
+      await tester.tap(find.text('Never').last);
+      await tester.pumpAndSettle();
+
+      expect(sent, 0, reason: 'never is sent as zero minutes');
+      expect(find.text('Never'), findsOneWidget);
+      expect(find.textContaining('OLED panel'), findsOneWidget);
     });
 
     testWidgets('says nothing when it has never been killed', (tester) async {

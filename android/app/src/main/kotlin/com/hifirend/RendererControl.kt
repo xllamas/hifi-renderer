@@ -25,6 +25,13 @@ object RendererControl {
     var onOutputDeviceChanged: ((Boolean) -> Unit)? = null
 
     /**
+     * Set by the service so a settings change reaches the running policy.
+     * Without it the new timeout would only take effect at the next restart.
+     */
+    @Volatile
+    var onScreenTimeoutChanged: ((Int) -> Unit)? = null
+
+    /**
      * [force] for a deliberate change by the user -- picking a device, or
      * changing the conversion policy. Those alter what is advertised even when
      * the device itself is the same, so they must not be skipped.

@@ -36,6 +36,12 @@ class ScreenPolicy(private val context: Context) {
      * album.
      */
     fun tick(playing: Boolean, now: Long = System.currentTimeMillis()) {
+        // "Never" is a setting, not a very long timeout: the panel is simply
+        // held, and no amount of idling releases it.
+        if (holdForever) {
+            if (!ScreenState.keepScreenOn) ScreenState.keepScreenOn = true
+            return
+        }
         if (policy.update(playing, now)) {
             Log.i(TAG, if (policy.keepScreenOn) "screen: holding the panel on"
                        else "screen: idle timeout reached, letting the panel sleep")
@@ -43,12 +49,27 @@ class ScreenPolicy(private val context: Context) {
         }
     }
 
+    @Volatile
+    private var holdForever = false
+
+    /** [ScreenTimeout.NEVER] holds the panel on; anything else is minutes. */
     fun setIdleTimeoutMinutes(minutes: Int) {
-        policy.idleMillis = minutes * 60_000L
+        holdForever = minutes == ScreenTimeout.NEVER
+        if (holdForever) {
+            Log.i(TAG, "screen: set to stay on")
+            noteActivity()
+        } else {
+            policy.idleMillis = minutes * 60_000L
+            // Start the countdown from the change, not from whenever the last
+            // track ended, or shortening the timeout could blank the panel
+            // under the hand of the person who just changed it.
+            policy.noteActivity(System.currentTimeMillis())
+            Log.i(TAG, "screen: idle timeout set to $minutes minute(s)")
+        }
     }
 
     val idleTimeoutMinutes: Int
-        get() = (policy.idleMillis / 60_000L).toInt()
+        get() = if (holdForever) ScreenTimeout.NEVER else (policy.idleMillis / 60_000L).toInt()
 
     /**
      * Any activity that should postpone blanking.
