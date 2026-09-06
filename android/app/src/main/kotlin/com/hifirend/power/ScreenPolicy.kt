@@ -2,8 +2,6 @@ package com.hifirend.power
 
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import com.hifirend.MainActivity
@@ -25,35 +23,49 @@ private const val TAG = "hifirend"
 class ScreenPolicy(private val context: Context) {
 
     private val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-    private val handler = Handler(Looper.getMainLooper())
-    private var idleTimeoutMs: Long = DEFAULT_IDLE_MS
+    private val policy = ScreenIdlePolicy()
 
-    private val blank = Runnable {
-        Log.i(TAG, "screen: idle timeout reached, releasing keep-awake")
-        keepScreenOn = false
-        onKeepScreenOnChanged?.invoke(false)
+    /**
+     * Driven from the service's existing 500 ms tick rather than a timer of
+     * its own.
+     *
+     * That tick already knows whether anything is playing, whichever protocol
+     * is driving, so there is one place that cannot disagree with the screen.
+     * The previous design posted a delayed Runnable when playback *started*
+     * and never refreshed it, which blanked the panel three minutes into every
+     * album.
+     */
+    fun tick(playing: Boolean, now: Long = System.currentTimeMillis()) {
+        if (policy.update(playing, now)) {
+            Log.i(TAG, if (policy.keepScreenOn) "screen: holding the panel on"
+                       else "screen: idle timeout reached, letting the panel sleep")
+            ScreenState.keepScreenOn = policy.keepScreenOn
+        }
     }
-
-    /** The activity observes this to add or clear FLAG_KEEP_SCREEN_ON. */
-    @Volatile
-    var keepScreenOn: Boolean = true
-        private set
-
-    @Volatile
-    var onKeepScreenOnChanged: ((Boolean) -> Unit)? = null
 
     fun setIdleTimeoutMinutes(minutes: Int) {
-        idleTimeoutMs = minutes.coerceIn(1, 120) * 60_000L
-        restartIdleTimer()
+        policy.idleMillis = minutes * 60_000L
     }
 
-    /** Any activity that should postpone blanking. */
+    val idleTimeoutMinutes: Int
+        get() = (policy.idleMillis / 60_000L).toInt()
+
+    /**
+     * Any activity that should postpone blanking.
+     *
+     * Logged on the transition only, and only when it is one: this runs on
+     * every track, and a line per track would bury the thing it is there to
+     * show. The silence when the panel came back on cost a diagnosis once
+     * already -- the screen re-lighting looked unexplained until the *audio*
+     * log gave it away.
+     */
     fun noteActivity() {
-        if (!keepScreenOn) {
-            keepScreenOn = true
-            onKeepScreenOnChanged?.invoke(true)
+        val wasOn = policy.keepScreenOn
+        policy.noteActivity(System.currentTimeMillis())
+        if (!wasOn) {
+            Log.i(TAG, "screen: activity, holding the panel on again")
+            ScreenState.keepScreenOn = true
         }
-        restartIdleTimer()
     }
 
     /**
@@ -88,15 +100,12 @@ class ScreenPolicy(private val context: Context) {
         }
     }
 
-    private fun restartIdleTimer() {
-        handler.removeCallbacks(blank)
-        handler.postDelayed(blank, idleTimeoutMs)
+    /** Leaves the panel on: a renderer that has stopped must not go dark mid-teardown. */
+    fun shutdown() {
+        ScreenState.keepScreenOn = true
     }
-
-    fun shutdown() = handler.removeCallbacks(blank)
 
     companion object {
         const val EXTRA_TURN_SCREEN_ON = "turn_screen_on"
-        private const val DEFAULT_IDLE_MS = 3 * 60_000L
     }
 }

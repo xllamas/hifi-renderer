@@ -321,6 +321,13 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                     .onFailure { Log.w(TAG, "openhome time tick failed: ${it.message}") }
                 runCatching { publishPlaylistPosition() }
                     .onFailure { Log.w(TAG, "playlist position publish failed: ${it.message}") }
+
+                // The screen follows playback, and this is the one tick that
+                // knows about it whichever protocol is driving. Passing the
+                // state every time rather than on transitions means a missed
+                // edge cannot strand the panel on all night or dark mid-album.
+                runCatching { screenPolicy.tick(com.hifirend.RendererState.isPlaying) }
+                    .onFailure { Log.w(TAG, "screen policy tick failed: ${it.message}") }
             }, 500, 500, TimeUnit.MILLISECONDS)
         }
         Log.i(TAG, "LastChange event flusher started")

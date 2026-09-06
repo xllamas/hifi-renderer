@@ -770,6 +770,39 @@ happened. Verified on the phone: a 404 mid-playlist is stepped over and the
 next track plays; a playlist of dead links stops after exactly three, leaving
 the remaining tracks untouched.
 
+**The screen policy was connected, 2026-09-06.** It had been half-built:
+`MainActivity` added `FLAG_KEEP_SCREEN_ON` in `onCreate` and nothing ever
+removed it, because nothing subscribed to `ScreenPolicy.onKeepScreenOnChanged`.
+The idle timer therefore fired into a listener that did not exist, logging
+"idle timeout reached" while flipping a boolean nobody read — so the panel
+never blanked. `noteActivity()` and `setIdleTimeoutMinutes()` had no callers at
+all, leaving the timeout stuck at its 3-minute default.
+
+The decision is now a pure `ScreenIdlePolicy`, driven from the service's
+existing 500 ms tick rather than a timer of its own. That tick already knows
+whether anything is playing, whichever protocol is driving, so there is one
+place that cannot disagree with the screen — and passing the state on every
+tick rather than on transitions means a missed edge cannot strand the panel lit
+all night or dark mid-album, which the old design did: it posted a delayed
+blank when playback *started* and never refreshed it, so the screen went out
+three minutes into every album.
+
+**Playing counts as activity**, so the countdown only begins when playback
+stops; the default is five minutes. `ScreenState` carries the decision from the
+service, which owns playback, to the activity, which owns the window — as
+state rather than a listener, because neither reliably outlives the other and
+depending on which started first is how the previous attempt broke.
+
+*Measured on the Redmi:* the panel was released after 295 s idle and the window
+flag genuinely cleared, then re-held the moment playback started. **What the
+app can do here stops at the flag.** Turning the panel off is the system's
+decision, taken on its own display timeout counting from the last touch (10
+minutes on this phone), so the observed delay is ours plus whatever the system
+has left. For an appliance nobody touches that is usually immediate, but it is
+not exact, and it never blanks at all if the phone's display timeout is set to
+Never. Actually forcing it off would need device-admin `lockNow()` or a
+black overlay; neither is built.
+
 **The format badge goes when playback stops.** It describes a stream that is
 *running*; leaving "FLAC 24/96 — bit-perfect" up after a stop states something
 about a DAC that is now idle, and that is the one claim this app may not make

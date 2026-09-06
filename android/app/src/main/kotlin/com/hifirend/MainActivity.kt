@@ -27,10 +27,14 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Keep the panel lit while in use; ScreenPolicy clears this after the
-        // idle timeout so a renderer left alone for hours does not burn the
-        // display. The CPU is held awake separately by the playback wake lock.
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // The panel is held lit by ScreenPolicy, which lets go once the
+        // renderer has been quiet long enough that a display left on all night
+        // would just be burning. Registering here rather than setting the flag
+        // outright is the point: the previous version added FLAG_KEEP_SCREEN_ON
+        // in onCreate and nothing ever removed it, so the idle timeout fired
+        // into a listener that did not exist and the screen never blanked.
+        // The CPU is held awake separately by the playback wake lock.
+        com.hifirend.power.ScreenState.apply = { on -> runOnUiThread { keepScreenOn(on) } }
 
         // Allow the service to bring this up to wake the screen when playback
         // starts. setShowWhenLocked/setTurnScreenOn is the supported route from
@@ -51,6 +55,11 @@ class MainActivity : FlutterActivity() {
         // service that survives the UI and starts at boot is M6.
         startService(Intent(this, RendererUpnpService::class.java))
         noteUsbAttachIntent(intent)
+    }
+
+    private fun keepScreenOn(on: Boolean) {
+        if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -326,6 +335,11 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         playback.stop()
+        // Detach the window from the screen policy, but only on a real finish:
+        // on a configuration change the replacement activity registers before
+        // this runs, and clearing unconditionally would leave its window
+        // unmanaged and the panel stuck however it happened to be.
+        if (isFinishing) com.hifirend.power.ScreenState.apply = null
         super.onDestroy()
     }
 
