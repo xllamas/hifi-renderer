@@ -617,18 +617,23 @@ DAC could have played untouched.
 
 ### Next up
 
-Every milestone in this plan is now built. What is left is not a feature list:
-it is use. The app exists to be pointed at hardware nobody here owns, and the
-reports it produces are the only thing that can turn "works on two DACs in one
-room" into evidence.
+Every milestone in this plan is built, and M9 (OpenHome) closed the last gap
+between the app and `doc/hifirend.md`: local playlists that survive the
+controller leaving are now a thing the renderer owns rather than something
+approximated from what a controller happened to announce.
+
+What is left is not a feature list: it is use. The app exists to be pointed at
+hardware nobody here owns, and the reports it produces are the only thing that
+can turn "works on two DACs in one room" into evidence.
 
 The open question beyond that is a second way in, assessed in
 `doc/protocols-beyond-dlna.md`. The short of it: this is an appliance in a
 home, and a home has guests who will not learn what DLNA is. That is a
 different product from the owner's, sharing one box — and the guest path does
-not compete with the bit-perfect claim, it protects it. Nothing is committed
-to; the first step is an hour deciding whether Android will let this app be a
-Bluetooth speaker at all.
+not compete with the bit-perfect claim, it protects it. **Bluetooth is closed**
+— spiked and refused on facts, twice over. AirPlay is the buildable guest path,
+and the first thing it owes is the appliance-shell extraction that OpenHome was
+able to skip.
 
 ---
 
@@ -703,6 +708,41 @@ because it asks the same question of one rate.
 M8 is complete: the app can run each of these against whatever is plugged in.
 Hardware outcomes are what the finished tool is *for*, not a condition of
 finishing it — see design rule 3.
+
+**M9 — OpenHome. ✅ COMPLETE (2026-09-06).** Five services on the existing
+`LocalDevice` — Product, Playlist, Info, Time, Volume, in the
+`av-openhome-org` namespace alongside the three DLNA ones
+(`upnp/openhome/`).
+
+The reason is the spec's own requirement, not reach: *"the app should implement
+local playlists so that the app keeps playing the playlist even if the DLNA
+controller is no longer present."* AVTransport cannot deliver that, because a
+controller only announces the current track and at best the next one —
+`PlaylistQueue` can hold only what it was told. OpenHome's Playlist service
+takes the whole list up front, so the renderer owns it: `OpenHomeTrackList`
+holds up to 1000 tracks with never-reused ids, the evented `IdArray`, repeat
+and shuffle.
+
+Two protocols now want one DAC, and `UsbPlayback` force-claims the interfaces,
+so the arbitration is OpenHome's own: Product exposes two **sources**
+("Playlist" and "UPnP AV"), exactly one is active, and starting playback claims
+it — which stops the other. `PlaybackController` proved to be the right seam
+and needed no change; only the engine callbacks route to whichever source
+started the stream.
+
+*Verified on the Redmi with the SMSL DAC (`ohplay.py` in the test rig).* Three
+tracks at three rates pushed in one go, the controller then exited: gapless
+44.1/16 FLAC → 48 kHz MP3 → 96/24 FLAC, the DAC reconfigured at each boundary,
+`OH playlist exhausted; stopping` at the end — **0 underruns, 0 transfer
+errors, 0 bad packets throughout**, with nothing connected. A DLNA controller
+interrupting mid-playlist logged `source changed: 0 -> 1` / `OH.Playlist.Stop`
+/ `AVTransport.Play` with no collision.
+
+31 JVM unit tests cover the parts that fail silently rather than loudly
+(`android/app/src/test/kotlin/`): the IdArray byte order, insert-after
+semantics, id reuse, shuffle as a permutation — and that jUPnP can bind every
+service, since a bad annotation is caught by the registration try/catch and
+shows up only as a renderer that never appears on the network.
 
 ---
 

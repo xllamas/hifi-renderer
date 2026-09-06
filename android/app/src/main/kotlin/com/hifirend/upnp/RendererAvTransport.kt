@@ -50,6 +50,14 @@ interface PlaybackController {
 class RendererAvTransport(
     private val queue: PlaylistQueue,
     private val playback: PlaybackController? = null,
+    /**
+     * Called before this transport starts using the audio engine.
+     *
+     * A second protocol now wants the same DAC, and `UsbPlayback` force-claims
+     * the interfaces -- so the appliance is told who is about to play and
+     * stops whoever was. No-op while DLNA is the only source.
+     */
+    private val claimSource: () -> Unit = {},
 ) : AbstractAVTransportService() {
 
     private val positionProvider: (() -> Int)? = playback?.let { { it.positionSeconds() } }
@@ -109,6 +117,7 @@ class RendererAvTransport(
     override fun setAVTransportURI(instanceId: UnsignedIntegerFourBytes?, uri: String?, metaData: String?) {
         Log.i(TAG, "AVTransport.SetAVTransportURI uri=$uri")
         if (uri.isNullOrBlank()) return
+        claimSource()
         queue.setCurrent(uri, metaData)
         playback?.onTrackChanged()
         transportState = TransportState.STOPPED
@@ -285,10 +294,12 @@ class RendererAvTransport(
         // open and holding its position.
         if (transportState == TransportState.PAUSED_PLAYBACK) {
             Log.i(TAG, "AVTransport.Play (resume)")
+            claimSource()
             playback?.resume()
             transportState = TransportState.PLAYING
             return
         }
+        claimSource()
 
         val uri = queue.current?.uri
         Log.i(TAG, "AVTransport.Play speed=$speed current=$uri")

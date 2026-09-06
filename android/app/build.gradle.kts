@@ -75,6 +75,17 @@ android {
         }
     }
 
+    testOptions {
+        unitTests {
+            // OpenHomeTrackList logs, and android.util.Log is a stub in a JVM
+            // unit test. Returning defaults rather than throwing is what lets
+            // the playlist model -- ids, ordering, the IdArray encoding -- be
+            // tested off-device, which is where it needs testing: a wrong byte
+            // order is invisible until a real controller decodes it.
+            isReturnDefaultValues = true
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -85,6 +96,8 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+
     implementation("com.google.oboe:oboe:1.9.3")
 
     // jUPnP 3.0.3 (Jan 2025) -- the maintained Cling fork. Writing a UPnP

@@ -2,7 +2,10 @@
 
 Written 2026-09-05, with every milestone in `implementation-plan.md` built.
 Bluetooth spiked and closed 2026-09-06; that section is now measurement rather
-than recollection, and the recommendation below moved with it.
+than recollection, and the recommendation below moved with it. **OpenHome was
+built the same day** -- out of order, because it answers the spec's own
+local-playlist requirement rather than the reach question this document is
+about. What it settled along the way is recorded below.
 **Nothing here is committed to.** It is a decision record for the point at
 which a second protocol is worth starting, and it records the reasoning so the
 next person does not have to redo it — including the reasoning that turned out
@@ -46,7 +49,8 @@ By that metric the ranking inverts almost completely.
 | **AirPlay** | None for iPhone. Built into Control Centre. | Yes, with caveats |
 | **Chromecast** | None for Android. Built into Spotify, YouTube Music. | Effectively no |
 | DLNA | High. Needs a controller app and knowledge. | Built |
-| OpenHome / SlimProto | High. Owner-only. | Yes |
+| **OpenHome** | High. Owner-only. | **Built 2026-09-06** |
+| SlimProto | High. Owner-only. | Yes |
 
 The two that matter most for the actual goal are the two the first pass
 dismissed hardest.
@@ -193,13 +197,26 @@ Server proxying into DLNA, the path the session logs show working.
 ## The owner-lane options, demoted
 
 **OpenHome** and **SlimProto** are both good, and neither adds a new person to
-the household. OpenHome fixes something real — the renderer depends on the
-controller staying alive to advance a playlist — but that improves a lane that
-already works, for someone already served. SlimProto is the only protocol that
-would carry 384 kHz to this DAC, which matters if fidelity ever becomes the
-driver, but it reaches fewer people than any guest path.
+the household. SlimProto is the only protocol that would carry 384 kHz to this
+DAC, which matters if fidelity ever becomes the driver, but it reaches fewer
+people than any guest path. Keep it; it is still not next.
 
-Keep both. Neither is next.
+**OpenHome was built on 2026-09-06**, ahead of everything here, and the reason
+is worth being precise about because this document had it slightly wrong. It
+was ranked by *reach* -- "improves a lane that already works, for someone
+already served" -- and by that measure the ranking stands. But reach was the
+wrong test for it. `doc/hifirend.md` asks for something this app did not have:
+
+> The app should implement local playlists so that the app keeps playing the
+> playlist even if the DLNA controller is no longer present.
+
+AVTransport cannot deliver that, and no amount of care on this side changes it:
+a controller only ever announces the current track and, if it bothers, the next
+one, so `PlaylistQueue` can only ever hold what it has been told. Playback
+surviving the controller was approximated, not achieved. OpenHome hands the
+renderer the entire list up front, which turns the requirement into something
+the renderer simply owns. That is a *specification gap*, not a reach
+improvement, and it outranks everything in this document.
 
 ---
 
@@ -231,6 +248,26 @@ needs a stated policy, and the policy is a product decision:
 appliance shell rather than the protocol front-end, and retrofitting an
 arbitration policy is worse than designing one.
 
+**Partly answered, 2026-09-06.** Building OpenHome forced the question early,
+and it turned out not to need inventing: OpenHome's own Product service models
+a device as a set of *sources* of which exactly one is active, and selecting a
+source stops the last. So DLNA became a source ("UPnP AV") alongside the
+playlist, and the arbitration is the specification's rather than this app's.
+Measured on the Redmi: an OpenHome playlist playing, a DLNA controller then
+calling SetAVTransportURI, and the log reads `source changed: 0 -> 1` /
+`OH.Playlist.Stop` / `AVTransport.Play` with **zero transfer errors and zero
+bad packets** across the hand-over -- the collision this section worried about,
+not happening.
+
+What that settles is *who wins*: the arriving source, always, and the screen
+follows because both write the same `RendererState`. What it does **not**
+settle is the rest of the list above -- how the owner gets back, whether a
+guest should be able to interrupt at all, and what the volume does across a
+switch. Those are still open, and they are still product decisions. A guest
+path makes them urgent in a way a second owner-lane protocol does not: being
+interrupted by yourself is an annoyance, being interrupted by a dinner guest is
+the design problem.
+
 ---
 
 ## What any second protocol costs first
@@ -247,6 +284,16 @@ arbitration policy, the state and the notification — with protocol front-ends
 registering against it. The seam already exists and is well shaped:
 `PlaybackController` (`upnp/RendererAvTransport.kt:33`) is already the abstract
 play/stop/pause/seek/position boundary and mentions nothing about UPnP.
+
+**OpenHome did not need it, and that is not a counter-example.** Its five
+services are additional services on the *same* UPnP `LocalDevice`, hosted by
+the same jUPnP stack the DLNA services already use, so every piece of appliance
+behaviour listed above came along untouched. `PlaybackController` was indeed
+the right seam and took the second protocol with no change beyond routing the
+engine callbacks to whichever source started the stream. A protocol that is not
+UPnP -- AirPlay, with its own mDNS advertisement, its own RTSP server and its
+own lifecycle -- gets none of that for free. **The extraction is still owed;
+OpenHome just was not the protocol that had to pay for it.**
 
 **The audio plane needs almost nothing.** Protocols come in two shapes and both
 are already implemented:
@@ -274,7 +321,10 @@ are already implemented:
    the section above sets out.
 5. **Say that Bluetooth is unavailable, in the app.** Cheap, and it stops both
    classes of user hunting for a setting that cannot exist.
-6. **OpenHome** afterwards, as an owner-lane improvement.
+6. ~~OpenHome afterwards, as an owner-lane improvement.~~ **Built 2026-09-06**,
+   ahead of the rest, because it was the only way to satisfy the spec's
+   local-playlist requirement rather than approximate it. It also answered the
+   who-wins half of item 2 for free.
 7. **Chromecast** — reopen only if Google's position changed. It is now the only
    candidate for the Android guest, so it is worth a look rather than a
    dismissal, even though the feasibility finding has not moved.

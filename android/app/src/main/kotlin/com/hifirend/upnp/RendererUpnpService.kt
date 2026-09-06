@@ -15,6 +15,14 @@ import com.hifirend.NativeBridge
 import com.hifirend.RendererControl
 import com.hifirend.ServiceHealth
 import com.hifirend.power.ScreenPolicy
+import com.hifirend.upnp.openhome.OpenHomeInfo
+import com.hifirend.upnp.openhome.OpenHomePlaylist
+import com.hifirend.upnp.openhome.OpenHomeProduct
+import com.hifirend.upnp.openhome.OpenHomeSource
+import com.hifirend.upnp.openhome.OpenHomeTime
+import com.hifirend.upnp.openhome.OpenHomeTrack
+import com.hifirend.upnp.openhome.OpenHomeTrackList
+import com.hifirend.upnp.openhome.OpenHomeVolume
 import com.hifirend.usb.HttpStreamPlayback
 import com.hifirend.widget.RendererWidget
 import org.jupnp.android.AndroidUpnpServiceImpl
@@ -44,6 +52,10 @@ private const val KEY_UDN = "udn"
 private const val KEY_NAME = "friendly_name"
 private const val KEY_SERVER_CONVERSION = "allow_server_conversion"
 
+/** Source indices, in the order [RendererUpnpService.buildDevice] declares them. */
+private const val SOURCE_PLAYLIST = 0
+private const val SOURCE_UPNP_AV = 1
+
 /**
  * Hosts the UPnP MediaRenderer device.
  *
@@ -58,6 +70,21 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
 
     val queue = PlaylistQueue()
     private var avTransport: RendererAvTransport? = null
+
+    /**
+     * The OpenHome side. The playlist lives here rather than in [queue]
+     * because the two protocols model it differently: AVTransport is told one
+     * track at a time and has to accumulate, while OpenHome is handed the
+     * whole list at once and owns it. Trying to share one structure would mean
+     * the weaker model constraining the stronger one, which is the opposite of
+     * why OpenHome was added.
+     */
+    val openHomeList = OpenHomeTrackList()
+    private var openHomePlaylist: OpenHomePlaylist? = null
+    private var openHomeProduct: OpenHomeProduct? = null
+    private var openHomeInfo: OpenHomeInfo? = null
+    private var openHomeTime: OpenHomeTime? = null
+    private var openHomeVolume: OpenHomeVolume? = null
 
     // jUPnP only accumulates LastChange values; the NOTIFY is sent when
     // fireLastChange() is called, so it needs flushing on a timer.
@@ -78,6 +105,53 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     @Volatile private var lastRebindAt = 0L
     private var usbReceiver: BroadcastReceiver? = null
     private val playback by lazy { HttpStreamPlayback(applicationContext) }
+
+    /**
+     * Which source owns the DAC.
+     *
+     * OpenHome's Product service already models this -- a device has sources,
+     * exactly one is active -- so the arbitration the protocols assessment said
+     * would have to be invented is the spec's instead. The indices are the
+     * order the sources are declared in [buildDevice].
+     */
+    @Volatile private var activeSource = SOURCE_PLAYLIST
+
+    private fun playlistSourceActive() = activeSource == SOURCE_PLAYLIST
+
+    /**
+     * A protocol is about to start playing. Route it through Product so a
+     * subscribed controller sees the change, and so there is one code path
+     * whether the switch came from a controller or from playback starting.
+     */
+    private fun claim(source: Int) {
+        if (activeSource == source) return
+        openHomeProduct?.selectSource(source) ?: run { activeSource = source }
+    }
+
+    /**
+     * The active source changed, so whatever was playing must stop. Two
+     * protocols driving UsbPlayback at once is the collision
+     * HttpStreamPlayback documents at 14 transfer errors and 107 bad packets.
+     */
+    private fun onSourceSelected(index: Int) {
+        val previous = activeSource
+        activeSource = index
+        if (previous == index) return
+        Log.i(TAG, "source changed: $previous -> $index")
+        when (previous) {
+            SOURCE_PLAYLIST -> openHomePlaylist?.let { runCatching { it.stopAction() } }
+            SOURCE_UPNP_AV -> avTransport?.let { runCatching { it.stop(null) } }
+        }
+    }
+
+    /**
+     * Whatever is playing, described the way the OpenHome services want it.
+     * Info and Time answer for the device, not for one protocol, so a DLNA
+     * track has to be visible through them too.
+     */
+    private fun currentOpenHomeTrack(): OpenHomeTrack? =
+        if (playlistSourceActive()) openHomeList.current()
+        else queue.current?.let { OpenHomeTrack(0, it.uri, it.metaData ?: "", it.track) }
 
     /** Bridges AVTransport commands to the USB audio engine. */
     private val controller = object : PlaybackController {
@@ -122,6 +196,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                         Log.i(TAG, "USB device detached; stopping playback")
                         runCatching { playback.stop() }
                         avTransport?.let { it.onDeviceLost() }
+                        openHomePlaylist?.let { it.onDeviceLost() }
                         // A different DAC gets its own remembered level, and
                         // must not inherit this one's.
                         playback.forgetRestoredVolume()
@@ -236,17 +311,45 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 // volume events nothing.
                 runCatching { publishVolumeIfChanged() }
                     .onFailure { Log.w(TAG, "volume publish failed: ${it.message}") }
+
+                // OpenHome events position rather than being polled for it, so
+                // the tick that already exists carries it. tick() suppresses
+                // everything but a whole-second change.
+                runCatching { publishOpenHomeTrackIfChanged() }
+                    .onFailure { Log.w(TAG, "openhome track publish failed: ${it.message}") }
+                runCatching { openHomeTime?.tick() }
+                    .onFailure { Log.w(TAG, "openhome time tick failed: ${it.message}") }
             }, 500, 500, TimeUnit.MILLISECONDS)
         }
         Log.i(TAG, "LastChange event flusher started")
     }
 
     private fun publishVolumeIfChanged() {
-        val rc = renderingControl ?: return
         val v = com.hifirend.RendererState.dacVolume
         if (v < 0 || v == publishedVolume) return
         publishedVolume = v
-        rc.onVolumeObserved(v)
+        renderingControl?.onVolumeObserved(v)
+        // The same knob, told to the other protocol's subscribers.
+        openHomeVolume?.publishVolume(v)
+    }
+
+    /** The last track URI announced to OpenHome's Info and Time counters. */
+    @Volatile private var announcedTrackUri: String? = null
+
+    /**
+     * Bumps the OpenHome track counters when the track changes, whichever
+     * protocol changed it.
+     *
+     * Driven from the tick rather than from each play path so a DLNA track is
+     * announced too: Info and Time describe the device, not one source, and a
+     * controller watching them should see a track start however it started.
+     */
+    private fun publishOpenHomeTrackIfChanged() {
+        val uri = currentOpenHomeTrack()?.uri
+        if (uri == announcedTrackUri) return
+        announcedTrackUri = uri
+        openHomeInfo?.onTrackChanged()
+        openHomeTime?.onTrackChanged()
     }
 
     /** Rebuilds the notification from whatever the queue currently holds. */
@@ -383,15 +486,29 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         @Suppress("UNCHECKED_CAST")
         val avService =
             binder.read(RendererAvTransport::class.java) as LocalService<RendererAvTransport>
-        val av = RendererAvTransport(queue, controller)
+        val av = RendererAvTransport(queue, controller, claimSource = { claim(SOURCE_UPNP_AV) })
         avTransport = av
 
         // The screen drives the renderer through the same transport the network
         // controllers use, so both produce identical state and events.
+        // Both protocols, one pair of buttons: the screen drives whichever
+        // source owns the DAC. Sending these to AVTransport unconditionally
+        // would pause the engine under an OpenHome playlist while leaving its
+        // transport state saying Playing -- the stale state the widget and the
+        // now-playing screen are built to never show.
         RendererControl.transport = object : RendererControl.TransportCommands {
-            override fun play() = av.play(null, "1")
-            override fun pause() = av.pause(null)
-            override fun stop() = av.stop(null)
+            override fun play() {
+                val oh = openHomePlaylist
+                if (playlistSourceActive() && oh != null) oh.playAction() else av.play(null, "1")
+            }
+            override fun pause() {
+                val oh = openHomePlaylist
+                if (playlistSourceActive() && oh != null) oh.pauseAction() else av.pause(null)
+            }
+            override fun stop() {
+                val oh = openHomePlaylist
+                if (playlistSourceActive() && oh != null) oh.stopAction() else av.stop(null)
+            }
             override fun dacVolume(): Int? = NativeBridge.getDacVolume().takeIf { it >= 0 }
             override fun setDacVolume(percent: Int): Boolean {
                 val ok = NativeBridge.setDacVolume(percent)
@@ -407,9 +524,21 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             }
         }
         RendererControl.onOutputDeviceChanged = { force -> onOutputDeviceChanged(force) }
-        playback.onTrackFinished = { av.onTrackFinished() }
-        playback.onPlaybackError = { av.onPlaybackFailed(it) }
-        playback.onSourceExhausted = { av.onSourceExhausted() }
+        // One engine, two protocols: every callback goes to the source that
+        // actually started the stream. Sending them all to AVTransport would
+        // make an OpenHome playlist stop dead at the first track boundary --
+        // and look exactly like the controller-dependency OpenHome was added
+        // to remove.
+        playback.onTrackFinished = {
+            if (playlistSourceActive()) openHomePlaylist?.onTrackFinished() else av.onTrackFinished()
+        }
+        playback.onPlaybackError = {
+            if (playlistSourceActive()) openHomePlaylist?.onPlaybackFailed(it) else av.onPlaybackFailed(it)
+        }
+        playback.onSourceExhausted = {
+            if (playlistSourceActive()) openHomePlaylist?.onSourceExhausted() ?: false
+            else av.onSourceExhausted()
+        }
         // The manager creates its own instance by default; supply ours so the
         // queue and (from M4) the audio engine share one object.
         val avManager = object : LastChangeAwareServiceManager<RendererAvTransport>(
@@ -465,6 +594,57 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             override fun createServiceInstance(): ConnectionManagerService = cm
         }
 
+        // ---- OpenHome ------------------------------------------------------
+        //
+        // Added for one reason: the controller may leave. AVTransport is told
+        // one track at a time, so a playlist only survives while something is
+        // there to keep feeding it; OpenHome hands the renderer the whole list
+        // and lets it get on with it. Everything else here exists to make that
+        // list usable -- Product so controllers can find the device at all,
+        // Info and Time so they can draw what is playing.
+        val ohPlaylist = OpenHomePlaylist(openHomeList, controller, claimSource = { claim(SOURCE_PLAYLIST) })
+        ohPlaylist.protocolInfo = runCatching { sinkFormats().joinToString(",") { it.toString() } }
+            .getOrDefault("")
+        openHomePlaylist = ohPlaylist
+
+        val ohProduct = OpenHomeProduct(
+            roomName = { friendlyName() },
+            // Order defines the source indices; see SOURCE_PLAYLIST/SOURCE_UPNP_AV.
+            sources = listOf(
+                OpenHomeSource("Playlist", "Playlist", "Playlist"),
+                OpenHomeSource("UpnpAv", "UpnpAv", "UPnP AV"),
+            ),
+            onSourceSelected = { index -> onSourceSelected(index) },
+        )
+        // Standby on a renderer with no lower power state means stop.
+        ohProduct.onStandby = {
+            runCatching { ohPlaylist.stopAction() }
+            runCatching { av.stop(null) }
+        }
+        openHomeProduct = ohProduct
+
+        val ohInfo = OpenHomeInfo { currentOpenHomeTrack() }
+        openHomeInfo = ohInfo
+
+        val ohTime = OpenHomeTime(
+            positionSeconds = { playback.positionSeconds() },
+            durationSeconds = { currentOpenHomeTrack()?.track?.durationSeconds ?: 0 },
+        )
+        openHomeTime = ohTime
+
+        val ohVolume = OpenHomeVolume { percent ->
+            RendererControl.transport?.setDacVolume(percent) ?: false
+        }
+        openHomeVolume = ohVolume
+
+        val ohServices = listOf<LocalService<*>>(
+            bindOpenHome(binder, OpenHomeProduct::class.java, ohProduct),
+            bindOpenHome(binder, OpenHomePlaylist::class.java, ohPlaylist),
+            bindOpenHome(binder, OpenHomeInfo::class.java, ohInfo),
+            bindOpenHome(binder, OpenHomeTime::class.java, ohTime),
+            bindOpenHome(binder, OpenHomeVolume::class.java, ohVolume),
+        )
+
         return LocalDevice(
             DeviceIdentity(stableUdn()),
             UDADeviceType("MediaRenderer", 1),
@@ -476,8 +656,30 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             // Controllers list renderers by name and icon; without one this
             // shows up as an unlabelled grey box among the TVs and speakers.
             DeviceIcons.load(applicationContext),
-            arrayOf(avService, rcService, cmService),
+            (listOf(avService, rcService, cmService) + ohServices).toTypedArray(),
         )
+    }
+
+    /**
+     * Binds one OpenHome service and pins it to the instance already built.
+     *
+     * jUPnP's binder reads the annotations and would otherwise construct its
+     * own instance, which would leave the service answering the network from a
+     * different object than the one holding the playlist. Same reason the
+     * AVTransport manager is subclassed above; these need no LastChange
+     * wrapper because OpenHome events each variable directly.
+     */
+    private fun <T : Any> bindOpenHome(
+        binder: AnnotationLocalServiceBinder,
+        type: Class<T>,
+        instance: T,
+    ): LocalService<T> {
+        @Suppress("UNCHECKED_CAST")
+        val service = binder.read(type) as LocalService<T>
+        service.manager = object : DefaultServiceManager<T>(service, type) {
+            override fun createServiceInstance(): T = instance
+        }
+        return service
     }
 
     /**
