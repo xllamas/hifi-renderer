@@ -1024,6 +1024,61 @@ void main() {
       expect(wrapping.canGoPrevious, isTrue);
     });
 
+    testWidgets('a stopped renderer shows no format badge and no bit-perfect claim',
+        (tester) async {
+      // The badge describes a running stream. Once playback stops there is
+      // none, and "FLAC 24/96 - bit-perfect" left on screen states something
+      // about an idle DAC -- the one claim this app must not make loosely.
+      // The track it stopped on is still named, so a failure has something to
+      // point at.
+      final stopped = RendererStatus.parse(
+        '{"rendererName":"Living Room","transportState":"STOPPED",'
+        '"title":"Dead 3","artist":"Test Signals","dacConnected":true,'
+        '"dacName":"SMSL USB AUDIO","dacCount":1,"bitPerfect":false,'
+        '"lastError":"Stopped after 3 tracks in a row could not be played."}',
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: NowPlayingScreen(
+          status: stopped,
+          onOpenSettings: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
+          onVolumeChanged: (_) {},
+        ),
+      ));
+
+      expect(stopped.formatBadge, isNull);
+      expect(find.textContaining('FLAC'), findsNothing);
+      expect(find.text('bit-perfect'), findsNothing);
+      expect(find.text('Dead 3'), findsOneWidget);
+    });
+
+    testWidgets('a paused renderer keeps its badge, because the stream is open',
+        (tester) async {
+      final paused = RendererStatus.parse(
+        '{"rendererName":"Living Room","transportState":"PAUSED_PLAYBACK",'
+        '"title":"Chameleon","dacConnected":true,"dacName":"SMSL USB AUDIO",'
+        '"dacCount":1,"formatBadge":"FLAC 24/96","sourceFormat":"FLAC",'
+        '"sourceRate":96000,"sourceBits":24,"bitPerfect":true,"output":"usb"}',
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: NowPlayingScreen(
+          status: paused,
+          onOpenSettings: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
+          onVolumeChanged: (_) {},
+        ),
+      ));
+
+      expect(find.textContaining('FLAC'), findsOneWidget);
+      expect(find.text('bit-perfect'), findsOneWidget);
+    });
+
     testWidgets('the problem banner fits on the screen it appears on',
         (tester) async {
       // A real failure overflowed the bottom of a 1080x2400 phone by 20px, and

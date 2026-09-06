@@ -770,6 +770,14 @@ happened. Verified on the phone: a 404 mid-playlist is stepped over and the
 next track plays; a playlist of dead links stops after exactly three, leaving
 the remaining tracks untouched.
 
+**The format badge goes when playback stops.** It describes a stream that is
+*running*; leaving "FLAC 24/96 — bit-perfect" up after a stop states something
+about a DAC that is now idle, and that is the one claim this app may not make
+loosely — it exists to show when the path is bit-perfect, so a badge outliving
+the audio undermines the only thing it is for. Pause keeps it, because the
+stream is still open and the DAC still configured. The track identity survives
+either way, or a failure would have nothing to point at.
+
 **The now-playing screen gains previous/next** — but only for a local playlist.
 A DLNA source is told one track at a time and genuinely does not know what comes
 next, so the buttons are absent there rather than present and useless. At the

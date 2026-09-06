@@ -84,6 +84,11 @@ class RendererAvTransport(
         // shows.
         com.hifirend.RendererState.let { st ->
             st.transportState = transportState.name
+            // Same rule as the OpenHome source: a badge describes a running
+            // stream, and stopped is not one. Paused keeps it.
+            if (transportState != TransportState.PLAYING &&
+                transportState != TransportState.PAUSED_PLAYBACK &&
+                transportState != TransportState.TRANSITIONING) st.clearFormat()
             queue.current?.track?.let { t ->
                 st.title = t.title
                 st.artist = t.artist
@@ -92,7 +97,15 @@ class RendererAvTransport(
                 st.durationSeconds = t.durationSeconds
             }
             if (queue.current == null) st.clearTrack()
-            st.positionSeconds = playback?.positionSeconds() ?: 0
+            // Only ask the engine where it is while it is somewhere. Reading a
+            // stopped engine hands back whatever it last held, which would put
+            // the elapsed time straight back after clearFormat() zeroed it.
+            st.positionSeconds = when (transportState) {
+                TransportState.PLAYING,
+                TransportState.PAUSED_PLAYBACK,
+                TransportState.TRANSITIONING -> playback?.positionSeconds() ?: 0
+                else -> 0
+            }
         }
 
         try {
@@ -278,6 +291,7 @@ class RendererAvTransport(
             } else {
                 TransportState.PLAYING
             }
+            publishState()
         } else {
             // Tear the engine down, not just the state. Leaving the sink
             // running on an empty ring makes it emit silence forever and count
@@ -332,6 +346,10 @@ class RendererAvTransport(
             // Action Failed" with no explanation of what went wrong.
             Log.e(TAG, "AVTransport.Play failed: $result")
             transportState = TransportState.STOPPED
+            // Explicit, because the setter only publishes on a *change* and
+            // this path can already be STOPPED -- which would skip the mirror
+            // that clears the format badge.
+            publishState()
             return
         }
         transportState = TransportState.PLAYING

@@ -140,6 +140,58 @@ class OpenHomeSkipTest {
     }
 
     @Test
+    fun `stopping clears the format badge but not which track it was`() {
+        val engine = FakeEngine()
+        val pl = OpenHomePlaylist(listOf("a", "b"), engine)
+
+        pl.playAction()
+        // Stand in for the engine having published a running stream.
+        RendererState.sourceFormat = "FLAC"
+        RendererState.sourceRate = 96000
+        RendererState.sourceBits = 24
+        RendererState.bitPerfect = true
+
+        pl.stopAction()
+
+        // The badge describes a running stream, and there is not one. Leaving
+        // "FLAC 24/96 -- bit-perfect" up makes a claim about an idle DAC, which
+        // is the one claim this app must not make loosely.
+        assertEquals(null, RendererState.sourceFormat)
+        assertEquals(0, RendererState.sourceRate)
+        assertEquals(0, RendererState.sourceBits)
+        assertEquals(false, RendererState.bitPerfect)
+        // ...but the track it stopped on is still named, or a failure would
+        // have nothing to point at.
+        assertEquals("a", pl.list.current()?.uri)
+    }
+
+    @Test
+    fun `pausing keeps the badge, because the stream is still open`() {
+        val engine = FakeEngine()
+        val pl = OpenHomePlaylist(listOf("a"), engine)
+
+        pl.playAction()
+        RendererState.sourceFormat = "FLAC"
+        RendererState.bitPerfect = true
+
+        pl.pauseAction()
+
+        assertEquals("FLAC", RendererState.sourceFormat)
+        assertTrue(RendererState.bitPerfect)
+    }
+
+    @Test
+    fun `giving up after three failures also clears the badge`() {
+        RendererState.sourceFormat = "FLAC"
+        RendererState.bitPerfect = true
+        val engine = FakeEngine(failing = setOf("a", "b", "c"))
+        OpenHomePlaylist(listOf("a", "b", "c"), engine).playAction()
+
+        assertEquals(null, RendererState.sourceFormat)
+        assertEquals(false, RendererState.bitPerfect)
+    }
+
+    @Test
     fun `pressing skip forgives the failures that came before it`() {
         val engine = FakeEngine(failing = setOf("a", "b"))
         val list = listOf("a", "b", "c", "d")

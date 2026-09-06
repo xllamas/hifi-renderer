@@ -107,11 +107,29 @@ object RendererState {
         return if (sourceBits > 0) "$f $sourceBits/$rateText" else "$f $rateText kHz"
     }
 
-    fun clearTrack() {
-        title = null; artist = null; album = null; albumArtUri = null
-        durationSeconds = 0; positionSeconds = 0
+    /**
+     * Forgets what the engine was carrying, while keeping which track it was.
+     *
+     * The format badge describes a stream that is *running*. Once playback
+     * stops there is no stream, and leaving "FLAC 24/96 — bit-perfect" on the
+     * screen makes a claim about a DAC that is now idle. That is the one claim
+     * this app may not make loosely: it exists to show when the path is
+     * bit-perfect, so a badge that outlives the audio undermines the only
+     * thing it is for.
+     *
+     * The track identity is deliberately left alone. A stop that followed a
+     * failure still has to say which track failed.
+     */
+    fun clearFormat() {
         sourceFormat = null; sourceRate = 0; sourceBits = 0; channels = 0
         deviceBits = 0; altSetting = -1; bitPerfect = false; output = "usb"
+        positionSeconds = 0
+    }
+
+    fun clearTrack() {
+        title = null; artist = null; album = null; albumArtUri = null
+        durationSeconds = 0
+        clearFormat()
     }
 
     private fun q(s: String?): String =

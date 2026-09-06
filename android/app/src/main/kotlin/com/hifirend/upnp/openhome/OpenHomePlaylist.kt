@@ -492,7 +492,11 @@ class OpenHomePlaylist(
     // ---- Eventing ----------------------------------------------------------
 
     fun setTransportState(state: String) {
-        if (transportState == state) return
+        // Only the GENA event is suppressed when nothing changed. The mirror
+        // below must run either way: a playlist that gives up having never
+        // started is Stopped both before and after, and an early return here
+        // left the previous track's format badge on screen for ever.
+        val changed = transportState != state
         transportState = state
         // One source of truth with the DLNA path: the screen and the widget
         // read RendererState, and they must not care which protocol is driving.
@@ -502,7 +506,10 @@ class OpenHomePlaylist(
             "Buffering" -> "TRANSITIONING"
             else -> "STOPPED"
         }
-        fire("TransportState", state)
+        // Paused keeps its badge -- the stream is still open and the DAC is
+        // still configured for it. Stopped has neither.
+        if (state != "Playing" && state != "Paused") RendererState.clearFormat()
+        if (changed) fire("TransportState", state)
     }
 
     private fun publishTrack() {
