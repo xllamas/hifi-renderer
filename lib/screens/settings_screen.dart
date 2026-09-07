@@ -175,17 +175,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 28),
           Text('Audio device', style: Theme.of(context).textTheme.titleMedium),
-          if (_dacs.length > 1) ...[
+          if (_dacs.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
-              '${_dacs.length} USB audio devices are attached. Choose which one '
-              'to play through; the choice is remembered across reboots.',
+              _dacs.length > 1
+                  ? '${_dacs.length} USB audio devices are attached. Choose '
+                      'which one to play through; the choice is remembered '
+                      'across reboots.'
+                  : 'One USB audio device is attached. Tap it to play through '
+                      'it, and to grant access if it has not been granted yet.',
               style: const TextStyle(color: Colors.white54, fontSize: 13),
             ),
           ],
           const SizedBox(height: 8),
-          // Only worth showing a chooser when there is something to choose.
-          if (_dacs.length > 1)
+          // Shown for a single device too, not just a choice between several.
+          //
+          // The chooser used to appear only with two or more attached, on the
+          // reasoning that one device is no choice at all. But selecting is
+          // also how access gets granted and how the capability panel below is
+          // pointed at a device -- so an owner with one DAC that had not been
+          // authorised was left looking at a screen that named no device and
+          // offered nothing to tap, which reads as the app not seeing the
+          // hardware. The row's own subtitle carries a "permission not
+          // granted" state that could never be displayed.
+          if (_dacs.isNotEmpty)
             RadioGroup<String>(
               groupValue: _dacs
                       .cast<Map<String, dynamic>>()

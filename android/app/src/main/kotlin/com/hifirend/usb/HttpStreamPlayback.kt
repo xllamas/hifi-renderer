@@ -181,6 +181,66 @@ class HttpStreamPlayback(private val context: Context) {
                     durationSeconds = dur, header = header, mimeHint = lastKnownMime)
     }
 
+    /**
+     * Moves a stream already playing through Android's mixer onto a DAC that
+     * has just appeared.
+     *
+     * Without this, plugging the DAC in mid-track does nothing audible: the
+     * engine picks its output once, when the track starts, so the choice is
+     * frozen until the next one. An owner who switches the DAC on while a
+     * track is playing sees the app notice the device -- the capabilities
+     * update and the renderer re-announces -- while the sound stays
+     * stubbornly on the phone's speaker, which reads as the app ignoring the
+     * hardware.
+     *
+     * The move is a seek to where we already are: [seek] re-requests the
+     * stream with a byte range and starts the engine again, and starting the
+     * engine is what opens the DAC. Approximate by a second or so, which is
+     * the same approximation every seek here makes and far better than either
+     * restarting the track or waiting for the next one.
+     *
+     * Returns false and changes nothing when the move is not possible --
+     * nothing playing, already on a DAC, no device we may open, or a stream
+     * whose length is unknown so there is no byte offset to seek to. Leaving
+     * a playing track alone is always better than killing it for an output
+     * change nobody asked to be abrupt.
+     */
+    fun adoptAttachedDac(): Boolean {
+        if (!engineRunning) return false
+        // "android" is the Oboe sink, which is the only reason to move. Asking
+        // which sink is running says exactly that, where bitPerfect would be
+        // inferring it from a property the USB sink happens to also have.
+        if (RendererState.output != "android") return false
+        val uri = currentUri ?: return false
+
+        val probe = UsbAudioProbe(context)
+        val device = probe.findAudioDevice() ?: return false
+        if (!usbManager.hasPermission(device)) {
+            // Asking here would put a dialog in front of whatever the owner is
+            // doing, on a device that is meant to sit on a shelf. The next
+            // track opens it, and the settings screen can grant it deliberately.
+            Log.i(TAG, "a DAC is attached but unauthorised; staying on Android audio")
+            return false
+        }
+
+        val dur = trackDurationSeconds
+        if (contentLength <= 0 || dur <= 0) {
+            Log.i(TAG, "DAC attached mid-track, but this stream cannot be seeked " +
+                "(length=$contentLength duration=${dur}s); it will be used from the next track")
+            return false
+        }
+
+        val at = positionSeconds()
+        Log.i(TAG, "DAC attached mid-track: moving playback to " +
+            "${probe.describeForUi(device)} at ${at}s")
+        val result = seek(uri, at, dur)
+        if (!result.contains("\"ok\":true")) {
+            Log.w(TAG, "could not move playback to the DAC: $result")
+            return false
+        }
+        return true
+    }
+
     fun play(
         uri: String,
         seekSeconds: Int = 0,
@@ -310,23 +370,72 @@ class HttpStreamPlayback(private val context: Context) {
         return """{"ok":true,"uri":"${uri.replace("\"", "\\\"")}"}"""
     }
 
+    private fun open(target: URL, rangeStart: Long): HttpURLConnection =
+        (target.openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            // Same-protocol hops are handled here; a hop that changes protocol
+            // is not, and [fetch] picks those up by hand. See there for why.
+            instanceFollowRedirects = true
+            // Some DLNA servers behave differently for unknown agents, and
+            // a few refuse to stream without a Range header at all.
+            setRequestProperty("User-Agent", "HiFiRenderer/1.0 DLNADOC/1.50")
+            setRequestProperty("Connection", "close")
+            if (rangeStart > 0) setRequestProperty("Range", "bytes=$rangeStart-")
+        }
+
     private fun fetch(uri: String, rangeStart: Long, header: ByteArray?, mine: Int) {
         var stream: InputStream? = null
         var conn: HttpURLConnection? = null
+        // Where we are actually talking to, which is very often not [uri].
+        //
+        // A Tidal track through BubbleUPnP arrives as a URL on the controller's
+        // own proxy, and that proxy answers 302 to a token-bearing URL on
+        // Tidal's CDN:
+        //
+        //     GET  http://192.168.100.122:57645/proxy/tidal/D0CF....flac
+        //     302  http://lgf.audio.tidal.com/mediatracks/...?token=1788...
+        //
+        // So the host that has to be reachable is not the one the controller
+        // named, and until this was tracked a failure reported the controller's
+        // address for a fetch that never got near it -- pointing anyone
+        // debugging it at the wrong machine.
+        var attempting = uri
         try {
-            conn = (URL(uri).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 15_000
-                readTimeout = 30_000
-                instanceFollowRedirects = true
-                // Some DLNA servers behave differently for unknown agents, and
-                // a few refuse to stream without a Range header at all.
-                setRequestProperty("User-Agent", "HiFiRenderer/1.0 DLNADOC/1.50")
-                setRequestProperty("Connection", "close")
-                if (rangeStart > 0) setRequestProperty("Range", "bytes=$rangeStart-")
+            conn = open(URL(uri), rangeStart)
+            var code = conn.responseCode
+
+            // Java will not follow a redirect that changes protocol, and says
+            // nothing about refusing: it hands back the 3xx as though the
+            // server had meant it. An http proxy URL redirecting to an https
+            // CDN -- which is the shape of every streaming service behind a
+            // local proxy -- would therefore surface as "the server answered
+            // HTTP 302", which is true and useless.
+            var hops = 0
+            while (code in 300..399 && hops < 5) {
+                val location = conn!!.getHeaderField("Location") ?: break
+                val next = URL(URL(attempting), location)
+                Log.i(TAG, "stream: $code redirect to ${next.protocol}://${next.host}")
+                conn.disconnect()
+                attempting = next.toString()
+                conn = open(next, rangeStart)
+                code = conn.responseCode
+                hops++
             }
-            val code = conn.responseCode
+
+            // Java follows same-protocol redirects itself, without a word, so
+            // the loop above never sees the common case -- an http proxy URL
+            // hopping to an http CDN. The connection does know where it ended
+            // up, and that is the only place the real host can be read from.
+            runCatching { conn!!.url?.toString() }.getOrNull()
+                ?.takeIf { it.isNotBlank() }?.let { attempting = it }
+            if (runCatching { URL(attempting).host }.getOrNull()
+                != runCatching { URL(uri).host }.getOrNull()) {
+                Log.i(TAG, "stream: served by ${URL(attempting).host} " +
+                    "after a redirect (the controller named ${URL(uri).host})")
+            }
             if (code !in 200..299) {
-                Log.e(TAG, "stream: HTTP $code for $uri")
+                Log.e(TAG, "stream: HTTP $code for $attempting")
                 noteFetchFailure(mine, "the server answered HTTP $code for this track")
                 NativeBridge.endStream()
                 return
@@ -383,12 +492,24 @@ class HttpStreamPlayback(private val context: Context) {
             }
             Log.i(TAG, "stream: fetched $total bytes")
         } catch (e: Throwable) {
-            Log.e(TAG, "stream: fetch failed: ${e::class.java.simpleName}: ${e.message}")
+            // A redirect Java followed by itself leaves the final URL on the
+            // connection, and if the failure happened after that hop it is the
+            // address that actually refused us.
+            runCatching { conn?.url?.toString() }.getOrNull()
+                ?.takeIf { it.isNotBlank() }?.let { attempting = it }
+            Log.e(TAG, "stream: fetch failed against $attempting: " +
+                "${e::class.java.simpleName}: ${e.message}")
+            // Name the host that actually failed. With a proxying controller
+            // that is usually not the one the controller advertised, and a
+            // message blaming the wrong machine sends the next hour of
+            // debugging in the wrong direction.
+            val host = runCatching { URL(attempting).host }.getOrNull() ?: "the media server"
             noteFetchFailure(mine, when (e) {
-                is java.net.UnknownHostException -> "the media server's address could not be resolved"
-                is java.net.SocketTimeoutException -> "the media server stopped responding"
-                is java.net.ConnectException -> "the media server could not be reached"
-                else -> "the track could not be fetched (${e::class.java.simpleName})"
+                is java.net.UnknownHostException -> "$host could not be resolved"
+                is java.net.SocketTimeoutException -> "$host stopped responding"
+                is java.net.ConnectException -> "$host could not be reached"
+                else -> "the track could not be fetched from $host " +
+                    "(${e::class.java.simpleName})"
             } + ": ${e.message}")
         } finally {
             runCatching { stream?.close() }

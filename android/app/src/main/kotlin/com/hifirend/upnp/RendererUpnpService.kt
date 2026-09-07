@@ -208,8 +208,15 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                         // must not inherit this one's.
                         playback.forgetRestoredVolume()
                     }
-                    UsbManager.ACTION_USB_DEVICE_ATTACHED ->
+                    UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
                         Log.i(TAG, "USB device attached")
+                        // Switching the DAC on mid-track used to change only
+                        // what the renderer *advertised*: the engine chooses
+                        // its output when a track starts, so the sound stayed
+                        // on the phone's speaker until the next one. Move it.
+                        runCatching { playback.adoptAttachedDac() }
+                            .onFailure { Log.w(TAG, "could not adopt the DAC: ${it.message}") }
+                    }
                 }
                 runCatching { probe.refreshDacPresence() }
                 refreshNotification(playing = false)
