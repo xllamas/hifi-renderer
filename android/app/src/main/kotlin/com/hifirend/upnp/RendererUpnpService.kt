@@ -59,6 +59,7 @@ private const val KEY_SERVER_CONVERSION = "allow_server_conversion"
 /** Source indices, in the order [RendererUpnpService.buildDevice] declares them. */
 private const val SOURCE_PLAYLIST = 0
 private const val SOURCE_UPNP_AV = 1
+private const val SOURCE_AIRPLAY = 2
 
 
 
@@ -154,6 +155,9 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         when (previous) {
             SOURCE_PLAYLIST -> openHomePlaylist?.let { runCatching { it.stopAction() } }
             SOURCE_UPNP_AV -> avTransport?.let { runCatching { it.stop(null) } }
+            // A guest losing the output is not an error: the owner took it
+            // back, which is the arbitration working.
+            SOURCE_AIRPLAY -> airPlayAudio?.let { runCatching { it.stop() } }
         }
     }
 
@@ -396,12 +400,46 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             onSessionReady = { params ->
                 Log.i(TAG, "airplay: session negotiated, key=${params.aesKey != null} " +
                     "iv=${params.aesIv != null} fmtp='${params.formatParameters}'")
+                val format = com.hifirend.airplay.RaopFormat.parse(params.formatParameters)
+                // A guest arriving takes the output, which stops whatever the
+                // owner's protocols were doing. That is the arbitration the
+                // playlist and AVTransport already share, not a new rule.
+                claim(SOURCE_AIRPLAY)
+                val configured = NativeBridge.alacConfigure(
+                    frameLength = format.frameLength,
+                    compatibleVersion = format.compatibleVersion,
+                    bitDepth = format.bitDepth,
+                    pb = format.pb, mb = format.mb, kb = format.kb,
+                    channels = format.channels,
+                    maxRun = format.maxRun,
+                    maxFrameBytes = format.maxFrameBytes,
+                    avgBitRate = format.avgBitRate,
+                    sampleRate = format.sampleRate,
+                )
+                val fd = playback.openOutputForPush()
+                val started = NativeBridge.startPcmStream(fd, format.sampleRate, format.channels, 0)
+                Log.i(TAG, "airplay: decoder configured=$configured, engine=$started")
+
                 // Bind before answering SETUP: the ports go into that reply,
                 // and a sender told port 0 has nowhere to send and gives up.
+                val pushed = java.util.concurrent.atomic.AtomicLong(0)
                 val session = com.hifirend.airplay.RaopAudioSession(
                     aesKey = params.aesKey,
                     aesIv = params.aesIv,
-                    onAlacFrame = { _, _ -> /* the decoder lands here next */ },
+                    onAlacFrame = { frame, len ->
+                        val n = NativeBridge.alacDecodePush(frame, len)
+                        if (n > 0) {
+                            // One line every thousand packets: enough to see
+                            // the stream is alive without burying the log at
+                            // 117 packets a second.
+                            if (pushed.incrementAndGet() % 1000L == 1L) {
+                                Log.i(TAG, "airplay: ${pushed.get()} frames decoded, " +
+                                    "$n bytes of PCM in the last one")
+                            }
+                        } else if (n < 0 && pushed.get() == 0L) {
+                            Log.w(TAG, "airplay: decode/push refused ($n)")
+                        }
+                    },
                 )
                 if (session.start()) {
                     params.serverAudioPort = session.audioPort
@@ -411,6 +449,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 }
             },
             onTeardown = {
+                runCatching { NativeBridge.pcmEndOfStream() }
                 airPlayAudio?.let {
                     Log.i(TAG, "airplay: session ended after ${it.packets.get()} packets, " +
                         "${it.bytesDecrypted.get()} bytes decrypted, " +
@@ -891,6 +930,10 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             sources = listOf(
                 OpenHomeSource("Playlist", "Playlist", "Playlist"),
                 OpenHomeSource("UpnpAv", "UpnpAv", "UPnP AV"),
+                // "Receiver" is OpenHome's name for a source someone else
+                // pushes into, which is exactly what a guest with an iPhone
+                // is. Third in the list, so SOURCE_AIRPLAY is index 2.
+                OpenHomeSource("Receiver", "Receiver", "AirPlay"),
             ),
             onSourceSelected = { index -> onSourceSelected(index) },
         )

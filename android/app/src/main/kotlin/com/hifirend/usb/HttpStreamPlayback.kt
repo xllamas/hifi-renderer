@@ -242,6 +242,50 @@ class HttpStreamPlayback(private val context: Context) {
         return true
     }
 
+    /**
+     * Opens the output device for a *push* source, returning its descriptor.
+     *
+     * AirPlay does not fetch anything, so it never goes through [play] -- but
+     * it needs the same device opened the same way, with the same permission
+     * check, the same interface claims and the same fallback to Android audio
+     * when there is no DAC. Duplicating that logic is how the two paths would
+     * drift; sharing it means [stop] already knows how to close what this
+     * opened, and [openDeviceKey] already tells the detach handler which
+     * device matters.
+     *
+     * Returns -1 for "no DAC, use Android audio", which is what the engine
+     * expects a descriptor of -1 to mean.
+     */
+    fun openOutputForPush(): Int {
+        val probe = UsbAudioProbe(context)
+        val device = probe.findAudioDevice()
+        val conn = when {
+            device == null -> {
+                Log.i(TAG, "no USB audio device; using Android audio")
+                null
+            }
+            !usbManager.hasPermission(device) -> {
+                Log.i(TAG, "no USB permission for ${probe.describeForUi(device)}; " +
+                    "using Android audio")
+                null
+            }
+            else -> usbManager.openDevice(device).also {
+                if (it == null) Log.w(TAG, "could not open the DAC; using Android audio")
+            }
+        }
+        if (conn != null && device != null) {
+            for (i in 0 until device.interfaceCount) {
+                val itf = device.getInterface(i)
+                if (itf.interfaceClass == UsbConstants.USB_CLASS_AUDIO) {
+                    conn.claimInterface(itf, true)
+                }
+            }
+        }
+        connection = conn
+        openDeviceKey = if (conn != null && device != null) probe.deviceKey(device) else null
+        return conn?.fileDescriptor ?: -1
+    }
+
     fun play(
         uri: String,
         seekSeconds: Int = 0,

@@ -140,10 +140,33 @@ implementation worth reading:
 
 1. ~~Bind the three UDP ports and decrypt AES-128-CBC.~~ **Done**, and
    confirmed against macOS as above.
-2. **Decode ALAC and push the PCM.** Vendor the decoder -- this phone has no
-   platform one -- and feed `nativeStartPcmStream` / `nativePushPcm`. The
-   decrypted frames already arrive at a callback that currently discards them,
-   so this is the one piece left before sound.
+2. ~~Decode ALAC and push the PCM.~~ **Done 2026-09-07, and it plays.**
+
+   Apple's reference decoder is vendored (Apache 2.0, `third_party/alac`)
+   because this hardware offers no `audio/alac` at all, and because a decoder
+   bug produces noise rather than an error -- not something to hand-write.
+   Configuration comes from the SDP, since RAOP sends bare frames with no
+   container; `RaopFormat` parses the eleven `fmtp` fields into named ones and
+   is tested against the exact line macOS sends, because a transposition there
+   decodes noise and gets blamed on everything else first.
+
+   Measured over 72 seconds of music from a Mac:
+
+       source changed: 0 -> 2                       (AirPlay claimed the output)
+       alac: 44100 Hz 16-bit 2ch, 352 frames per packet
+       configure: 44100 Hz, source 16-bit -> alt 2, async +feedback
+       9001 frames decoded, 1408 bytes of PCM in the last one
+       underruns=0 xferErr=0
+
+   Every packet decoded to exactly 1408 bytes -- 352 frames of stereo 16-bit,
+   the full frame the `fmtp` promises, never a partial one. 125.3 frames a
+   second against the 125.3 the format implies, so no loss at all across the
+   run, and no decode failures.
+
+   Decoding happens in native code and pushes straight into the stream, rather
+   than returning PCM to Kotlin to hand back down: two JNI crossings and two
+   copies of every packet, 117 times a second, for samples nothing on the Java
+   side wants to look at.
 3. **Sync and retransmission.** The control and timing sockets are bound and
    drained but unread. They are what separate "plays" from "plays without
    dropouts", and a guest path that stutters is worse than none.
@@ -152,8 +175,13 @@ implementation worth reading:
    `onSourceSelected` seam. A guest arriving mid-album is the case to design,
    not the case to discover.
 5. **Say it is not bit-perfect**, on the screen, whenever this path is live.
-   The plan is explicit that a guest source which does not visibly mark itself
-   is the app doing the thing it exists to expose in other people's hardware.
+   **Now urgent rather than tidy:** `UsbSink::bitPerfect()` returns a hardcoded
+   `true`, so with AirPlay playing the app currently *claims* bit-perfect. The
+   transport is lossless ALAC, but the sender resamples anything that is not
+   44.1 kHz before it ever reaches us, so the claim is not ours to make on this
+   path. An app whose whole argument is that it does not lie about this must
+   not lie about this. Nothing else should be built on top of the guest path
+   until it is fixed.
 6. **The appliance-shell extraction**, which the protocol doc says is owed and
    which this protocol is the one to pay for. Deliberately deferred until there
    is a real second-shape protocol to extract *against* rather than a guessed

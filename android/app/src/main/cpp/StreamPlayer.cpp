@@ -8,6 +8,7 @@
 // The stream is not seekable while it plays -- dr_flac's seek callback refuses
 // -- because the bytes are arriving live. Seeking is a byte-range re-request on
 // the Kotlin side, which restarts the stream at an offset.
+#include "AlacStream.h"
 
 #include <android/log.h>
 #include <jni.h>
@@ -660,6 +661,51 @@ Java_com_hifirend_NativeBridge_nativePushPcm(JNIEnv *env, jobject, jbyteArray da
 JNIEXPORT void JNICALL
 Java_com_hifirend_NativeBridge_nativePcmEndOfStream(JNIEnv *, jobject) {
     StreamPlayer::instance().pcmEndOfStream();
+}
+
+/**
+ * ALAC for AirPlay: configure, then decode-and-push in one crossing.
+ *
+ * Decoding could have returned PCM to Kotlin for it to push back down, but
+ * that is two JNI crossings and two copies of every packet, 117 times a
+ * second, to no purpose -- nothing on the Java side wants to see the samples.
+ * The decoder lives here and hands its output straight to the same push path
+ * the AAC decoder already uses.
+ */
+static AlacStream g_alac;
+
+JNIEXPORT jboolean JNICALL
+Java_com_hifirend_NativeBridge_nativeAlacConfigure(JNIEnv *, jobject, jint frameLength,
+                                                   jint compatibleVersion, jint bitDepth,
+                                                   jint pb, jint mb, jint kb, jint channels,
+                                                   jint maxRun, jint maxFrameBytes,
+                                                   jint avgBitRate, jint sampleRate) {
+    const bool ok = g_alac.configure(
+        static_cast<uint32_t>(frameLength), static_cast<uint8_t>(compatibleVersion),
+        static_cast<uint8_t>(bitDepth), static_cast<uint8_t>(pb), static_cast<uint8_t>(mb),
+        static_cast<uint8_t>(kb), static_cast<uint8_t>(channels),
+        static_cast<uint16_t>(maxRun), static_cast<uint32_t>(maxFrameBytes),
+        static_cast<uint32_t>(avgBitRate), static_cast<uint32_t>(sampleRate));
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_hifirend_NativeBridge_nativeAlacDecodePush(JNIEnv *env, jobject, jbyteArray frame,
+                                                    jint len) {
+    if (!g_alac.ready()) return -1;
+    // Sized for the configured frame: the decoder refuses to write past it,
+    // and a fixed buffer avoids an allocation per packet.
+    static thread_local std::vector<uint8_t> pcm;
+    const size_t needed = static_cast<size_t>(g_alac.frameLength()) * g_alac.channels() *
+                          (g_alac.bitDepth() / 8);
+    if (pcm.size() < needed) pcm.resize(needed);
+
+    jbyte *p = env->GetByteArrayElements(frame, nullptr);
+    const int bytes = g_alac.decode(reinterpret_cast<const uint8_t *>(p), static_cast<int>(len),
+                                    pcm.data(), static_cast<int>(pcm.size()));
+    env->ReleaseByteArrayElements(frame, p, JNI_ABORT);
+    if (bytes <= 0) return 0;
+    return StreamPlayer::instance().pushPcm(pcm.data(), static_cast<size_t>(bytes)) ? bytes : -2;
 }
 
 JNIEXPORT void JNICALL

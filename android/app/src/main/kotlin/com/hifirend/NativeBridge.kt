@@ -46,6 +46,11 @@ object NativeBridge {
     private external fun nativeStartPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int): String
     private external fun nativePushPcm(data: ByteArray, len: Int): Boolean
     private external fun nativePcmEndOfStream()
+    private external fun nativeAlacConfigure(
+        frameLength: Int, compatibleVersion: Int, bitDepth: Int, pb: Int, mb: Int, kb: Int,
+        channels: Int, maxRun: Int, maxFrameBytes: Int, avgBitRate: Int, sampleRate: Int,
+    ): Boolean
+    private external fun nativeAlacDecodePush(frame: ByteArray, len: Int): Int
 
     /** ABI, libusb version and Oboe link status, or the load failure. */
     fun selfTest(): String = loadError?.let { "native library failed to load: $it" } ?: nativeSelfTest()
@@ -126,6 +131,28 @@ object NativeBridge {
         if (isLoaded) nativePushPcm(data, len) else false
 
     fun pcmEndOfStream() { if (isLoaded) nativePcmEndOfStream() }
+
+    /**
+     * Configures the ALAC decoder from the SDP's fmtp fields, in that order.
+     *
+     * Named rather than positional at the call site because getting the order
+     * wrong does not fail -- it decodes noise.
+     */
+    fun alacConfigure(
+        frameLength: Int, compatibleVersion: Int, bitDepth: Int, pb: Int, mb: Int, kb: Int,
+        channels: Int, maxRun: Int, maxFrameBytes: Int, avgBitRate: Int, sampleRate: Int,
+    ): Boolean = isLoaded && nativeAlacConfigure(
+        frameLength, compatibleVersion, bitDepth, pb, mb, kb, channels,
+        maxRun, maxFrameBytes, avgBitRate, sampleRate)
+
+    /**
+     * Decodes one ALAC frame and pushes the PCM straight into the stream.
+     *
+     * Returns bytes pushed, 0 if the frame would not decode, -1 if no decoder
+     * has been configured, -2 if the audio buffer refused the samples.
+     */
+    fun alacDecodePush(frame: ByteArray, len: Int): Int =
+        if (isLoaded) nativeAlacDecodePush(frame, len) else -1
 
     /** Volume the DAC itself reports, or -1 when it has no volume control. */
     fun getDacVolume(): Int = if (isLoaded) nativeGetDacVolume() else -1

@@ -19,6 +19,15 @@ add_library(hifirend SHARED
     usb/UacCapabilities.cpp
     usb/UsbSink.cpp
     sink/OboeSink.cpp
+    AlacStream.cpp
+    # Apple's reference ALAC decoder, Apache 2.0 -- see third_party/alac.
+    # Vendored because this hardware has no platform ALAC decoder at all.
+    third_party/alac/ALACDecoder.cpp
+    third_party/alac/ALACBitUtilities.c
+    third_party/alac/EndianPortable.c
+    third_party/alac/ag_dec.c
+    third_party/alac/dp_dec.c
+    third_party/alac/matrix_dec.c
 )
 
 target_include_directories(hifirend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
