@@ -114,6 +114,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     private var pendingDeviceChange: java.util.concurrent.ScheduledFuture<*>? = null
     private var airPlayAdvertiser: com.hifirend.airplay.RaopAdvertiser? = null
     private var airPlayRtsp: com.hifirend.airplay.RaopRtspServer? = null
+    @Volatile private var airPlayAudio: com.hifirend.airplay.RaopAudioSession? = null
     private var usbReceiver: BroadcastReceiver? = null
     private var debugReceiver: BroadcastReceiver? = null
     private val playback by lazy { HttpStreamPlayback(applicationContext) }
@@ -393,12 +394,31 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             crypto = crypto,
             hardwareAddress = advertiser.hardwareAddressBytes(udn),
             onSessionReady = { params ->
-                // The audio layer lands here next. Until it does, say what was
-                // negotiated: it is the evidence that the handshake completed.
                 Log.i(TAG, "airplay: session negotiated, key=${params.aesKey != null} " +
                     "iv=${params.aesIv != null} fmtp='${params.formatParameters}'")
+                // Bind before answering SETUP: the ports go into that reply,
+                // and a sender told port 0 has nowhere to send and gives up.
+                val session = com.hifirend.airplay.RaopAudioSession(
+                    aesKey = params.aesKey,
+                    aesIv = params.aesIv,
+                    onAlacFrame = { _, _ -> /* the decoder lands here next */ },
+                )
+                if (session.start()) {
+                    params.serverAudioPort = session.audioPort
+                    params.serverControlPort = session.controlPort
+                    params.serverTimingPort = session.timingPort
+                    airPlayAudio = session
+                }
             },
-            onTeardown = { Log.i(TAG, "airplay: session ended") },
+            onTeardown = {
+                airPlayAudio?.let {
+                    Log.i(TAG, "airplay: session ended after ${it.packets.get()} packets, " +
+                        "${it.bytesDecrypted.get()} bytes decrypted, " +
+                        "${it.undecryptable.get()} undecryptable")
+                    it.stop()
+                }
+                airPlayAudio = null
+            },
         )
         runCatching {
             val port = rtsp.start()
@@ -587,6 +607,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         pendingDeviceChange?.cancel(false)
         runCatching { airPlayAdvertiser?.stop() }
         runCatching { airPlayRtsp?.stop() }
+        runCatching { airPlayAudio?.stop() }
         networkExecutor.shutdownNow()
         RendererControl.transport = null
         RendererControl.onOutputDeviceChanged = null

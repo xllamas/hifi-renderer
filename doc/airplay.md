@@ -94,6 +94,26 @@ The session then ends at `SETUP`, because the reply still offers
 `server_port=0` and the sender has nowhere to send RTP. That is the only thing
 now standing between this and audio.
 
+**With the ports bound, the sender stays and streams.** macOS again, the same
+day, once SETUP could answer with real ports:
+
+    SETUP -> audio=38401 control=42489 timing=47959
+    RECORD
+    SET_PARAMETER
+    first audio packet, 722 bytes on the wire, 710 decrypted,
+        first element CPE (stereo)
+    ...
+    session ended after 4354 packets, 2075021 bytes decrypted, 0 undecryptable
+
+That is the decryption confirmed, not merely attempted. `CPE (stereo)` is the
+ALAC channel-pair element a stereo stream must open with; a wrong key or a
+wrong IV gives plausible-looking noise here, not an error, so it is the
+cheapest tell available. **Zero undecryptable packets across 4354.**
+
+The rates agree with the format too: 117 packets a second against the 125.3 the
+`fmtp` implies for 352-frame packets at 44.1 kHz, and an average payload of 477
+bytes against 1408 uncompressed -- 34%, which is ALAC doing what ALAC does.
+
 Two things that test settled which no amount of reading would have:
 
 - **The sender connects over IPv6.** macOS came in on a link-local
@@ -118,18 +138,23 @@ implementation worth reading:
 
 ## What is next
 
-1. **The audio layer.** Bind the three UDP ports, decrypt AES-128-CBC, decode
-   ALAC, push into `nativeStartPcmStream` / `nativePushPcm`. The RTSP layer
-   already hands over everything it needs as `RaopSessionParams`, which is why
-   it could be finished first.
-2. **Source arbitration.** AirPlay becomes a third source alongside
+1. ~~Bind the three UDP ports and decrypt AES-128-CBC.~~ **Done**, and
+   confirmed against macOS as above.
+2. **Decode ALAC and push the PCM.** Vendor the decoder -- this phone has no
+   platform one -- and feed `nativeStartPcmStream` / `nativePushPcm`. The
+   decrypted frames already arrive at a callback that currently discards them,
+   so this is the one piece left before sound.
+3. **Sync and retransmission.** The control and timing sockets are bound and
+   drained but unread. They are what separate "plays" from "plays without
+   dropouts", and a guest path that stutters is worse than none.
+4. **Source arbitration.** AirPlay becomes a third source alongside
    `SOURCE_PLAYLIST` and `SOURCE_UPNP_AV`, through the existing `claim` /
    `onSourceSelected` seam. A guest arriving mid-album is the case to design,
    not the case to discover.
-3. **Say it is not bit-perfect**, on the screen, whenever this path is live.
+5. **Say it is not bit-perfect**, on the screen, whenever this path is live.
    The plan is explicit that a guest source which does not visibly mark itself
    is the app doing the thing it exists to expose in other people's hardware.
-4. **The appliance-shell extraction**, which the protocol doc says is owed and
+6. **The appliance-shell extraction**, which the protocol doc says is owed and
    which this protocol is the one to pay for. Deliberately deferred until there
    is a real second-shape protocol to extract *against* rather than a guessed
    one.
