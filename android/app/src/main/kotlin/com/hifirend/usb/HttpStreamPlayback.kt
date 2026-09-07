@@ -33,6 +33,21 @@ class HttpStreamPlayback(private val context: Context) {
 
     private val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
     private var connection: UsbDeviceConnection? = null
+
+    /**
+     * The device the engine currently has open, or null when it is on Android
+     * audio.
+     *
+     * Needed because a detach broadcast says only that *some* USB device went
+     * away, and the phone sits on a powered hub with half a dozen of them.
+     * Stopping playback for any of them was wrong in the ordinary case and
+     * actively destructive in one particular one: plugging the DAC in makes it
+     * enumerate twice, and the detach between the two attaches stopped the
+     * track that was about to be moved onto it.
+     */
+    @Volatile
+    var openDeviceKey: String? = null
+        private set
     private val fetching = AtomicBoolean(false)
     private val aac = AacDecoder()
 
@@ -294,6 +309,7 @@ class HttpStreamPlayback(private val context: Context) {
             }
         }
         connection = conn
+        openDeviceKey = if (conn != null && device != null) probe.deviceKey(device) else null
         val fd = conn?.fileDescriptor ?: -1
 
         return startDecoding(uri, fd, seekSeconds, rangeStart, durationSeconds, header,
@@ -529,6 +545,9 @@ class HttpStreamPlayback(private val context: Context) {
      */
     @Volatile private var engineRunning = false
 
+    /** Whether audio is flowing, through either sink. */
+    val isEngineRunning: Boolean get() = engineRunning
+
     /**
      * Whether the decoder is alive, as distinct from the sink.
      *
@@ -747,6 +766,7 @@ class HttpStreamPlayback(private val context: Context) {
         NativeBridge.stopStream()
         connection?.close()
         connection = null
+        openDeviceKey = null
         currentUri = null
     }
 

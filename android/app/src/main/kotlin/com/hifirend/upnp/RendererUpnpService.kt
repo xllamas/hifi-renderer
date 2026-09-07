@@ -109,6 +109,9 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             Thread(r, "upnp-network").apply { isDaemon = true }
         }
     @Volatile private var lastRebindAt = 0L
+    /** Long enough for a DAC's double enumeration on a powered hub to finish. */
+    private val ENUMERATION_SETTLE_MS = 4_000L
+    private var pendingDeviceChange: java.util.concurrent.ScheduledFuture<*>? = null
     private var usbReceiver: BroadcastReceiver? = null
     private var debugReceiver: BroadcastReceiver? = null
     private val playback by lazy { HttpStreamPlayback(applicationContext) }
@@ -200,13 +203,47 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 val probe = com.hifirend.usb.UsbAudioProbe(applicationContext)
                 when (intent.action) {
                     UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                        Log.i(TAG, "USB device detached; stopping playback")
-                        runCatching { playback.stop() }
-                        avTransport?.let { it.onDeviceLost() }
-                        openHomePlaylist?.let { it.onDeviceLost() }
-                        // A different DAC gets its own remembered level, and
-                        // must not inherit this one's.
-                        playback.forgetRestoredVolume()
+                        // Only the device we are actually playing through.
+                        //
+                        // The broadcast says a USB device went away, not which
+                        // one that matters, and this phone sits on a powered
+                        // hub carrying Ethernet and several others. Stopping
+                        // for any of them was wrong generally and ruinous in
+                        // one specific case: plugging the DAC in makes it
+                        // enumerate twice, and the detach *between* the two
+                        // attaches stopped the very track that was waiting to
+                        // be moved onto it --
+                        //
+                        //   12:54:33  USB device attached      (unauthorised)
+                        //   12:54:36  USB device detached; stopping playback
+                        //   12:54:37  USB device attached      (re-enumerated)
+                        //   12:54:39  permission arrived, nothing left to move
+                        //
+                        // which looked from the outside like the switch simply
+                        // not working, with the controller still showing a
+                        // track and no sound coming out.
+                        val gone = runCatching {
+                            @Suppress("DEPRECATION")
+                            intent.getParcelableExtra<android.hardware.usb.UsbDevice>(
+                                UsbManager.EXTRA_DEVICE)
+                        }.getOrNull()
+                        val goneKey = gone?.let { runCatching { probe.deviceKey(it) }.getOrNull() }
+                        val inUse = playback.openDeviceKey
+                        if (inUse != null && goneKey != null && goneKey != inUse) {
+                            Log.i(TAG, "USB device detached ($goneKey), but playback is on " +
+                                "$inUse; leaving it alone")
+                        } else if (inUse == null && playback.isEngineRunning) {
+                            Log.i(TAG, "USB device detached ($goneKey) while playing through " +
+                                "Android audio; leaving it alone")
+                        } else {
+                            Log.i(TAG, "USB device detached ($goneKey); stopping playback")
+                            runCatching { playback.stop() }
+                            avTransport?.let { it.onDeviceLost() }
+                            openHomePlaylist?.let { it.onDeviceLost() }
+                            // A different DAC gets its own remembered level,
+                            // and must not inherit this one's.
+                            playback.forgetRestoredVolume()
+                        }
                     }
                     UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
                         Log.i(TAG, "USB device attached")
@@ -234,8 +271,9 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 runCatching { RendererWidget.refresh(applicationContext, force = true) }
                 // A different DAC accepts different formats, and a controller
                 // that discovered us before the swap still believes the old set.
-                // No-ops when the selected device is unchanged.
-                runCatching { onOutputDeviceChanged() }
+                // No-ops when the selected device is unchanged, and waits for
+                // enumeration to settle so one plug-in is one announcement.
+                runCatching { onOutputDeviceChangedSoon(false) }
             }
         }
         usbReceiver = receiver
@@ -499,6 +537,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         }
         usbReceiver?.let { runCatching { unregisterReceiver(it) } }
         debugReceiver?.let { runCatching { unregisterReceiver(it) } }
+        pendingDeviceChange?.cancel(false)
         networkExecutor.shutdownNow()
         RendererControl.transport = null
         RendererControl.onOutputDeviceChanged = null
@@ -886,6 +925,30 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
      * re-announced -- a byebye followed by an alive -- which is the only thing
      * that makes those controllers look again.
      */
+    /**
+     * Coalesces the capability update while USB enumeration settles.
+     *
+     * Re-announcing is a byebye followed by an alive, which drops every
+     * controller's subscription -- so doing it three times in four seconds,
+     * which is what plugging one DAC into a powered hub produces, reads to the
+     * owner as the renderer disappearing from the controller:
+     *
+     *   12:54:33  attached   -> re-announce
+     *   12:54:36  detached   -> re-announce
+     *   12:54:37  attached   -> re-announce
+     *
+     * Waiting for the bouncing to stop turns that into one. The delay is
+     * invisible next to the seven seconds permission takes to arrive on this
+     * hardware.
+     */
+    private fun onOutputDeviceChangedSoon(force: Boolean) {
+        pendingDeviceChange?.cancel(false)
+        pendingDeviceChange = networkExecutor.schedule({
+            runCatching { onOutputDeviceChanged(force) }
+                .onFailure { Log.w(TAG, "output device change failed: ${it.message}") }
+        }, ENUMERATION_SETTLE_MS, TimeUnit.MILLISECONDS)
+    }
+
     fun onOutputDeviceChanged(force: Boolean = false) {
         val cm = connectionManager ?: return
 
