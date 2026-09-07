@@ -869,25 +869,45 @@ music does. And the DAC has to be attached: without one the renderer falls back
 to Android audio, which reports no frame or underrun counters, so the very
 evidence the test turns on is missing.
 
-**An unexplained decline, 2026-09-07 09:08.** Setting the test up caught
-another lapse live, and this one the watchdog did not act on. Both counters
-froze at 67 searches and 661 announcements from 09:08:41 to at least 09:13:43,
-a multicast M-SEARCH from the Mac in the middle of that went unanswered while
-another device on the same network replied, and no rejoin was logged. By
-09:16:44 the counters were climbing again on their own. Five minutes of silence
-against a ninety-second window, on a network that had produced 728 multicasts,
-with no heal on record and the backoff not yet armed -- which the code as
-written says cannot happen.
+**The backoff can cost minutes when lapses cluster, 2026-09-07.** Setting the
+test up caught two lapses in twelve minutes, and the second exposed something
+the overnight soak could not: the ten-minute rebind backoff is long enough to
+hold the renderer invisible for far longer than the ninety-second window
+promises.
 
-The honest position is that there are two candidate mechanisms and the log
-cannot tell them apart: either the watchdog was never asked, or it was asked
-and declined on inputs different from what the census implies. So the census
-line now carries the watchdog's own silence figure beside the counters it comes
-from, and a decline during a long silence says so and on what numbers. A
-frozen census with a silence that is not growing means `lastMulticastAt` is
-being refreshed by something the counters do not count; frozen and growing
-together with no rejoin means the decision itself is wrong. Guessing between
-them and shipping a fix for the wrong one is the trap.
+```
+09:04:40   39 searches, 396 announcements   announcements frozen
+09:05:17   rejoining the group                    <- heal, backoff armed to 09:15:17
+09:08:41   67 searches, 661 announcements   both frozen; the real lapse begins
+09:10:1x   ...watchdog wants to fire, backoff refuses
+09:14:43   67 searches, 661 announcements   still frozen -- six minutes now
+09:15:43   67 searches, 681 announcements   a trickle returns after the backoff lapses
+09:16:21   rejoining the group                    <- heal, 90s after that trickle stopped
+```
+
+A multicast M-SEARCH from the Mac at 09:11 went unanswered while another device
+on the same network replied, so the renderer really was undiscoverable for that
+whole stretch -- about six and a half minutes, against the ninety seconds the
+window advertises. The overnight soak said the backoff "never suppressed a real
+fault", and on that night it did not: the closest pair of lapses was twenty-two
+minutes apart. Three minutes apart is a different matter.
+
+The backoff exists so a rebind that does not help cannot loop. But that is not
+this case: multicast plainly returned after the 09:05 heal, so the rebind
+worked and the 09:08 lapse is a *new* fault rather than the same one
+unhealed. A backoff conditioned on the previous heal having achieved nothing --
+no multicast heard since it -- would keep the loop protection and drop the
+delay. Not yet done; it changes the cure's behaviour, and the cure had just
+been validated over a night.
+
+Two pieces of instrumentation were added while chasing this, and both earn
+their place independently. The census line now carries the watchdog's own
+silence figure beside the counters it derives from, and a watchdog declining to
+act during a long silence now says so and on what numbers -- the reason this
+took an hour to explain is that a frozen census is equally consistent with the
+watchdog never being asked and with it being asked and refusing, and nothing in
+the log distinguished them. The decline line would have named the backoff
+immediately.
 
 **Two faults found by a renderer that played on while vanishing from every
 controller, 2026-09-06.** They were independent, and the shape of the report --

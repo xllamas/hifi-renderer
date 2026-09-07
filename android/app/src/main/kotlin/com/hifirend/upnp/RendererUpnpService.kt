@@ -919,10 +919,12 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         val heardCount = factory.ignored + factory.searchesSeen
         if (!MulticastWatchdog.shouldHeal(heard, lastMulticastHealAt, now, heardCount)) {
             // Only interesting once the silence is long enough that a rejoin
-            // was expected. On 2026-09-07 the census froze for five minutes
-            // and nothing rejoined, and the log had no way to say whether the
-            // watchdog declined or was never asked. Now it says which, and on
-            // what numbers.
+            // was expected. On 2026-09-07 the census froze for six minutes
+            // with no rejoin, and working out why took an hour because a
+            // frozen census is equally consistent with the watchdog never
+            // being asked and with it being asked and refusing. It was
+            // refusing -- the backoff from a heal three minutes earlier -- and
+            // this line would have said so at once.
             val silence = (now - heard) / 1000
             if (silence >= MulticastWatchdog.BUSY_SILENCE_MS / 1000) {
                 noteDeclined("silent ${silence}s, heard $heardCount, " +

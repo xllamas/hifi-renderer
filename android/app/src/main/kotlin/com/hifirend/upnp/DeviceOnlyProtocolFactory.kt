@@ -131,14 +131,11 @@ class DeviceOnlyProtocolFactory(
         if (now - lastCensusAt >= CENSUS_INTERVAL_MS) {
             lastCensusAt = now
             // The silence figure is the watchdog's own input, printed beside
-            // the counters it is derived from. On 2026-09-07 the counters
-            // froze for five minutes and no rejoin fired, which the log could
-            // not explain: a frozen census is consistent both with the
-            // watchdog never being asked and with it being asked and saying
-            // no. These two numbers disagreeing -- counters still, silence
-            // not growing -- points at one; agreeing and still no rejoin
-            // points at the other. That is a counter telling two mechanisms
-            // apart, which is cheaper than picking one and being wrong.
+            // the counters it is derived from. Without it a frozen census
+            // says only that nothing arrived, not what the watchdog made of
+            // it: on 2026-09-07 the counters sat still for six minutes while
+            // the watchdog was refusing to act on a backoff, and the two are
+            // indistinguishable in a log that prints only the counters.
             val silence = if (lastMulticastAt == 0L) -1
                           else (now - lastMulticastAt) / 1000
             Log.i(TAG, "ssdp census: $searchesSeen searches seen, " +
