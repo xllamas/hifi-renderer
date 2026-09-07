@@ -850,10 +850,44 @@ was written to be careful about: `router.disable()`/`enable()` gives the stream
 server a new port, so a controller holding the old description URL is talking
 to a dead address until it rediscovers. Audio should survive it, because the
 renderer is *fetching* the stream over a socket that is already open and
-Jetty's pool is untouched -- but "should" is exactly the word the disappearance taught
-us to distrust. It needs a deliberate test: a long track playing from the rig
+Jetty's pool is untouched -- but "should" is exactly the word the
+disappearance taught us to distrust. It needs a deliberate test: a long track playing from the rig
 and a rejoin forced under it, watching whether the frames keep advancing and
 how long the controller takes to find the renderer again.
+
+`rejointest.py` in the rig does exactly that, and the app grew a trigger for
+it: in debuggable builds only, `adb shell am broadcast -a
+com.hifirend.debug.REJOIN -p com.hifirend` calls the same `rebindRouter` the
+watchdog calls, so the cure being measured is the real one and only the
+decision to fire is bypassed. Two things the harness has to guard, both learned
+by getting them wrong first. The track must be bigger than the 8 MiB native
+buffer -- a ten-minute 440 Hz sine compressed to 6.8 MB, was swallowed whole in
+under a second, and would have left no HTTP socket open for the rebind to
+disturb, so "the audio survived" would have measured nothing; six minutes of
+pink noise at 40 MB keeps the fetch held open by backpressure the way real
+music does. And the DAC has to be attached: without one the renderer falls back
+to Android audio, which reports no frame or underrun counters, so the very
+evidence the test turns on is missing.
+
+**An unexplained decline, 2026-09-07 09:08.** Setting the test up caught
+another lapse live, and this one the watchdog did not act on. Both counters
+froze at 67 searches and 661 announcements from 09:08:41 to at least 09:13:43,
+a multicast M-SEARCH from the Mac in the middle of that went unanswered while
+another device on the same network replied, and no rejoin was logged. By
+09:16:44 the counters were climbing again on their own. Five minutes of silence
+against a ninety-second window, on a network that had produced 728 multicasts,
+with no heal on record and the backoff not yet armed -- which the code as
+written says cannot happen.
+
+The honest position is that there are two candidate mechanisms and the log
+cannot tell them apart: either the watchdog was never asked, or it was asked
+and declined on inputs different from what the census implies. So the census
+line now carries the watchdog's own silence figure beside the counters it comes
+from, and a decline during a long silence says so and on what numbers. A
+frozen census with a silence that is not growing means `lastMulticastAt` is
+being refreshed by something the counters do not count; frozen and growing
+together with no rejoin means the decision itself is wrong. Guessing between
+them and shipping a fix for the wrong one is the trap.
 
 **Two faults found by a renderer that played on while vanishing from every
 controller, 2026-09-06.** They were independent, and the shape of the report --

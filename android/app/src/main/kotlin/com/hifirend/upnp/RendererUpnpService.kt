@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.ServiceInfo
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
@@ -109,6 +110,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         }
     @Volatile private var lastRebindAt = 0L
     private var usbReceiver: BroadcastReceiver? = null
+    private var debugReceiver: BroadcastReceiver? = null
     private val playback by lazy { HttpStreamPlayback(applicationContext) }
 
     /**
@@ -260,6 +262,47 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             Log.w(TAG, "network watcher unavailable: ${e.message}")
             networkCallback = null
         }
+    }
+
+    /**
+     * Lets a test fire the multicast cure on demand, in debuggable builds only.
+     *
+     * The watchdog's cure is not free -- rebinding gives the stream server a
+     * new port, so a controller holding the old description URL is talking to
+     * a dead address until it rediscovers -- and the overnight soak could not
+     * measure that cost, because none of the eight rejoins happened to fall
+     * during one of the three playback runs. Waiting for the coincidence is
+     * hours of luck per attempt, so the test forces it instead:
+     *
+     *     adb shell am broadcast -a com.hifirend.debug.REJOIN -p com.hifirend
+     *
+     * This calls exactly what the watchdog calls, so what it exercises is the
+     * real cure and not an imitation of it. Only the *decision* is bypassed,
+     * and that half already has unit tests; the half no test can reach is what
+     * the rebind does to a renderer that is mid-track.
+     *
+     * Gated on FLAG_DEBUGGABLE rather than a build flag because it is a
+     * runtime property of the installed package: a release build cannot be
+     * talked into this path however the broadcast is sent.
+     */
+    private fun startDebugTrigger() {
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                Log.w(TAG, "debug: rejoin forced by broadcast")
+                // The watchdog's own 2 s coalescing window would otherwise
+                // swallow a trigger that lands just after a real rebind, and a
+                // test that silently does nothing is worse than no test.
+                lastRebindAt = 0L
+                rebindRouter("debug trigger")
+            }
+        }
+        debugReceiver = receiver
+        androidx.core.content.ContextCompat.registerReceiver(
+            this, receiver, IntentFilter("com.hifirend.debug.REJOIN"),
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED,
+        )
+        Log.i(TAG, "debug rejoin trigger registered (debuggable build)")
     }
 
     private fun rebindRouter(reason: String) {
@@ -437,6 +480,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             }
         }
         usbReceiver?.let { runCatching { unregisterReceiver(it) } }
+        debugReceiver?.let { runCatching { unregisterReceiver(it) } }
         networkExecutor.shutdownNow()
         RendererControl.transport = null
         RendererControl.onOutputDeviceChanged = null
@@ -513,6 +557,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             startEventFlusher()
             startNetworkWatcher()
             startUsbWatcher()
+            startDebugTrigger()
             advertisedDeviceKey = runCatching {
                 com.hifirend.usb.UsbAudioProbe(applicationContext).let { p ->
                     p.findAudioDevice()?.let { p.deviceKey(it) }
@@ -834,6 +879,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
 
     /** When the multicast watchdog last acted, so it cannot loop. */
     @Volatile private var lastMulticastHealAt = 0L
+    @Volatile private var lastDeclineLogAt = 0L
 
     /**
      * Rejoins the SSDP group when other people's announcements stop arriving.
@@ -859,16 +905,50 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
      * evidence rather than running on a timer.
      */
     private fun healMulticastIfLost() {
-        val factory = deviceOnlyFactory ?: return
+        val factory = deviceOnlyFactory
+        if (factory == null) {
+            noteDeclined("no protocol factory")
+            return
+        }
         val heard = factory.lastMulticastAt
-        if (heard == 0L) return                       // never heard any; nothing to compare
         val now = System.currentTimeMillis()
+        if (heard == 0L) {                            // nothing to compare against
+            noteDeclined("multicast has never arrived")
+            return
+        }
         val heardCount = factory.ignored + factory.searchesSeen
-        if (!MulticastWatchdog.shouldHeal(heard, lastMulticastHealAt, now, heardCount)) return
+        if (!MulticastWatchdog.shouldHeal(heard, lastMulticastHealAt, now, heardCount)) {
+            // Only interesting once the silence is long enough that a rejoin
+            // was expected. On 2026-09-07 the census froze for five minutes
+            // and nothing rejoined, and the log had no way to say whether the
+            // watchdog declined or was never asked. Now it says which, and on
+            // what numbers.
+            val silence = (now - heard) / 1000
+            if (silence >= MulticastWatchdog.BUSY_SILENCE_MS / 1000) {
+                noteDeclined("silent ${silence}s, heard $heardCount, " +
+                    "last heal ${if (lastMulticastHealAt == 0L) "never"
+                                 else "${(now - lastMulticastHealAt) / 1000}s ago"}")
+            }
+            return
+        }
         lastMulticastHealAt = now
         Log.w(TAG, "ssdp: no multicast for ${(now - heard) / 1000}s though the network " +
             "was noisy; rejoining the group")
         rebindRouter("multicast reception lost")
+    }
+
+    /**
+     * Says why the watchdog is not rejoining, at most once a minute.
+     *
+     * The tick runs twice a second, so this cannot log every time it declines
+     * without burying everything else; but a declining watchdog during a real
+     * outage is precisely the thing there was no record of.
+     */
+    private fun noteDeclined(why: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastDeclineLogAt < 60_000) return
+        lastDeclineLogAt = now
+        Log.w(TAG, "ssdp: not rejoining -- $why")
     }
 
     /**
