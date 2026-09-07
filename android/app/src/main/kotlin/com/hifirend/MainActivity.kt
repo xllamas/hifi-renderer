@@ -80,6 +80,10 @@ class MainActivity : FlutterActivity() {
         if (intent?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return
         Log.i("hifirend", "USB device attached; launched with implicit permission")
         runCatching { UsbAudioProbe(applicationContext).refreshDacPresence() }
+        // This is where permission actually turns up, seconds after the attach
+        // broadcast the service saw, so it is the first moment a track playing
+        // through Android's mixer can be moved onto the DAC.
+        RendererControl.usbPermissionGranted()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

@@ -214,8 +214,17 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                         // what the renderer *advertised*: the engine chooses
                         // its output when a track starts, so the sound stayed
                         // on the phone's speaker until the next one. Move it.
-                        runCatching { playback.adoptAttachedDac() }
-                            .onFailure { Log.w(TAG, "could not adopt the DAC: ${it.message}") }
+                        //
+                        // Off this thread: onReceive runs on the main one, and
+                        // adopting opens the device and restarts the engine.
+                        // Usually this attempt is too early to succeed anyway
+                        // -- permission does not exist yet -- and the grant a
+                        // few seconds later tries again. It is kept because a
+                        // device already authorised can be adopted at once.
+                        networkExecutor.execute {
+                            runCatching { playback.adoptAttachedDac() }
+                                .onFailure { Log.w(TAG, "could not adopt the DAC: ${it.message}") }
+                        }
                     }
                 }
                 runCatching { probe.refreshDacPresence() }
@@ -491,6 +500,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         networkExecutor.shutdownNow()
         RendererControl.transport = null
         RendererControl.onOutputDeviceChanged = null
+        RendererControl.onUsbPermissionGranted = null
         RendererControl.onScreenTimeoutChanged = null
         screenPolicy.shutdown()
         eventFlusher?.shutdownNow()
@@ -659,6 +669,16 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             }
         }
         RendererControl.onOutputDeviceChanged = { force -> onOutputDeviceChanged(force) }
+        RendererControl.onUsbPermissionGranted = {
+            // Off the caller's thread deliberately: this arrives from the
+            // activity's onNewIntent, on the main thread, and adopting the DAC
+            // opens the device, claims its interfaces and restarts the engine.
+            // None of that belongs in front of the UI.
+            networkExecutor.execute {
+                runCatching { playback.adoptAttachedDac() }
+                    .onFailure { Log.w(TAG, "could not adopt the DAC: ${it.message}") }
+            }
+        }
         RendererControl.onScreenTimeoutChanged = { minutes ->
             screenPolicy.setIdleTimeoutMinutes(minutes)
         }

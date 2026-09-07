@@ -32,6 +32,23 @@ object RendererControl {
     var onScreenTimeoutChanged: ((Int) -> Unit)? = null
 
     /**
+     * Set by the service. Called when USB permission arrives, which on this
+     * hardware is several seconds *after* the attach broadcast.
+     *
+     * Measured on the test phone: attach at 12:27:20, permission with the
+     * activity launch at 12:27:27. Anything that needs an openable device
+     * therefore cannot do its work in the attach handler alone -- it looks,
+     * finds no permission, and gives up seven seconds before the answer
+     * arrives. This is the second chance.
+     */
+    @Volatile
+    var onUsbPermissionGranted: (() -> Unit)? = null
+
+    fun usbPermissionGranted() {
+        runCatching { onUsbPermissionGranted?.invoke() }
+    }
+
+    /**
      * [force] for a deliberate change by the user -- picking a device, or
      * changing the conversion policy. Those alter what is advertised even when
      * the device itself is the same, so they must not be skipped.
