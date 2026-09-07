@@ -809,6 +809,52 @@ immediately discoverable, so the correlation an owner naturally draws between
 "screen went dark" and "renderer vanished" is coincidence -- both follow a
 quiet period, and it is quiet that ages out the membership.
 
+**Confirmed over a night, 2026-09-06 18:39 to 2026-09-07 08:25.** Fourteen
+hours, one process throughout -- pid 19413, started 16:34 the previous
+afternoon and never restarted -- and the renderer was discoverable by multicast
+M-SEARCH from the Mac the next morning without anyone having touched it.
+
+The membership lapsed **eight** times in those fourteen hours. Every one was
+caught at ninety seconds and every one was cured:
+
+```
+19:01:02  rejoined, heard again by 19:01:22    22:49:41  rejoined, by 22:50:35
+19:47:38  rejoined, heard again by 19:47:41    23:11:37  rejoined, by 23:11:44
+20:23:30  rejoined, heard again by 20:23:55    03:21:44  rejoined, by 03:22:34
+                                               03:53:41  rejoined, by 03:53:47
+                                               06:31:47  rejoined, by 06:31:53
+```
+
+Counting from the last multicast heard to the first one heard after, the
+renderer was invisible for between 93 and 144 seconds each time -- 891 seconds
+of the fourteen hours, so **discoverable 98.2% of the night**. Those are upper
+bounds: the census only reports once a minute, so recovery is measured to the
+next sample and the true figures sit below them. Before the watchdog the same
+eight lapses would have been eight disappearances lasting until somebody
+restarted the app.
+
+Two things in the earlier account need correcting against the larger sample.
+The fault does **not** recur every half hour: the intervals were 46, 36, 146,
+22, 250, 32 and 158 minutes, clustered rather than periodic. And it is not a
+quiet-hours phenomenon -- three lapses fell before half past eight with the
+household awake and the renderer in use, two more around eleven, two between
+three and four in the morning and one at half past six. The ten-minute rebind
+backoff never suppressed a real fault, since the closest pair was twenty-two
+minutes apart.
+
+**What the night did not test: the cure landing on live audio.** There were
+three playback runs -- 10, 46 and 23 minutes, 1.3 hours in all, zero underruns
+and zero transfer errors -- and not one of the eight rejoins fell inside them.
+That leaves the cure's known cost unmeasured, and it is the cost the watchdog
+was written to be careful about: `router.disable()`/`enable()` gives the stream
+server a new port, so a controller holding the old description URL is talking
+to a dead address until it rediscovers. Audio should survive it, because the
+renderer is *fetching* the stream over a socket that is already open and
+Jetty's pool is untouched -- but "should" is exactly the word the disappearance taught
+us to distrust. It needs a deliberate test: a long track playing from the rig
+and a rejoin forced under it, watching whether the frames keep advancing and
+how long the controller takes to find the renderer again.
+
 **Two faults found by a renderer that played on while vanishing from every
 controller, 2026-09-06.** They were independent, and the shape of the report --
 audio fine, DLNA gone -- is what pointed at both: SOAP is served by Jetty's own

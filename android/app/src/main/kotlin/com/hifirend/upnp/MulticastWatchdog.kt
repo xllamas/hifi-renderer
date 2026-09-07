@@ -27,8 +27,10 @@ object MulticastWatchdog {
      * Measured on the network this was found on: 3210 announcements in forty
      * minutes, better than one a second. Ninety seconds of silence there is
      * not a quiet patch, it is deafness -- and waiting four minutes to say so
-     * leaves the renderer invisible for four minutes each time, which on a
-     * fault seen recurring every half hour is a tenth of the evening.
+     * leaves the renderer invisible for four minutes each time. Measured over
+     * a night: eight lapses in fourteen hours, fifteen minutes of invisibility
+     * in total at ninety seconds, against something over half an hour of it at
+     * four.
      */
     const val BUSY_SILENCE_MS = 90_000L
 
