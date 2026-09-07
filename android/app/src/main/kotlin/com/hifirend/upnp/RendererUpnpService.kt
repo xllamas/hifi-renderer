@@ -112,6 +112,8 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
     /** Long enough for a DAC's double enumeration on a powered hub to finish. */
     private val ENUMERATION_SETTLE_MS = 4_000L
     private var pendingDeviceChange: java.util.concurrent.ScheduledFuture<*>? = null
+    private var airPlayAdvertiser: com.hifirend.airplay.RaopAdvertiser? = null
+    private var airPlayRtsp: com.hifirend.airplay.RaopRtspServer? = null
     private var usbReceiver: BroadcastReceiver? = null
     private var debugReceiver: BroadcastReceiver? = null
     private val playback by lazy { HttpStreamPlayback(applicationContext) }
@@ -361,6 +363,51 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         Log.i(TAG, "debug rejoin trigger registered (debuggable build)")
     }
 
+    /**
+     * Brings up the AirPlay guest path.
+     *
+     * Started alongside the UPnP device rather than independently, because it
+     * describes the same appliance: the friendly name a guest sees in Control
+     * Centre has to be the one the owner set, and the hardware address senders
+     * expect is derived from the same UDN. Two identities for one box would be
+     * confusing on the network and worse in the log.
+     *
+     * A missing RAOP key is not a failure to start. The receiver advertises,
+     * answers RTSP and declines the challenge, which is what an honest
+     * receiver that cannot prove it is an AirPort Express should do -- and it
+     * lets discovery be tested without the key being present at all. See
+     * RaopCrypto for why the key is not in this repository.
+     */
+    private fun startAirPlay(friendlyName: String, udn: String) {
+        val key = runCatching {
+            assets.open(com.hifirend.airplay.RaopCrypto.KEY_ASSET).use { it.readBytes() }
+        }.getOrNull()
+        val crypto = com.hifirend.airplay.RaopCrypto.fromPkcs8(key)
+        if (!crypto.available) {
+            Log.w(TAG, "airplay: no RAOP key (${com.hifirend.airplay.RaopCrypto.KEY_ASSET}); " +
+                "the renderer will be discoverable but will refuse every session")
+        }
+
+        val advertiser = com.hifirend.airplay.RaopAdvertiser(applicationContext)
+        val rtsp = com.hifirend.airplay.RaopRtspServer(
+            crypto = crypto,
+            hardwareAddress = advertiser.hardwareAddressBytes(udn),
+            onSessionReady = { params ->
+                // The audio layer lands here next. Until it does, say what was
+                // negotiated: it is the evidence that the handshake completed.
+                Log.i(TAG, "airplay: session negotiated, key=${params.aesKey != null} " +
+                    "iv=${params.aesIv != null} fmtp='${params.formatParameters}'")
+            },
+            onTeardown = { Log.i(TAG, "airplay: session ended") },
+        )
+        runCatching {
+            val port = rtsp.start()
+            advertiser.start(friendlyName, udn, port)
+        }.onFailure { Log.w(TAG, "airplay: could not start: ${it.message}") }
+        airPlayRtsp = rtsp
+        airPlayAdvertiser = advertiser
+    }
+
     private fun rebindRouter(reason: String) {
         // Connectivity callbacks arrive in bursts while an interface settles;
         // rebinding on each one would restart the stack repeatedly.
@@ -538,6 +585,8 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         usbReceiver?.let { runCatching { unregisterReceiver(it) } }
         debugReceiver?.let { runCatching { unregisterReceiver(it) } }
         pendingDeviceChange?.cancel(false)
+        runCatching { airPlayAdvertiser?.stop() }
+        runCatching { airPlayRtsp?.stop() }
         networkExecutor.shutdownNow()
         RendererControl.transport = null
         RendererControl.onOutputDeviceChanged = null
@@ -623,6 +672,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             }.getOrNull()
             RendererWidget.refresh(applicationContext, force = true)
             Log.i(TAG, "UPnP renderer registered: ${device.details.friendlyName} udn=${device.identity.udn}")
+            startAirPlay(device.details.friendlyName, device.identity.udn.toString())
         } catch (e: Throwable) {
             // A renderer that fails to register must not take the app down; the
             // USB engine is independent and still useful.

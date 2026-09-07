@@ -46,3 +46,6 @@ app.*.map.json
 
 # macOS Finder metadata
 .DS_Store
+
+# AirPlay RAOP private key, supplied per doc/airplay.md, never committed.
+android/app/src/main/assets/airplay/raop_key.pkcs8
