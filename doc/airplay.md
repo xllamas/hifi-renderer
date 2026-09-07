@@ -16,8 +16,10 @@ established before starting, both of which it flagged as open:
   `alac.c`, `tinysvcmdns` and `tinyhttp` carry their own separate licences.
 - **AirPlay 1 is still current enough.** `shairport-sync` still builds a
   "classic" AirPlay 1 receiver and describes the protocol as older but
-  supported. This remains the assumption the whole guest path rests on and is
-  the first thing to disprove with a real iPhone.
+  supported. **Confirmed against macOS on 2026-09-07**, and no longer an
+  assumption: a current Mac offered this receiver in its AirPlay list, sent an
+  `Apple-Challenge`, accepted the response and went on to `ANNOUNCE`. The guest
+  path is viable.
 
 The port was not the route taken. `shairport-sync` is a Unix daemon --
 ALSA, Avahi, libconfig, libdaemon, forking, signals -- and almost all of that
@@ -73,8 +75,35 @@ and reaching a negotiated session:
     airplay: session negotiated, key=false iv=false
              fmtp='96 352 0 16 40 10 14 2 255 0 0 44100'
 
-`key=false` is the missing asset, and the `server_port=0` in the SETUP reply is
-the audio layer not existing yet. Both are expected at this stage.
+`key=false` there is the missing asset, and `server_port=0` in the SETUP reply
+is the audio layer not existing yet.
+
+**With the key in place, a real sender gets further.** macOS, 2026-09-07:
+
+    OPTIONS  x4    challenge answered with a 2048-bit signature, accepted
+    ANNOUNCE       announced [rtpmap, fmtp, rsaaeskey, aesiv,
+                               min-latency, max-latency]
+    SETUP
+    session negotiated, key=true iv=true
+                   fmtp='96 352 0 16 40 10 14 2 255 0 0 44100'
+    session ended
+
+`key=true iv=true` is the important part: the AES session key was RSA-OAEP
+decrypted, so **both** uses of the RAOP key are proven, not just the challenge.
+The session then ends at `SETUP`, because the reply still offers
+`server_port=0` and the sender has nowhere to send RTP. That is the only thing
+now standing between this and audio.
+
+Two things that test settled which no amount of reading would have:
+
+- **The sender connects over IPv6.** macOS came in on a link-local
+  `fe80::6ccc:...` and then a global `2806:2f0:...`. The RTP sockets have to
+  work there, and the address baked into the challenge response is the
+  connection's local address, whichever family that is.
+- **This phone has no ALAC decoder.** Nothing in `/vendor/etc/media_codecs*.xml`
+  offers `audio/alac`, so MediaCodec cannot be used for it and the decoder has
+  to be vendored as C after all -- which is what the plan assumed, now for a
+  measured reason rather than a guessed one.
 
 Two details are load-bearing and were got wrong first in every other
 implementation worth reading:
