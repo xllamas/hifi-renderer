@@ -83,6 +83,10 @@ class MainActivity : FlutterActivity() {
         // This is where permission actually turns up, seconds after the attach
         // broadcast the service saw, so it is the first moment a track playing
         // through Android's mixer can be moved onto the DAC.
+        // Logged on both sides: if this line appears and the service's does
+        // not, the callback was never registered, which is a different fault
+        // from the service looking and declining.
+        Log.i("hifirend", "signalling USB permission to the renderer")
         RendererControl.usbPermissionGranted()
     }
 

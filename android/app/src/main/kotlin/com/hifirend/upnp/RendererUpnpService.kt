@@ -221,10 +221,12 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                         // -- permission does not exist yet -- and the grant a
                         // few seconds later tries again. It is kept because a
                         // device already authorised can be adopted at once.
-                        networkExecutor.execute {
-                            runCatching { playback.adoptAttachedDac() }
-                                .onFailure { Log.w(TAG, "could not adopt the DAC: ${it.message}") }
-                        }
+                        runCatching {
+                            networkExecutor.execute {
+                                runCatching { playback.adoptAttachedDac("attached") }
+                                    .onFailure { Log.w(TAG, "adopting the DAC threw: ${it.message}") }
+                            }
+                        }.onFailure { Log.w(TAG, "could not schedule DAC adoption: ${it.message}") }
                     }
                 }
                 runCatching { probe.refreshDacPresence() }
@@ -670,14 +672,22 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         }
         RendererControl.onOutputDeviceChanged = { force -> onOutputDeviceChanged(force) }
         RendererControl.onUsbPermissionGranted = {
+            Log.i(TAG, "USB permission arrived; considering the DAC")
             // Off the caller's thread deliberately: this arrives from the
             // activity's onNewIntent, on the main thread, and adopting the DAC
             // opens the device, claims its interfaces and restarts the engine.
             // None of that belongs in front of the UI.
-            networkExecutor.execute {
-                runCatching { playback.adoptAttachedDac() }
-                    .onFailure { Log.w(TAG, "could not adopt the DAC: ${it.message}") }
-            }
+            //
+            // The scheduling itself is guarded: a shut-down executor rejects,
+            // and the caller's own runCatching would swallow that without a
+            // word -- which is one of the ways the first attempt at this could
+            // have failed invisibly.
+            runCatching {
+                networkExecutor.execute {
+                    runCatching { playback.adoptAttachedDac("permission granted") }
+                        .onFailure { Log.w(TAG, "adopting the DAC threw: ${it.message}") }
+                }
+            }.onFailure { Log.w(TAG, "could not schedule DAC adoption: ${it.message}") }
         }
         RendererControl.onScreenTimeoutChanged = { minutes ->
             screenPolicy.setIdleTimeoutMinutes(minutes)

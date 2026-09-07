@@ -182,60 +182,46 @@ class HttpStreamPlayback(private val context: Context) {
     }
 
     /**
-     * Moves a stream already playing through Android's mixer onto a DAC that
-     * has just appeared.
+     * Restarts the current track on a DAC that has just become usable.
      *
-     * Without this, plugging the DAC in mid-track does nothing audible: the
-     * engine picks its output once, when the track starts, so the choice is
-     * frozen until the next one. An owner who switches the DAC on while a
-     * track is playing sees the app notice the device -- the capabilities
-     * update and the renderer re-announces -- while the sound stays
-     * stubbornly on the phone's speaker, which reads as the app ignoring the
-     * hardware.
+     * The engine picks its output when a track starts, so a DAC switched on
+     * mid-track changed only what the renderer advertised while the sound
+     * stayed on the phone's speaker. From the shelf that reads as the app
+     * ignoring the hardware.
      *
-     * The move is a seek to where we already are: [seek] re-requests the
-     * stream with a byte range and starts the engine again, and starting the
-     * engine is what opens the DAC. Approximate by a second or so, which is
-     * the same approximation every seek here makes and far better than either
-     * restarting the track or waiting for the next one.
+     * The track restarts from the beginning rather than continuing where it
+     * was. Carrying the position across meant seeking, which needs a known
+     * content length and duration and quietly did nothing when either was
+     * missing; restarting needs neither and is what was asked for. A few
+     * seconds repeated is a small price for the output actually changing.
      *
-     * Returns false and changes nothing when the move is not possible --
-     * nothing playing, already on a DAC, no device we may open, or a stream
-     * whose length is unknown so there is no byte offset to seek to. Leaving
-     * a playing track alone is always better than killing it for an output
-     * change nobody asked to be abrupt.
+     * Every path says why, including the ones that decline. The first attempt
+     * at this had silent early returns and a test that produced no log line at
+     * all -- five possible reasons and no way to tell which, which is the
+     * position this project has learned not to argue from.
      */
-    fun adoptAttachedDac(): Boolean {
-        if (!engineRunning) return false
-        // "android" is the Oboe sink, which is the only reason to move. Asking
-        // which sink is running says exactly that, where bitPerfect would be
-        // inferring it from a property the USB sink happens to also have.
-        if (RendererState.output != "android") return false
-        val uri = currentUri ?: return false
-
+    fun adoptAttachedDac(reason: String): Boolean {
+        val uri = currentUri
+        val running = engineRunning
+        val output = RendererState.output
         val probe = UsbAudioProbe(context)
-        val device = probe.findAudioDevice() ?: return false
-        if (!usbManager.hasPermission(device)) {
-            // Asking here would put a dialog in front of whatever the owner is
-            // doing, on a device that is meant to sit on a shelf. The next
-            // track opens it, and the settings screen can grant it deliberately.
-            Log.i(TAG, "a DAC is attached but unauthorised; staying on Android audio")
+        val device = runCatching { probe.findAudioDevice() }.getOrNull()
+        val authorised = device != null && usbManager.hasPermission(device)
+
+        if (!running || output != "android" || uri == null || device == null || !authorised) {
+            Log.i(TAG, "not moving to the DAC ($reason): playing=$running " +
+                "output=$output track=${if (uri == null) "none" else "yes"} " +
+                "device=${device?.let { probe.describeForUi(it) } ?: "none"} " +
+                "authorised=$authorised")
             return false
         }
 
-        val dur = trackDurationSeconds
-        if (contentLength <= 0 || dur <= 0) {
-            Log.i(TAG, "DAC attached mid-track, but this stream cannot be seeked " +
-                "(length=$contentLength duration=${dur}s); it will be used from the next track")
-            return false
-        }
-
-        val at = positionSeconds()
-        Log.i(TAG, "DAC attached mid-track: moving playback to " +
-            "${probe.describeForUi(device)} at ${at}s")
-        val result = seek(uri, at, dur)
-        if (!result.contains("\"ok\":true")) {
-            Log.w(TAG, "could not move playback to the DAC: $result")
+        Log.i(TAG, "DAC usable mid-track ($reason): restarting the track on " +
+            "${probe.describeForUi(device)}")
+        val result = play(uri, durationSeconds = trackDurationSeconds,
+                          mimeHint = lastKnownMime)
+        if (!result.contains(""""ok":true""")) {
+            Log.w(TAG, "could not restart on the DAC: $result")
             return false
         }
         return true
