@@ -770,6 +770,45 @@ happened. Verified on the phone: a 404 mid-playlist is stepped over and the
 next track plays; a playlist of dead links stops after exactly three, leaving
 the remaining tracks untouched.
 
+## Where things stand, end of 2026-09-07
+
+Three threads are open, in the order they will bite.
+
+**The multicast backoff change is not verified in the field.** The two-tier
+rule -- a two-minute floor after a rejoin that worked, the full ten minutes
+after one that achieved nothing -- is covered by twelve unit tests and by
+replaying the morning's real timestamps, where it turns a 466-second outage
+into 90. It has not yet met a real pair of clustered lapses: the 36-minute soak
+that followed produced only one heal and no declines, because multicast behaved
+for the whole window. **An overnight soak is the outstanding task**, and it is
+what last night's eight lapses in fourteen hours suggest will exercise it.
+
+Two things to know before running it. `capture.sh` in the rig now survives an
+adb drop and resumes from the last captured timestamp, which it did not on the
+6th -- that soak was recovered only because the phone's own ring buffer
+happened to still hold it. And wireless debugging switches itself off when the
+phone dozes, which ended the last attempt at 36 minutes; the phone's ring
+buffer is the fallback, and it holds roughly fourteen hours of this tag.
+
+**The USB output fixes are verified.** Switching the DAC on mid-track now moves
+playback to it, confirmed on the phone. Two faults were found underneath that
+one, both of which had been live for some time: the detach handler stopped
+playback for *any* USB device going away, so anything else on the powered hub
+re-enumerating killed the music; and one plug-in produced three re-announcements
+in four seconds, each dropping every controller's subscription, which is what
+made the renderer appear to vanish from the controller during a swap. Both are
+fixed. The first is worth remembering as an explanation for any past
+unexplained stop.
+
+**AirPlay plays, and the app is currently lying about it.** The guest path
+works end to end -- see [airplay.md](airplay.md) -- but `UsbSink::bitPerfect()`
+is hardcoded `true`, so the renderer claims bit-perfect while a resampled guest
+stream is playing. That is the one thing this app exists not to do, it is now
+reachable in ordinary use, and nothing further should be built on the guest
+path until it is fixed. It is the next task after the soak.
+
+---
+
 **The disappearance, diagnosed and cured 2026-09-06.** Caught in the act with
 the census the previous attempt added, and the answer was unambiguous:
 
