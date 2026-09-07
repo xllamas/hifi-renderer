@@ -39,9 +39,9 @@ class MulticastWatchdogTest {
     @Test
     fun `it will not rebind again inside the backoff`() {
         val now = 100 * minute
-        // Still silent, but it has just rebound; the rebind changes the stream
-        // server's port, so repeating it would keep pulling the rug from under
-        // every controller.
+        // Still silent, and nothing has arrived since the last rejoin -- so
+        // that rejoin achieved nothing and repeating it would only keep moving
+        // the stream server's port under every controller.
         assertFalse(MulticastWatchdog.shouldHeal(
             lastHeardAt = now - 5 * minute, lastHealAt = now - 2 * minute, now = now))
     }
@@ -51,6 +51,49 @@ class MulticastWatchdogTest {
         val now = 100 * minute
         assertTrue(MulticastWatchdog.shouldHeal(
             lastHeardAt = now - 5 * minute, lastHealAt = now - 11 * minute, now = now))
+    }
+
+    @Test
+    fun `a rejoin that worked does not hold off the next fault`() {
+        // The 2026-09-07 case, in the numbers it actually happened in: a lapse
+        // healed at 09:05, multicast back immediately after, a fresh lapse
+        // beginning at 09:08 and still unhealed at 09:11. Under a flat
+        // ten-minute backoff this stayed false until 09:15 and the renderer
+        // was undiscoverable for six and a half minutes.
+        val heal = 0L
+        val heardAgain = heal + 20_000L        // the rejoin worked
+        val now = heal + 6 * minute            // three minutes into the new lapse
+        assertTrue(MulticastWatchdog.shouldHeal(
+            lastHeardAt = heardAgain, lastHealAt = heal, now = now, heardCount = 456L))
+    }
+
+    @Test
+    fun `a rejoin that achieved nothing still serves the full backoff`() {
+        // Same three minutes elapsed, but nothing arrived after the rejoin, so
+        // rejoining again is not the cure and the loop guard stands.
+        val heal = 10 * minute
+        val now = heal + 3 * minute
+        assertFalse(MulticastWatchdog.shouldHeal(
+            lastHeardAt = heal - 90_000L, lastHealAt = heal, now = now,
+            heardCount = 456L))
+    }
+
+    @Test
+    fun `even a rejoin that worked is not repeated straight away`() {
+        // Multicast that merely trickles -- a gap past the window, one packet,
+        // another gap -- would otherwise rebind on every gap, and a port that
+        // moves constantly is worse for controllers than being slow to find.
+        val heal = 10 * minute
+        val heardAgain = heal + 5_000L
+        val now = heal + 100_000L
+        assertFalse(MulticastWatchdog.shouldHeal(
+            lastHeardAt = heardAgain, lastHealAt = heal, now = now,
+            heardCount = 456L))
+        // ...but two minutes on, a network this noisy being silent for over a
+        // minute is the fault again, and it is treated as one.
+        assertTrue(MulticastWatchdog.shouldHeal(
+            lastHeardAt = heardAgain, lastHealAt = heal, now = heal + 130_000L,
+            heardCount = 456L))
     }
 
     @Test

@@ -41,8 +41,48 @@ object MulticastWatchdog {
      */
     const val BUSY_THRESHOLD = 20L
 
-    /** Never rebind more often than this, whatever the network is doing. */
+    /**
+     * How long to wait after a rebind that achieved *nothing*.
+     *
+     * This is the loop guard. If multicast has still not arrived since the
+     * last rejoin, rejoining again is unlikely to help -- the fault is not the
+     * group membership -- and repeating it every ninety seconds would move the
+     * stream server's port every ninety seconds for no gain.
+     */
     const val BACKOFF_MS = 10 * 60_000L
+
+    /**
+     * How long to wait after a rebind that *worked*.
+     *
+     * Measured 2026-09-07, and the reason this distinction exists at all. A
+     * lapse healed at 09:05:17 armed a flat ten-minute backoff; a second,
+     * unrelated lapse began at 09:08:41 and the watchdog then refused to act
+     * on it for the rest of the backoff. The renderer was undiscoverable for
+     * about six and a half minutes against a window that promises ninety
+     * seconds, and the log said so in as many words:
+     *
+     *     09:39:45  not rejoining -- silent 270s, heard 456, last heal 341s ago
+     *     09:40:45  not rejoining -- silent 331s, heard 456, last heal 402s ago
+     *
+     * Multicast plainly returned after the first heal, so that rebind worked
+     * and the next lapse is a *new* fault rather than the old one unhealed.
+     * The loop guard has no business suppressing it.
+     *
+     * Two minutes rather than nothing, because the detection window is ninety
+     * seconds and a network whose multicast is merely sporadic -- a lone
+     * neighbour announcing every few minutes -- would otherwise rebind on
+     * every gap, and a renderer whose port moves constantly is worse for
+     * controllers than one that is occasionally slow to be found. Two minutes
+     * sits just above the window, so it cannot chain rebinds back to back
+     * while barely delaying a genuine recurrence.
+     *
+     * Rebinding is cheap enough to justify this: measured twice against live
+     * audio, it costs the stream nothing at all -- zero underruns, the frame
+     * counter advancing 10.02 seconds' worth across a ten-second window -- and
+     * costs a controller about two seconds before the renderer answers again
+     * on its new port.
+     */
+    const val WORKING_BACKOFF_MS = 2 * 60_000L
 
     /**
      * @param lastHeardAt when multicast last arrived, or 0 if it never has.
@@ -63,7 +103,17 @@ object MulticastWatchdog {
         if (lastHeardAt == 0L) return false
         val silence = if (heardCount >= BUSY_THRESHOLD) BUSY_SILENCE_MS else SILENCE_MS
         if (now - lastHeardAt < silence) return false
-        if (lastHealAt != 0L && now - lastHealAt < BACKOFF_MS) return false
+        if (lastHealAt != 0L) {
+            // Whether the last rebind achieved anything is readable from these
+            // two timestamps alone: multicast heard *after* the rejoin means
+            // the rejoin restored it, so this silence is a fresh fault and the
+            // loop guard does not apply to it. Heard only before means nothing
+            // came back, and doing the same thing again is what the long
+            // backoff exists to prevent.
+            val previousRejoinWorked = lastHeardAt > lastHealAt
+            val wait = if (previousRejoinWorked) WORKING_BACKOFF_MS else BACKOFF_MS
+            if (now - lastHealAt < wait) return false
+        }
         return true
     }
 }

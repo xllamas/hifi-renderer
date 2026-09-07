@@ -898,12 +898,26 @@ minutes apart. Three minutes apart is a different matter.
 The backoff exists so a rebind that does not help cannot loop. But that is not
 this case: multicast plainly returned after the 09:05 heal, so the rebind
 worked and the 09:08 lapse is a *new* fault rather than the same one
-unhealed. A backoff conditioned on the previous heal having achieved nothing --
-no multicast heard since it -- would keep the loop protection and drop the
-delay. Not yet done, but the case for it is now stronger than when it was
-written: the measurement above shows the cure costs the audio nothing and the
-control plane about two seconds, so the caution that justified a ten-minute
-delay between rejoins is mostly unfounded.
+unhealed. So the backoff is now conditioned on whether the previous rejoin achieved
+anything, which those same two timestamps already say: multicast heard *after*
+a rejoin means the rejoin restored it, and this silence is a new fault rather
+than the old one unhealed. A rejoin that worked is followed by a two-minute
+floor; one that changed nothing still serves the full ten minutes, because
+doing the same thing again is exactly what that guard exists to prevent.
+
+Two minutes rather than none, because the detection window is ninety seconds
+and a network whose multicast merely trickles -- a lone neighbour announcing
+every few minutes -- would otherwise rebind on every gap. A renderer whose port
+moves constantly is worse for controllers than one occasionally slow to be
+found. Two minutes sits just above the window, so rebinds cannot chain while a
+genuine recurrence is barely delayed. What makes this affordable is the
+measurement above: the cure costs the audio nothing and a controller about two
+seconds, so the caution behind a flat ten-minute delay was mostly unfounded.
+
+Replaying the morning through the new rule gives ninety seconds where it gave
+466: the 09:05 rejoin worked, so the 09:08 lapse would have been healed at
+09:10:05 rather than 09:16:21. A rejoin that had achieved nothing still waits
+until 09:15:17, unchanged.
 
 The instrumentation caught it twice more the same morning, in the plainest
 possible terms, while the test above was being set up:
