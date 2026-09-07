@@ -842,32 +842,35 @@ three and four in the morning and one at half past six. The ten-minute rebind
 backoff never suppressed a real fault, since the closest pair was twenty-two
 minutes apart.
 
-**What the night did not test: the cure landing on live audio.** There were
-three playback runs -- 10, 46 and 23 minutes, 1.3 hours in all, zero underruns
-and zero transfer errors -- and not one of the eight rejoins fell inside them.
-That leaves the cure's known cost unmeasured, and it is the cost the watchdog
-was written to be careful about: `router.disable()`/`enable()` gives the stream
-server a new port, so a controller holding the old description URL is talking
-to a dead address until it rediscovers. Audio should survive it, because the
-renderer is *fetching* the stream over a socket that is already open and
-Jetty's pool is untouched -- but "should" is exactly the word the
-disappearance taught us to distrust. It needs a deliberate test: a long track playing from the rig
-and a rejoin forced under it, watching whether the frames keep advancing and
-how long the controller takes to find the renderer again.
+**The cure does not touch the audio, 2026-09-07.** The night could not
+measure this -- all three playback runs fell between the eight rejoins -- so
+the app grew a trigger to force one, and it was fired twice against a track
+playing to the SMSL over USB:
 
-`rejointest.py` in the rig does exactly that, and the app grew a trigger for
-it: in debuggable builds only, `adb shell am broadcast -a
-com.hifirend.debug.REJOIN -p com.hifirend` calls the same `rebindRouter` the
-watchdog calls, so the cure being measured is the real one and only the
-decision to fire is bypassed. Two things the harness has to guard, both learned
-by getting them wrong first. The track must be bigger than the 8 MiB native
-buffer -- a ten-minute 440 Hz sine compressed to 6.8 MB, was swallowed whole in
-under a second, and would have left no HTTP socket open for the rebind to
-disturb, so "the audio survived" would have measured nothing; six minutes of
-pink noise at 40 MB keeps the fetch held open by backpressure the way real
-music does. And the DAC has to be attached: without one the renderer falls back
-to Android audio, which reports no frame or underrun counters, so the very
-evidence the test turns on is missing.
+```
+                         run 1              run 2
+old description URL      died at 2.1s       died at 1.9s
+old control URL          died at 2.1s       died at 1.9s
+discoverable again       2.1s               2.5s
+stream server port       38411 -> 38221     38221 -> 39875
+frames                   +442099            +442981
+underruns / xferErr      0 / 0              0 / 0
+```
+
+Ten seconds of window, and 442099 frames at 44.1 kHz is 10.02 seconds of audio:
+the stream did not so much as hiccup, and no re-fetch appears in the log. That
+is what the mechanism predicts -- the renderer is *fetching* over an outbound
+socket the rebind never touches, and only the UPnP router's own listeners are
+torn down -- but it had never been shown, and this bug has punished "should"
+before.
+
+The whole cost falls on the control plane, and it is smaller than feared: the
+description and control URLs die inside two seconds and the renderer is
+answering again on its new port half a second later. A controller holding the
+old URLs is cut off and has to rediscover; one that rediscovers finds it almost
+immediately. Against a fault that otherwise leaves the renderer invisible until
+somebody restarts the app, that is a bargain, and it removes the last reason to
+be cautious about firing the watchdog more readily.
 
 **The backoff can cost minutes when lapses cluster, 2026-09-07.** Setting the
 test up caught two lapses in twelve minutes, and the second exposed something
@@ -897,8 +900,22 @@ this case: multicast plainly returned after the 09:05 heal, so the rebind
 worked and the 09:08 lapse is a *new* fault rather than the same one
 unhealed. A backoff conditioned on the previous heal having achieved nothing --
 no multicast heard since it -- would keep the loop protection and drop the
-delay. Not yet done; it changes the cure's behaviour, and the cure had just
-been validated over a night.
+delay. Not yet done, but the case for it is now stronger than when it was
+written: the measurement above shows the cure costs the audio nothing and the
+control plane about two seconds, so the caution that justified a ten-minute
+delay between rejoins is mostly unfounded.
+
+The instrumentation caught it twice more the same morning, in the plainest
+possible terms, while the test above was being set up:
+
+```
+09:39:45  ssdp: not rejoining -- silent 270s, heard 456, last heal 341s ago
+09:40:45  ssdp: not rejoining -- silent 331s, heard 456, last heal 402s ago
+```
+
+Five and a half minutes undiscoverable, the watchdog awake and declining the
+whole time, and the reason named in the line. That is what the census alone
+could never say.
 
 Two pieces of instrumentation were added while chasing this, and both earn
 their place independently. The census line now carries the watchdog's own
