@@ -270,6 +270,13 @@ class MainActivity : FlutterActivity() {
                         RendererControl.outputDeviceChanged()
                         result.success(true)
                     }
+                    "getLanguage" ->
+                        result.success(InterfaceLanguage.tag(applicationContext))
+                    "setLanguage" -> {
+                        InterfaceLanguage.setTag(
+                            applicationContext, call.argument<String>("tag") ?: "")
+                        result.success(true)
+                    }
                     "getScreenTimeout" ->
                         result.success(
                             com.hifirend.power.ScreenTimeout.minutes(applicationContext))

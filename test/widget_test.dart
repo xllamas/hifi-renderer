@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hifirend/l10n/app_localizations.dart';
+import 'package:hifirend/locale_setting.dart';
 
 import 'package:hifirend/main.dart';
 import 'package:hifirend/renderer_state.dart';
@@ -950,6 +951,57 @@ void main() {
         c.notes.first.detail,
         contains('microphone'),
       );
+    });
+  });
+
+  group('Language', () {
+    test('every shipped language is named in its own script', () {
+      // A picker that lists a language in a script the reader cannot read is
+      // no use to the person looking for it, and the default fallback --
+      // toLanguageTag() -- silently produces "ko" instead of "한국어" when a
+      // locale is added and this switch is not.
+      for (final locale in LocaleSetting.supported) {
+        final name = LocaleSetting.nameOf(locale);
+        expect(name, isNotEmpty);
+        expect(name, isNot(locale.toLanguageTag()),
+            reason: 'no native name for $locale');
+      }
+    });
+
+    test('both Portuguese variants ship and are told apart', () {
+      // Brazilian and European Portuguese differ enough in ordinary vocabulary
+      // to be worth separating, and a picker that showed two entries with the
+      // same label would be worse than one.
+      final tags = LocaleSetting.supported.map((l) => l.toString()).toList();
+      expect(tags, contains('pt_BR'));
+      expect(tags, contains('pt_PT'));
+      expect(LocaleSetting.nameOf(const Locale('pt', 'BR')),
+          isNot(LocaleSetting.nameOf(const Locale('pt', 'PT'))));
+    }, skip: 'Pending: only app_en.arb exists so far, so supportedLocales is '
+        'English alone. Delete this skip when the translations land — the test '
+        'is what says they did.');
+
+    test('empty or missing means follow the phone', () {
+      expect(LocaleSetting.parseTag(null), isNull);
+      expect(LocaleSetting.parseTag(''), isNull);
+    });
+
+    test('either separator is understood', () {
+      // This app writes pt_BR; Android hands back pt-BR. Both mean the same
+      // thing and a picker that lost the choice on one of them would look like
+      // the setting simply did not save.
+      expect(LocaleSetting.parseTag('pt_BR').toString(), 'pt_BR');
+      expect(LocaleSetting.parseTag('pt-BR').toString(), 'pt_BR');
+      expect(LocaleSetting.parseTag('es').toString(), 'es');
+    }, skip: 'Pending: parseTag only returns languages actually shipped, and '
+        'so far that is English alone. Delete this skip with the other one.');
+
+    test('a tag naming a language we no longer ship falls back to the phone', () {
+      // A stored choice outlives the translation it names. Returning it anyway
+      // would leave the app in a language that does not exist, showing English
+      // through a locale that resolves to nothing.
+      expect(LocaleSetting.parseTag('xx'), isNull);
+      expect(LocaleSetting.parseTag('en_AU'), isNull);
     });
   });
 

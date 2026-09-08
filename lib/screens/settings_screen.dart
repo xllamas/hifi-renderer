@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
+import '../locale_setting.dart';
 import '../renderer_state.dart';
 import '../usb/dac_capabilities.dart';
 import 'dac_capabilities_screen.dart';
@@ -63,11 +65,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _channel.invokeMethod('setScreenTimeout', {'minutes': minutes});
   }
 
-  static String _describeTimeout(int minutes) => switch (minutes) {
-        0 => 'Never',
-        1 => '1 minute',
-        _ => '$minutes minutes',
-      };
+  static String _describeTimeout(AppLocalizations t, int minutes) =>
+      minutes == 0 ? t.settingsTimeoutNever : t.settingsTimeoutMinutes(minutes);
 
   Future<void> _loadServerConversion() async {
     try {
@@ -124,8 +123,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _saved = ok);
     if (ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Renamed. Restart the app for controllers to see it.'),
+        SnackBar(
+          content: Text(AppLocalizations.of(context).settingsRenamed),
         ),
       );
     }
@@ -144,15 +143,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final wakeRefused = _appliance['screenWakeRefused'] as bool? ?? false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).settingsTitle)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Network name', style: Theme.of(context).textTheme.titleMedium),
+          Text(AppLocalizations.of(context).settingsNetworkName,
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
-          const Text(
-            'How this renderer appears in DLNA controllers.',
-            style: TextStyle(color: Colors.white54, fontSize: 13),
+          Text(
+            AppLocalizations.of(context).settingsNetworkNameHelp,
+            style: const TextStyle(color: Colors.white54, fontSize: 13),
           ),
           const SizedBox(height: 12),
           Row(children: [
@@ -169,21 +169,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(width: 12),
             FilledButton(
               onPressed: _saved ? null : _saveName,
-              child: Text(_saved ? 'Saved' : 'Save'),
+              child: Text(_saved
+                  ? AppLocalizations.of(context).settingsSaved
+                  : AppLocalizations.of(context).settingsSave),
             ),
           ]),
 
           const SizedBox(height: 28),
-          Text('Audio device', style: Theme.of(context).textTheme.titleMedium),
+          Text(AppLocalizations.of(context).settingsAudioDevice,
+              style: Theme.of(context).textTheme.titleMedium),
           if (_dacs.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               _dacs.length > 1
-                  ? '${_dacs.length} USB audio devices are attached. Choose '
-                      'which one to play through; the choice is remembered '
-                      'across reboots.'
-                  : 'One USB audio device is attached. Tap it to play through '
-                      'it, and to grant access if it has not been granted yet.',
+                  ? AppLocalizations.of(context).settingsDacsMultiple(_dacs.length)
+                  : AppLocalizations.of(context).settingsDacsSingle,
               style: const TextStyle(color: Colors.white54, fontSize: 13),
             ),
           ],
@@ -213,10 +213,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     margin: const EdgeInsets.only(bottom: 6),
                     child: RadioListTile<String>(
                       value: m['key'] as String? ?? '',
-                      title: Text(m['name'] as String? ?? 'USB audio device'),
+                      title: Text(m['name'] as String? ??
+                          AppLocalizations.of(context).settingsUsbAudioDevice),
                       subtitle: Text(
                         '${m['vendorId']}:${m['productId']}'
-                        '${m['hasPermission'] == true ? '' : ' — permission not granted'}',
+                        '${m['hasPermission'] == true ? '' : AppLocalizations.of(context).settingsPermissionNotGranted}',
                         style: const TextStyle(fontSize: 12),
                       ),
                     ),
@@ -239,16 +240,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : Icon(ok ? Icons.usb : Icons.usb_off,
                           color: ok ? Colors.greenAccent : Colors.white38),
                   title: Text(probe.probing
-                      ? 'Reading the device…'
+                      ? AppLocalizations.of(context).settingsReadingDevice
                       : ok
                           ? caps!.displayName
-                          : 'No DAC connected'),
+                          : AppLocalizations.of(context).idleNoDac),
                   subtitle: Text(probe.probing
-                      ? 'Asking the DAC what it supports'
+                      ? AppLocalizations.of(context).settingsProbing
                       : ok
-                          ? 'USB Audio Class ${caps!.uacVersion}'
-                              ' — tap for what it supports'
-                          : 'Connect a USB DAC and tap to probe'),
+                          ? AppLocalizations.of(context)
+                              .settingsUacTap(caps!.uacVersion.toString())
+                          : AppLocalizations.of(context).settingsConnectToProbe),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => DacCapabilitiesScreen(
@@ -269,18 +270,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: _serverConversion ? Colors.amberAccent : Colors.greenAccent,
               ),
               isThreeLine: true,
-              title: const Text(
-                  'Accept only PCM streams and let the server do the '
-                  'decoding/transcoding'),
+              title: Text(AppLocalizations.of(context).settingsPcmOnly),
               subtitle: Text(
                 _serverConversion
-                    ? 'The renderer advertises nothing but LPCM, at the rates '
-                        'this DAC can clock, so the server converts everything '
-                        'to fit. Everything plays and nothing is bit-perfect -- '
-                        'including tracks the DAC could have played untouched.'
-                    : 'The renderer advertises every format it can decode, so '
-                        'files arrive untouched. Tracks at rates this DAC '
-                        'cannot clock are refused, and the reason is shown.',
+                    ? AppLocalizations.of(context).settingsPcmOnlyOn
+                    : AppLocalizations.of(context).settingsPcmOnlyOff,
                 style: const TextStyle(fontSize: 12),
               ),
             ),
@@ -290,14 +284,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               leading: Icon(_screenTimeout == 0
                   ? Icons.brightness_high
                   : Icons.brightness_medium),
-              title: const Text('Turn the screen off after'),
+              title: Text(AppLocalizations.of(context).settingsScreenOffAfter),
               subtitle: Text(
                 _screenTimeout == 0
-                    ? 'The screen stays on. Fine on a permanently powered '
-                        'phone, but an OLED panel showing the same screen for '
-                        'months is how it acquires a permanent one.'
-                    : 'Counted from when the music stops -- a long track never '
-                        'blanks the screen mid-play. Playback turns it back on.',
+                    ? AppLocalizations.of(context).settingsScreenOffNever
+                    : AppLocalizations.of(context).settingsScreenOffTimed,
                 style: const TextStyle(fontSize: 12),
               ),
               trailing: DropdownButton<int>(
@@ -306,7 +297,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 items: const [1, 2, 5, 10, 30, 0]
                     .map((m) => DropdownMenuItem(
                           value: m,
-                          child: Text(_describeTimeout(m)),
+                          child: Text(_describeTimeout(
+                              AppLocalizations.of(context), m)),
                         ))
                     .toList(),
                 onChanged: (m) {
@@ -318,8 +310,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Card(
             child: ListTile(
               leading: const Icon(Icons.speed),
-              title: const Text('DAC verification'),
-              subtitle: const Text('Test every rate this DAC claims'),
+              title: Text(AppLocalizations.of(context).settingsDacVerification),
+              subtitle: Text(
+                  AppLocalizations.of(context).settingsDacVerificationSubtitle),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => const DacVerificationScreen(),
@@ -328,13 +321,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           const SizedBox(height: 28),
-          Text('Always on', style: Theme.of(context).textTheme.titleMedium),
+          Text(AppLocalizations.of(context).settingsAlwaysOn,
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
-          const Text(
-            'A dedicated renderer has to keep running with the screen off and '
-            'come back after a reboot. Android and most phone makers block that '
-            'by default.',
-            style: TextStyle(color: Colors.white54, fontSize: 13),
+          Text(
+            AppLocalizations.of(context).settingsAlwaysOnHelp,
+            style: const TextStyle(color: Colors.white54, fontSize: 13),
           ),
           const SizedBox(height: 12),
           // Above the fixes, because it is the reason to be reading them. This
@@ -344,18 +336,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (deaths > 0)
             _check(
               ok: false,
-              title: 'This phone has stopped the renderer $deaths time(s)',
-              detail: 'Each one is a start that followed a run which never '
-                  'recorded a clean stop, so something killed it in the '
-                  'background. Granting what is below usually fixes it.',
+              title: AppLocalizations.of(context).settingsDeaths(deaths),
+              detail: AppLocalizations.of(context).settingsDeathsDetail,
             ),
           _check(
             ok: ignoringBattery,
-            title: 'Battery optimisation exemption',
+            title: AppLocalizations.of(context).settingsBattery,
             detail: ignoringBattery
-                ? 'Granted — Android will not suspend the renderer.'
-                : 'Not granted. Android may suspend the renderer when idle.',
-            action: ignoringBattery ? null : 'Grant',
+                ? AppLocalizations.of(context).settingsBatteryGranted
+                : AppLocalizations.of(context).settingsBatteryNotGranted,
+            action: ignoringBattery
+                ? null
+                : AppLocalizations.of(context).settingsGrant,
             onAction: () async {
               await _channel.invokeMethod('requestBatteryExemption');
               _loadAppliance();
@@ -364,20 +356,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (hasVendor)
             _check(
               ok: null,
-              title: 'Autostart (${manufacturer.isEmpty ? "vendor" : manufacturer})',
-              detail: 'Phones from this maker usually add background-app '
-                  'restrictions of their own, separate from Android\'s, and '
-                  'they are the usual reason a renderer does not start after a '
-                  'reboot. The app cannot detect them, only that this maker '
-                  'has such a screen.',
-              action: 'Open settings',
+              title: AppLocalizations.of(context).settingsAutostart(
+                  manufacturer.isEmpty
+                      ? AppLocalizations.of(context)
+                          .settingsAutostartVendorFallback
+                      : manufacturer),
+              detail: AppLocalizations.of(context).settingsAutostartDetail,
+              action: AppLocalizations.of(context).settingsOpenSettings,
               onAction: () async {
                 final messenger = ScaffoldMessenger.of(context);
+                // Resolved before the await. After it this State may be gone,
+                // and reading strings from a dead context is the crash this
+                // lint exists to prevent.
+                final couldNotOpen =
+                    AppLocalizations.of(context).settingsCouldNotOpen;
                 final opened =
                     await _channel.invokeMethod<String>('openVendorAutostart') ?? '';
                 if (opened.isEmpty) {
-                  messenger.showSnackBar(const SnackBar(
-                    content: Text('Could not open that screen on this phone.'),
+                  messenger.showSnackBar(SnackBar(
+                    content: Text(couldNotOpen),
                   ));
                 }
               },
@@ -385,22 +382,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (wakeRefused)
             _check(
               ok: false,
-              title: 'Wake the screen when music starts',
-              detail: 'Music has played here while the screen stayed dark. '
-                  'Android switches off a screen hold from an app with no '
-                  'window on display, and this phone refused to let the '
-                  'renderer bring its own window up, so the panel lit for a '
-                  'moment and went back to sleep. The permission is usually '
-                  'called something like "Display pop-up windows while running '
-                  'in the background", and it is separate from autostart.',
-              action: 'Open settings',
+              title: AppLocalizations.of(context).settingsWakeScreen,
+              detail: AppLocalizations.of(context).settingsWakeScreenDetail,
+              action: AppLocalizations.of(context).settingsOpenSettings,
               onAction: () async {
                 final messenger = ScaffoldMessenger.of(context);
+                final couldNotOpen =
+                    AppLocalizations.of(context).settingsCouldNotOpen;
                 final opened =
                     await _channel.invokeMethod<String>('openBackgroundWindow') ?? '';
                 if (opened.isEmpty) {
-                  messenger.showSnackBar(const SnackBar(
-                    content: Text('Could not open that screen on this phone.'),
+                  messenger.showSnackBar(SnackBar(
+                    content: Text(couldNotOpen),
                   ));
                 }
               },
@@ -408,8 +401,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Card(
             child: ListTile(
               leading: const Icon(Icons.checklist),
-              title: const Text('Run setup again'),
-              subtitle: const Text('Walk through the permissions in order'),
+              title: Text(AppLocalizations.of(context).settingsRunSetup),
+              subtitle:
+                  Text(AppLocalizations.of(context).settingsRunSetupSubtitle),
               trailing: const Icon(Icons.chevron_right),
               onTap: () async {
                 await Navigator.of(context).push(MaterialPageRoute(
@@ -419,10 +413,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
+          const SizedBox(height: 28),
+          Text(AppLocalizations.of(context).settingsLanguage,
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            AppLocalizations.of(context).settingsLanguageHelp,
+            style: const TextStyle(color: Colors.white54, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          _language(context),
+          const SizedBox(height: 16),
         ],
       ),
     );
   }
+
+  /// The language chooser.
+  ///
+  /// Every language is listed in its own script, because that is the only
+  /// naming that works: someone looking for their language recognises it
+  /// written their way, not translated into the one they cannot read. The
+  /// default sits at the top and is phrased as following the phone rather
+  /// than as a language, since it is not one.
+  Widget _language(BuildContext context) => DropdownButtonFormField<String>(
+        initialValue: LocaleSetting.instance.locale?.toString() ?? '',
+        isExpanded: true,
+        decoration: const InputDecoration(border: OutlineInputBorder()),
+        items: [
+          DropdownMenuItem(
+            value: '',
+            child: Text(AppLocalizations.of(context).settingsLanguageSystem),
+          ),
+          ...LocaleSetting.supported.map(
+            (l) => DropdownMenuItem(
+              value: l.toString(),
+              child: Text(LocaleSetting.nameOf(l)),
+            ),
+          ),
+        ],
+        onChanged: (value) {
+          final locale = (value == null || value.isEmpty)
+              ? null
+              : LocaleSetting.supported
+                  .firstWhere((l) => l.toString() == value);
+          LocaleSetting.instance.set(locale);
+        },
+      );
 
   Widget _check({
     required bool? ok,

@@ -70,7 +70,7 @@ class LocaleSetting extends ChangeNotifier {
   Future<void> load() async {
     try {
       final tag = await _channel.invokeMethod<String>('getLanguage');
-      _locale = _parse(tag);
+      _locale = parseTag(tag);
     } catch (_) {
       // A renderer that cannot read the setting still has to start, in the
       // phone's language, which is where it would have been anyway.
@@ -96,7 +96,10 @@ class LocaleSetting extends ChangeNotifier {
 
   /// `pt_BR` and `pt-BR` both mean the same thing; senders of this string are
   /// this app and Android, and they do not agree on the separator.
-  static Locale? _parse(String? tag) {
+  ///
+  /// Public because the interesting part is what it refuses, and that is worth
+  /// testing without a platform channel.
+  static Locale? parseTag(String? tag) {
     if (tag == null || tag.isEmpty) return null;
     final parts = tag.replaceAll('-', '_').split('_');
     if (parts.isEmpty || parts.first.isEmpty) return null;
