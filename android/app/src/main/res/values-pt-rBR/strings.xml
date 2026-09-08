@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  widget_label is absent on purpose. It is the appliance's own name,
+  the one it answers to on the network and in controllers, and a box
+  with two names would be worse than one with an English name.
+-->
+<resources>
+    <string name="widget_description">Tocando agora, formato e controles do renderizador.</string>
+    <string name="widget_art">Capa do álbum</string>
+    <string name="widget_play_pause">Tocar ou pausar</string>
+    <string name="widget_bit_perfect">Bit-perfect</string>
+</resources>

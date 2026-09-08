@@ -978,12 +978,63 @@ void main() {
       // same label would be worse than one.
       final tags = LocaleSetting.supported.map((l) => l.toString()).toList();
       expect(tags, contains('pt_BR'));
-      expect(tags, contains('pt_PT'));
+      // European Portuguese ships as the bare `pt`: it is the fallback behind
+      // pt_BR, and what Android means by `pt`.
+      expect(tags, contains('pt'));
       expect(LocaleSetting.nameOf(const Locale('pt', 'BR')),
-          isNot(LocaleSetting.nameOf(const Locale('pt', 'PT'))));
-    }, skip: 'Pending: only app_en.arb exists so far, so supportedLocales is '
-        'English alone. Delete this skip when the translations land — the test '
-        'is what says they did.');
+          isNot(LocaleSetting.nameOf(const Locale('pt'))));
+    });
+
+    test('every language renders the screen a listener actually reads', () async {
+      // Loads each shipped language and checks the strings that carry the
+      // app's promises. A missing translation falls back to English silently,
+      // which is the right runtime behaviour and a poor thing to ship
+      // unnoticed — so this asserts each locale differs from English rather
+      // than merely being non-empty.
+      final en = await AppLocalizations.delegate.load(const Locale('en'));
+      for (final locale in LocaleSetting.supported) {
+        if (locale.languageCode == 'en') continue;
+        final t = await AppLocalizations.delegate.load(locale);
+        for (final pair in <List<String>>[
+          [t.idleNoDac, en.idleNoDac],
+          [t.settingsTitle, en.settingsTitle],
+          [t.errServerUnreachable, en.errServerUnreachable],
+          [t.soakMeetsBar, en.soakMeetsBar],
+          [t.noteAdaptiveDetail, en.noteAdaptiveDetail],
+        ]) {
+          expect(pair[0], isNotEmpty, reason: 'empty string in $locale');
+          expect(pair[0], isNot(pair[1]),
+              reason: 'untranslated in $locale: "${pair[1]}"');
+        }
+        // Sentences must differ from English; individual terms need not.
+        // "bit-perfect" is the term audiophiles use in French, Italian,
+        // Spanish and Portuguese, and translating it literally would be worse
+        // than leaving it — which is exactly what its ARB description asks
+        // for. Checked for presence only.
+        expect(t.bitPerfect, isNotEmpty, reason: 'no bit-perfect term in $locale');
+      }
+    });
+
+    test('placeholders survive every translation', () async {
+      // A translator who drops a placeholder produces a sentence missing the
+      // number it exists to carry — "This DAC cannot play ; its highest rate
+      // is ." — and nothing else would catch it.
+      for (final locale in LocaleSetting.supported) {
+        final t = await AppLocalizations.delegate.load(locale);
+        expect(t.airPlayFromSender('Walrus'), contains('Walrus'),
+            reason: 'sender name lost in $locale');
+        expect(t.errRateUnplayable('192 kHz', '96 kHz'),
+            allOf(contains('192 kHz'), contains('96 kHz')),
+            reason: 'a rate was lost in $locale');
+        expect(t.settingsDeaths(3), contains('3'),
+            reason: 'the count was lost in $locale');
+        expect(t.onboardingStep(2, 'X'),
+            allOf(contains('2'), contains('X')),
+            reason: 'a step field was lost in $locale');
+        expect(t.dacCapsKhz('96'), contains('96'),
+            reason: 'the rate was lost in $locale');
+      }
+    });
 
     test('empty or missing means follow the phone', () {
       expect(LocaleSetting.parseTag(null), isNull);
@@ -997,8 +1048,7 @@ void main() {
       expect(LocaleSetting.parseTag('pt_BR').toString(), 'pt_BR');
       expect(LocaleSetting.parseTag('pt-BR').toString(), 'pt_BR');
       expect(LocaleSetting.parseTag('es').toString(), 'es');
-    }, skip: 'Pending: parseTag only returns languages actually shipped, and '
-        'so far that is English alone. Delete this skip with the other one.');
+    });
 
     test('a tag naming a language we no longer ship falls back to the phone', () {
       // A stored choice outlives the translation it names. Returning it anyway

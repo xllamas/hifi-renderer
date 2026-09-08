@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  widget_label is absent on purpose. It is the appliance's own name,
+  the one it answers to on the network and in controllers, and a box
+  with two names would be worse than one with an English name.
+-->
+<resources>
+    <string name="widget_description">再生中の曲、フォーマット、再生操作。</string>
+    <string name="widget_art">アルバムアート</string>
+    <string name="widget_play_pause">再生または一時停止</string>
+    <string name="widget_bit_perfect">ビットパーフェクト</string>
+</resources>

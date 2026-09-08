@@ -60,7 +60,11 @@ class LocaleSetting extends ChangeNotifier {
         return '한국어';
       case 'pt_BR':
         return 'Português (Brasil)';
-      case 'pt_PT':
+      // European Portuguese is the bare `pt`, which is both what gen-l10n
+      // wants as the fallback behind pt_BR and what Android means by `pt`.
+      // Labelled by country anyway, because next to "Português (Brasil)" an
+      // unqualified "Português" reads as a third, vaguer option.
+      case 'pt':
         return 'Português (Portugal)';
       default:
         return locale.toLanguageTag();
