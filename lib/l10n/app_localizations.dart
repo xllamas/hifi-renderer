@@ -453,6 +453,347 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The renderer follows this phone unless you choose otherwise. A box set up on a spare phone often inherits a language nobody wanted.'**
   String get settingsLanguageHelp;
+
+  /// Title of the first-run setup walkthrough. 'HiFi Renderer' is the app's name and is not translated.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up HiFi Renderer'**
+  String get onboardingTitle;
+
+  /// Title when the walkthrough is opened again later from Settings, rather than on first run.
+  ///
+  /// In en, this message translates to:
+  /// **'Setup'**
+  String get onboardingTitleRerun;
+
+  /// Opening paragraph of setup. A 'renderer' is a device that receives music over the network and plays it; here the phone becomes one and is expected to stay running unattended.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone is going to sit somewhere and be a renderer. Android and most phone makers assume no app wants to do that, so a few things have to be turned on by hand.'**
+  String get onboardingIntro;
+
+  /// Reassurance under the setup introduction, so nobody feels blocked by the permission list.
+  ///
+  /// In en, this message translates to:
+  /// **'None of it is required to try the app, and you can change any of it later in Settings.'**
+  String get onboardingOptional;
+
+  /// Step title for the Android notification permission.
+  ///
+  /// In en, this message translates to:
+  /// **'Show a notification'**
+  String get onboardingNotifications;
+
+  /// Shown once the notification permission has been given.
+  ///
+  /// In en, this message translates to:
+  /// **'Granted. The renderer will show its notification while running.'**
+  String get onboardingNotificationsGranted;
+
+  /// Explains why the notification permission is needed: Android requires a visible notification for a long-running background service.
+  ///
+  /// In en, this message translates to:
+  /// **'Android will not let the renderer keep running in the background without one, and it is the only visible sign the renderer is alive.'**
+  String get onboardingNotificationsWhy;
+
+  /// Button that asks Android for a permission. Short: a compact action button.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get onboardingAllow;
+
+  /// Shown when the app cannot open the phone's notification settings because this phone has none to open.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone has no notification settings screen to open.'**
+  String get onboardingNoNotificationScreen;
+
+  /// Shown when Android will no longer show the permission prompt because it was refused before, so the user has to grant it in the settings screen that was just opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Android stopped asking — turn notifications on there.'**
+  String get onboardingNotificationsInSettings;
+
+  /// Step title for the battery optimisation exemption.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop Android suspending it'**
+  String get onboardingBattery;
+
+  /// Shown once the battery optimisation exemption has been given.
+  ///
+  /// In en, this message translates to:
+  /// **'Granted. Android will not suspend the renderer when idle.'**
+  String get onboardingBatteryGranted;
+
+  /// Explains why the battery exemption matters: without it music stops partway through a track.
+  ///
+  /// In en, this message translates to:
+  /// **'Without this, Android suspends the app when the screen has been off for a while, and playback stops mid-track.'**
+  String get onboardingBatteryWhy;
+
+  /// Step title naming the phone maker's own autostart setting.
+  ///
+  /// In en, this message translates to:
+  /// **'Autostart ({vendor})'**
+  String onboardingVendorKnown(String vendor);
+
+  /// Step title for the phone maker's autostart setting when the phone did not report a manufacturer name.
+  ///
+  /// In en, this message translates to:
+  /// **'Autostart'**
+  String get onboardingVendorKnownNoName;
+
+  /// Step title when the app has no known settings screen for this phone maker.
+  ///
+  /// In en, this message translates to:
+  /// **'Your phone maker\'s own restrictions'**
+  String get onboardingVendorUnknown;
+
+  /// Explains the vendor autostart step and why it never shows as complete: the app can open the screen but cannot read what was granted there.
+  ///
+  /// In en, this message translates to:
+  /// **'Phones from this maker usually add background-app restrictions of their own, separate from Android\'s, and they are the usual reason a renderer does not come back after a reboot. The app cannot detect them — it only knows this maker has such a screen — and it cannot tell whether you granted anything there, so this step never ticks.'**
+  String get onboardingVendorKnownDetail;
+
+  /// Advice when the app cannot open a vendor settings screen. The three quoted phrases are names of settings the user must hunt for, so translate them to whatever those settings are actually called on phones in the target language.
+  ///
+  /// In en, this message translates to:
+  /// **'We have no known settings screen for this phone. If the renderer stops when idle or does not return after a reboot, look for \"autostart\", \"background apps\" or \"protected apps\" in your phone\'s own battery settings.'**
+  String get onboardingVendorUnknownDetail;
+
+  /// Step title for connecting the USB digital-to-analogue converter.
+  ///
+  /// In en, this message translates to:
+  /// **'Your DAC'**
+  String get onboardingDac;
+
+  /// Explains that the DAC needs no setup: the renderer adapts to whichever one is plugged in.
+  ///
+  /// In en, this message translates to:
+  /// **'Plug the USB DAC in when you are ready. Android asks for permission the first time it is attached, so there is nothing to do here — and the renderer follows whatever DAC is connected rather than being configured for one.'**
+  String get onboardingDacDetail;
+
+  /// Button that closes setup when everything checkable has been granted.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get onboardingDone;
+
+  /// Button that closes setup while some permissions are still ungranted. Should sound permitted rather than discouraging: skipping is a legitimate choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish anyway'**
+  String get onboardingFinishAnyway;
+
+  /// Shown at the end of setup when every permission the app is able to verify has been given. 'Can check' is deliberate — vendor settings cannot be verified.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything the app can check is granted.'**
+  String get onboardingAllGranted;
+
+  /// Shown at the end of setup when permissions are outstanding. Deliberately not a warning: the app works, it simply may be killed in the background.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipping is fine. The renderer will run; it may just not survive being left alone, and Settings will tell you if something is stopping it.'**
+  String get onboardingSkippingIsFine;
+
+  /// Numbers a setup step, as in '2. Show a notification'. Adjust the punctuation if a different form is conventional in the target language.
+  ///
+  /// In en, this message translates to:
+  /// **'{number}. {title}'**
+  String onboardingStep(int number, String title);
+
+  /// Title of the screen listing what a connected DAC can do.
+  ///
+  /// In en, this message translates to:
+  /// **'DAC capabilities'**
+  String get dacCapsTitle;
+
+  /// Tooltip on the refresh button that re-reads the DAC's capabilities.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-probe'**
+  String get dacCapsReprobe;
+
+  /// Shown when no DAC has been interrogated yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not probed yet'**
+  String get dacCapsNotProbed;
+
+  /// Tells the user how to get capabilities: plug a DAC in and press the refresh button in the title bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect a USB DAC and tap refresh.'**
+  String get dacCapsNotProbedDetail;
+
+  /// Used when the probe failed but reported no reason.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown error.'**
+  String get dacCapsUnknownError;
+
+  /// Probe failure: nothing is plugged in.
+  ///
+  /// In en, this message translates to:
+  /// **'No DAC found'**
+  String get dacCapsNoDevice;
+
+  /// Probe failure: Android has not granted this app access to the USB device.
+  ///
+  /// In en, this message translates to:
+  /// **'Permission needed'**
+  String get dacCapsPermissionNeeded;
+
+  /// Probe failure: the device is present and permitted but would not open.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open the DAC'**
+  String get dacCapsOpenFailed;
+
+  /// Probe failure with no more specific cause.
+  ///
+  /// In en, this message translates to:
+  /// **'Probe failed'**
+  String get dacCapsProbeFailed;
+
+  /// Warning banner shown for a device that cannot take audio unaltered — for example one that only records, or offers no usable output. Keep it blunt.
+  ///
+  /// In en, this message translates to:
+  /// **'Not usable for bit-perfect playback'**
+  String get dacCapsNotUsable;
+
+  /// Heading above a list of caveats about this particular DAC.
+  ///
+  /// In en, this message translates to:
+  /// **'Things worth knowing'**
+  String get dacCapsWorthKnowing;
+
+  /// Heading above the capability table.
+  ///
+  /// In en, this message translates to:
+  /// **'What it supports'**
+  String get dacCapsWhatItSupports;
+
+  /// One-line identity of the device: which version of the USB Audio Class specification it implements, its USB speed (full, high), and its vendor and product identifiers in hex. These are technical terms; keep them recognisable.
+  ///
+  /// In en, this message translates to:
+  /// **'USB Audio Class {version} · {speed}-speed · {vendor}:{product}'**
+  String dacCapsIdentity(
+    String version,
+    String speed,
+    String vendor,
+    String product,
+  );
+
+  /// Table row label: the sample rates the DAC accepts, such as 44.1 or 96 kHz.
+  ///
+  /// In en, this message translates to:
+  /// **'Sample rates'**
+  String get dacCapsSampleRates;
+
+  /// Table row label: the bit depths the DAC accepts, such as 16 or 24 bit.
+  ///
+  /// In en, this message translates to:
+  /// **'Bit depths'**
+  String get dacCapsBitDepths;
+
+  /// Table row label: how many audio channels the DAC takes, normally two.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels'**
+  String get dacCapsChannels;
+
+  /// Table row label: the sample rate the DAC is clocking right now.
+  ///
+  /// In en, this message translates to:
+  /// **'Currently running at'**
+  String get dacCapsCurrentlyAt;
+
+  /// Table row label for which side provides the audio clock.
+  ///
+  /// In en, this message translates to:
+  /// **'USB timing'**
+  String get dacCapsUsbTiming;
+
+  /// Table row label for whether volume can be set over USB.
+  ///
+  /// In en, this message translates to:
+  /// **'Volume control'**
+  String get dacCapsVolumeControl;
+
+  /// Table row label for Direct Stream Digital, a one-bit audio format. An abbreviation, normally left as DSD.
+  ///
+  /// In en, this message translates to:
+  /// **'DSD'**
+  String get dacCapsDsd;
+
+  /// Table value when the DAC did not report something.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown'**
+  String get dacCapsUnknown;
+
+  /// Summarises a long list of sample rates as a range plus a count, used when listing them all would not fit.
+  ///
+  /// In en, this message translates to:
+  /// **'{low} – {high} ({count} rates)'**
+  String dacCapsRateRange(String low, String high, int count);
+
+  /// A single bit depth, as in '24-bit'. Several are joined with commas.
+  ///
+  /// In en, this message translates to:
+  /// **'{bits}-bit'**
+  String dacCapsBitDepth(int bits);
+
+  /// USB timing value: the DAC provides the clock and the phone follows it. This is the better arrangement for audio quality, which the parenthesis is there to convey.
+  ///
+  /// In en, this message translates to:
+  /// **'Asynchronous (DAC clock)'**
+  String get dacCapsAsync;
+
+  /// USB timing value: the DAC follows the phone's clock rather than its own.
+  ///
+  /// In en, this message translates to:
+  /// **'Synchronous'**
+  String get dacCapsSync;
+
+  /// Volume control value: the app can set the DAC's volume.
+  ///
+  /// In en, this message translates to:
+  /// **'Supported over USB'**
+  String get dacCapsVolumeOverUsb;
+
+  /// Volume control value: volume can only be changed with the DAC's own knob — common on integrated amplifiers.
+  ///
+  /// In en, this message translates to:
+  /// **'On the device only'**
+  String get dacCapsVolumeDeviceOnly;
+
+  /// DSD row value: the hardware can accept DSD, which is not the same as this app sending it.
+  ///
+  /// In en, this message translates to:
+  /// **'Supported by the hardware'**
+  String get dacCapsDsdSupported;
+
+  /// Expandable section holding raw USB descriptor information.
+  ///
+  /// In en, this message translates to:
+  /// **'Technical details'**
+  String get dacCapsTechnical;
+
+  /// Subtitle explaining that the technical section exists to be copied into a bug report. Its contents stay in English deliberately, being diagnostic output.
+  ///
+  /// In en, this message translates to:
+  /// **'For support reports'**
+  String get dacCapsTechnicalSubtitle;
+
+  /// A sample rate in kilohertz, as in '96 kHz'. kHz is a unit symbol and is not translated, but the space before it follows local typographic convention.
+  ///
+  /// In en, this message translates to:
+  /// **'{value} kHz'**
+  String dacCapsKhz(String value);
 }
 
 class _AppLocalizationsDelegate

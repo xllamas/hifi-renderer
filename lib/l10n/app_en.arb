@@ -340,5 +340,316 @@
   "settingsLanguageHelp": "The renderer follows this phone unless you choose otherwise. A box set up on a spare phone often inherits a language nobody wanted.",
   "@settingsLanguageHelp": {
     "description": "Explains the language setting and why an override exists."
+  },
+  "onboardingTitle": "Set up HiFi Renderer",
+  "@onboardingTitle": {
+    "description": "Title of the first-run setup walkthrough. 'HiFi Renderer' is the app's name and is not translated."
+  },
+
+  "onboardingTitleRerun": "Setup",
+  "@onboardingTitleRerun": {
+    "description": "Title when the walkthrough is opened again later from Settings, rather than on first run."
+  },
+
+  "onboardingIntro": "This phone is going to sit somewhere and be a renderer. Android and most phone makers assume no app wants to do that, so a few things have to be turned on by hand.",
+  "@onboardingIntro": {
+    "description": "Opening paragraph of setup. A 'renderer' is a device that receives music over the network and plays it; here the phone becomes one and is expected to stay running unattended."
+  },
+
+  "onboardingOptional": "None of it is required to try the app, and you can change any of it later in Settings.",
+  "@onboardingOptional": {
+    "description": "Reassurance under the setup introduction, so nobody feels blocked by the permission list."
+  },
+
+  "onboardingNotifications": "Show a notification",
+  "@onboardingNotifications": {
+    "description": "Step title for the Android notification permission."
+  },
+
+  "onboardingNotificationsGranted": "Granted. The renderer will show its notification while running.",
+  "@onboardingNotificationsGranted": {
+    "description": "Shown once the notification permission has been given."
+  },
+
+  "onboardingNotificationsWhy": "Android will not let the renderer keep running in the background without one, and it is the only visible sign the renderer is alive.",
+  "@onboardingNotificationsWhy": {
+    "description": "Explains why the notification permission is needed: Android requires a visible notification for a long-running background service."
+  },
+
+  "onboardingAllow": "Allow",
+  "@onboardingAllow": {
+    "description": "Button that asks Android for a permission. Short: a compact action button."
+  },
+
+  "onboardingNoNotificationScreen": "This phone has no notification settings screen to open.",
+  "@onboardingNoNotificationScreen": {
+    "description": "Shown when the app cannot open the phone's notification settings because this phone has none to open."
+  },
+
+  "onboardingNotificationsInSettings": "Android stopped asking — turn notifications on there.",
+  "@onboardingNotificationsInSettings": {
+    "description": "Shown when Android will no longer show the permission prompt because it was refused before, so the user has to grant it in the settings screen that was just opened."
+  },
+
+  "onboardingBattery": "Stop Android suspending it",
+  "@onboardingBattery": {
+    "description": "Step title for the battery optimisation exemption."
+  },
+
+  "onboardingBatteryGranted": "Granted. Android will not suspend the renderer when idle.",
+  "@onboardingBatteryGranted": {
+    "description": "Shown once the battery optimisation exemption has been given."
+  },
+
+  "onboardingBatteryWhy": "Without this, Android suspends the app when the screen has been off for a while, and playback stops mid-track.",
+  "@onboardingBatteryWhy": {
+    "description": "Explains why the battery exemption matters: without it music stops partway through a track."
+  },
+
+  "onboardingVendorKnown": "Autostart ({vendor})",
+  "@onboardingVendorKnown": {
+    "description": "Step title naming the phone maker's own autostart setting.",
+    "placeholders": {
+      "vendor": {
+        "type": "String",
+        "example": "Xiaomi"
+      }
+    }
+  },
+
+  "onboardingVendorKnownNoName": "Autostart",
+  "@onboardingVendorKnownNoName": {
+    "description": "Step title for the phone maker's autostart setting when the phone did not report a manufacturer name."
+  },
+
+  "onboardingVendorUnknown": "Your phone maker's own restrictions",
+  "@onboardingVendorUnknown": {
+    "description": "Step title when the app has no known settings screen for this phone maker."
+  },
+
+  "onboardingVendorKnownDetail": "Phones from this maker usually add background-app restrictions of their own, separate from Android's, and they are the usual reason a renderer does not come back after a reboot. The app cannot detect them — it only knows this maker has such a screen — and it cannot tell whether you granted anything there, so this step never ticks.",
+  "@onboardingVendorKnownDetail": {
+    "description": "Explains the vendor autostart step and why it never shows as complete: the app can open the screen but cannot read what was granted there."
+  },
+
+  "onboardingVendorUnknownDetail": "We have no known settings screen for this phone. If the renderer stops when idle or does not return after a reboot, look for \"autostart\", \"background apps\" or \"protected apps\" in your phone's own battery settings.",
+  "@onboardingVendorUnknownDetail": {
+    "description": "Advice when the app cannot open a vendor settings screen. The three quoted phrases are names of settings the user must hunt for, so translate them to whatever those settings are actually called on phones in the target language."
+  },
+
+  "onboardingDac": "Your DAC",
+  "@onboardingDac": {
+    "description": "Step title for connecting the USB digital-to-analogue converter."
+  },
+
+  "onboardingDacDetail": "Plug the USB DAC in when you are ready. Android asks for permission the first time it is attached, so there is nothing to do here — and the renderer follows whatever DAC is connected rather than being configured for one.",
+  "@onboardingDacDetail": {
+    "description": "Explains that the DAC needs no setup: the renderer adapts to whichever one is plugged in."
+  },
+
+  "onboardingDone": "Done",
+  "@onboardingDone": {
+    "description": "Button that closes setup when everything checkable has been granted."
+  },
+
+  "onboardingFinishAnyway": "Finish anyway",
+  "@onboardingFinishAnyway": {
+    "description": "Button that closes setup while some permissions are still ungranted. Should sound permitted rather than discouraging: skipping is a legitimate choice."
+  },
+
+  "onboardingAllGranted": "Everything the app can check is granted.",
+  "@onboardingAllGranted": {
+    "description": "Shown at the end of setup when every permission the app is able to verify has been given. 'Can check' is deliberate — vendor settings cannot be verified."
+  },
+
+  "onboardingSkippingIsFine": "Skipping is fine. The renderer will run; it may just not survive being left alone, and Settings will tell you if something is stopping it.",
+  "@onboardingSkippingIsFine": {
+    "description": "Shown at the end of setup when permissions are outstanding. Deliberately not a warning: the app works, it simply may be killed in the background."
+  },
+
+  "onboardingStep": "{number}. {title}",
+  "@onboardingStep": {
+    "description": "Numbers a setup step, as in '2. Show a notification'. Adjust the punctuation if a different form is conventional in the target language.",
+    "placeholders": {
+      "number": {
+        "type": "int",
+        "example": "2"
+      },
+      "title": {
+        "type": "String",
+        "example": "Show a notification"
+      }
+    }
+  },
+  "dacCapsTitle": "DAC capabilities",
+  "@dacCapsTitle": {
+    "description": "Title of the screen listing what a connected DAC can do."
+  },
+
+  "dacCapsReprobe": "Re-probe",
+  "@dacCapsReprobe": {
+    "description": "Tooltip on the refresh button that re-reads the DAC's capabilities."
+  },
+
+  "dacCapsNotProbed": "Not probed yet",
+  "@dacCapsNotProbed": {
+    "description": "Shown when no DAC has been interrogated yet."
+  },
+
+  "dacCapsNotProbedDetail": "Connect a USB DAC and tap refresh.",
+  "@dacCapsNotProbedDetail": {
+    "description": "Tells the user how to get capabilities: plug a DAC in and press the refresh button in the title bar."
+  },
+
+  "dacCapsUnknownError": "Unknown error.",
+  "@dacCapsUnknownError": {
+    "description": "Used when the probe failed but reported no reason."
+  },
+
+  "dacCapsNoDevice": "No DAC found",
+  "@dacCapsNoDevice": {
+    "description": "Probe failure: nothing is plugged in."
+  },
+
+  "dacCapsPermissionNeeded": "Permission needed",
+  "@dacCapsPermissionNeeded": {
+    "description": "Probe failure: Android has not granted this app access to the USB device."
+  },
+
+  "dacCapsOpenFailed": "Could not open the DAC",
+  "@dacCapsOpenFailed": {
+    "description": "Probe failure: the device is present and permitted but would not open."
+  },
+
+  "dacCapsProbeFailed": "Probe failed",
+  "@dacCapsProbeFailed": {
+    "description": "Probe failure with no more specific cause."
+  },
+
+  "dacCapsNotUsable": "Not usable for bit-perfect playback",
+  "@dacCapsNotUsable": {
+    "description": "Warning banner shown for a device that cannot take audio unaltered — for example one that only records, or offers no usable output. Keep it blunt."
+  },
+
+  "dacCapsWorthKnowing": "Things worth knowing",
+  "@dacCapsWorthKnowing": {
+    "description": "Heading above a list of caveats about this particular DAC."
+  },
+
+  "dacCapsWhatItSupports": "What it supports",
+  "@dacCapsWhatItSupports": {
+    "description": "Heading above the capability table."
+  },
+
+  "dacCapsIdentity": "USB Audio Class {version} · {speed}-speed · {vendor}:{product}",
+  "@dacCapsIdentity": {
+    "description": "One-line identity of the device: which version of the USB Audio Class specification it implements, its USB speed (full, high), and its vendor and product identifiers in hex. These are technical terms; keep them recognisable.",
+    "placeholders": {
+      "version": {"type": "String", "example": "2"},
+      "speed": {"type": "String", "example": "high"},
+      "vendor": {"type": "String", "example": "0x1234"},
+      "product": {"type": "String", "example": "0x5678"}
+    }
+  },
+
+  "dacCapsSampleRates": "Sample rates",
+  "@dacCapsSampleRates": {
+    "description": "Table row label: the sample rates the DAC accepts, such as 44.1 or 96 kHz."
+  },
+
+  "dacCapsBitDepths": "Bit depths",
+  "@dacCapsBitDepths": {
+    "description": "Table row label: the bit depths the DAC accepts, such as 16 or 24 bit."
+  },
+
+  "dacCapsChannels": "Channels",
+  "@dacCapsChannels": {
+    "description": "Table row label: how many audio channels the DAC takes, normally two."
+  },
+
+  "dacCapsCurrentlyAt": "Currently running at",
+  "@dacCapsCurrentlyAt": {
+    "description": "Table row label: the sample rate the DAC is clocking right now."
+  },
+
+  "dacCapsUsbTiming": "USB timing",
+  "@dacCapsUsbTiming": {
+    "description": "Table row label for which side provides the audio clock."
+  },
+
+  "dacCapsVolumeControl": "Volume control",
+  "@dacCapsVolumeControl": {
+    "description": "Table row label for whether volume can be set over USB."
+  },
+
+  "dacCapsDsd": "DSD",
+  "@dacCapsDsd": {
+    "description": "Table row label for Direct Stream Digital, a one-bit audio format. An abbreviation, normally left as DSD."
+  },
+
+  "dacCapsUnknown": "Unknown",
+  "@dacCapsUnknown": {
+    "description": "Table value when the DAC did not report something."
+  },
+
+  "dacCapsRateRange": "{low} – {high} ({count} rates)",
+  "@dacCapsRateRange": {
+    "description": "Summarises a long list of sample rates as a range plus a count, used when listing them all would not fit.",
+    "placeholders": {
+      "low": {"type": "String", "example": "44.1 kHz"},
+      "high": {"type": "String", "example": "384 kHz"},
+      "count": {"type": "int", "example": "9"}
+    }
+  },
+
+  "dacCapsBitDepth": "{bits}-bit",
+  "@dacCapsBitDepth": {
+    "description": "A single bit depth, as in '24-bit'. Several are joined with commas.",
+    "placeholders": {
+      "bits": {"type": "int", "example": "24"}
+    }
+  },
+
+  "dacCapsAsync": "Asynchronous (DAC clock)",
+  "@dacCapsAsync": {
+    "description": "USB timing value: the DAC provides the clock and the phone follows it. This is the better arrangement for audio quality, which the parenthesis is there to convey."
+  },
+
+  "dacCapsSync": "Synchronous",
+  "@dacCapsSync": {
+    "description": "USB timing value: the DAC follows the phone's clock rather than its own."
+  },
+
+  "dacCapsVolumeOverUsb": "Supported over USB",
+  "@dacCapsVolumeOverUsb": {
+    "description": "Volume control value: the app can set the DAC's volume."
+  },
+
+  "dacCapsVolumeDeviceOnly": "On the device only",
+  "@dacCapsVolumeDeviceOnly": {
+    "description": "Volume control value: volume can only be changed with the DAC's own knob — common on integrated amplifiers."
+  },
+
+  "dacCapsDsdSupported": "Supported by the hardware",
+  "@dacCapsDsdSupported": {
+    "description": "DSD row value: the hardware can accept DSD, which is not the same as this app sending it."
+  },
+
+  "dacCapsTechnical": "Technical details",
+  "@dacCapsTechnical": {
+    "description": "Expandable section holding raw USB descriptor information."
+  },
+
+  "dacCapsTechnicalSubtitle": "For support reports",
+  "@dacCapsTechnicalSubtitle": {
+    "description": "Subtitle explaining that the technical section exists to be copied into a bug report. Its contents stay in English deliberately, being diagnostic output."
+  },
+
+  "dacCapsKhz": "{value} kHz",
+  "@dacCapsKhz": {
+    "description": "A sample rate in kilohertz, as in '96 kHz'. kHz is a unit symbol and is not translated, but the space before it follows local typographic convention.",
+    "placeholders": {
+      "value": {"type": "String", "example": "96"}
+    }
   }
 }

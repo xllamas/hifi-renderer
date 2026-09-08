@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../usb/dac_capabilities.dart';
 
 /// Shows what the connected DAC can actually do, measured from its own USB
@@ -28,12 +29,12 @@ class DacCapabilitiesScreen extends StatelessWidget {
       valueListenable: probe,
       builder: (context, state, _) => Scaffold(
         appBar: AppBar(
-          title: const Text('DAC capabilities'),
+          title: Text(AppLocalizations.of(context).dacCapsTitle),
           actions: [
             IconButton(
               onPressed: state.probing ? null : onRefresh,
               icon: const Icon(Icons.refresh),
-              tooltip: 'Re-probe',
+              tooltip: AppLocalizations.of(context).dacCapsReprobe,
             ),
           ],
         ),
@@ -52,12 +53,18 @@ class DacCapabilitiesScreen extends StatelessWidget {
       return const Center(child: CircularProgressIndicator());
     }
     if (c == null) {
-      return _centered(context, Icons.usb_off, 'Not probed yet',
-          'Connect a USB DAC and tap refresh.');
+      return _centered(
+          context,
+          Icons.usb_off,
+          AppLocalizations.of(context).dacCapsNotProbed,
+          AppLocalizations.of(context).dacCapsNotProbedDetail);
     }
     if (!c.ok) {
-      return _centered(context, Icons.error_outline,
-          _errorTitle(c.error), c.errorMessage ?? 'Unknown error.');
+      return _centered(
+          context,
+          Icons.error_outline,
+          _errorTitle(context, c.error),
+          c.errorMessage ?? AppLocalizations.of(context).dacCapsUnknownError);
     }
 
     return ListView(
@@ -68,14 +75,14 @@ class DacCapabilitiesScreen extends StatelessWidget {
           const SizedBox(height: 12),
           Card(
             color: Colors.amber.withValues(alpha: 0.15),
-            child: const Padding(
-              padding: EdgeInsets.all(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
               child: Row(children: [
-                Icon(Icons.block, color: Colors.amberAccent),
-                SizedBox(width: 12),
+                const Icon(Icons.block, color: Colors.amberAccent),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text('Not usable for bit-perfect playback',
-                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  child: Text(AppLocalizations.of(context).dacCapsNotUsable,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
                 ),
               ]),
             ),
@@ -84,7 +91,7 @@ class DacCapabilitiesScreen extends StatelessWidget {
         const SizedBox(height: 20),
         _whatItSupports(context, c),
         const SizedBox(height: 20),
-        Text('Things worth knowing',
+        Text(AppLocalizations.of(context).dacCapsWorthKnowing,
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         ...c.notes.map((n) => _note(context, n)),
@@ -94,12 +101,15 @@ class DacCapabilitiesScreen extends StatelessWidget {
     );
   }
 
-  String _errorTitle(String? code) => switch (code) {
-        'no_device' => 'No DAC found',
-        'permission_denied' => 'Permission needed',
-        'open_failed' => 'Could not open the DAC',
-        _ => 'Probe failed',
-      };
+  String _errorTitle(BuildContext context, String? code) {
+    final t = AppLocalizations.of(context);
+    return switch (code) {
+      'no_device' => t.dacCapsNoDevice,
+      'permission_denied' => t.dacCapsPermissionNeeded,
+      'open_failed' => t.dacCapsOpenFailed,
+      _ => t.dacCapsProbeFailed,
+    };
+  }
 
   Widget _centered(BuildContext context, IconData icon, String title, String detail) =>
       Center(
@@ -125,8 +135,11 @@ class DacCapabilitiesScreen extends StatelessWidget {
           leading: const Icon(Icons.speaker, size: 36),
           title: Text(c.displayName,
               style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text('USB Audio Class ${c.uacVersion} · '
-              '${c.speed}-speed · ${c.vendorIdHex}:${c.productIdHex}'),
+          subtitle: Text(AppLocalizations.of(context).dacCapsIdentity(
+              c.uacVersion.toString(),
+              c.speed,
+              c.vendorIdHex,
+              c.productIdHex)),
         ),
       );
 
@@ -136,39 +149,52 @@ class DacCapabilitiesScreen extends StatelessWidget {
     final rates = c.playableRates;
     final depths = c.pcmBitDepths;
 
+    final t = AppLocalizations.of(context);
     String rateText;
     if (rates.isEmpty) {
-      rateText = 'Unknown';
+      rateText = t.dacCapsUnknown;
     } else if (rates.length <= 6) {
-      rateText = rates.map(_khz).join(', ');
+      rateText = rates.map((hz) => _khz(context, hz)).join(', ');
     } else {
-      rateText = '${_khz(c.minRate!)} – ${_khz(c.maxRate!)} '
-          '(${rates.length} rates)';
+      rateText = t.dacCapsRateRange(
+          _khz(context, c.minRate!), _khz(context, c.maxRate!), rates.length);
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('What it supports', style: Theme.of(context).textTheme.titleMedium),
+        Text(t.dacCapsWhatItSupports,
+            style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
-        _row('Sample rates', rateText),
-        _row('Bit depths',
-            depths.isEmpty ? 'Unknown' : depths.map((d) => '$d-bit').join(', ')),
-        _row('Channels',
-            c.formats.isEmpty ? 'Unknown' : '${c.formats.first.channels}'),
-        if (c.currentRate > 0) _row('Currently running at', _khz(c.currentRate)),
-        _row('USB timing', c.isAsync ? 'Asynchronous (DAC clock)' : 'Synchronous'),
-        _row('Volume control',
-            c.volumeHostControllable ? 'Supported over USB' : 'On the device only'),
-        if (c.supportsDsd) _row('DSD', 'Supported by the hardware'),
+        _row(t.dacCapsSampleRates, rateText),
+        _row(
+            t.dacCapsBitDepths,
+            depths.isEmpty
+                ? t.dacCapsUnknown
+                : depths.map(t.dacCapsBitDepth).join(', ')),
+        _row(
+            t.dacCapsChannels,
+            c.formats.isEmpty
+                ? t.dacCapsUnknown
+                : '${c.formats.first.channels}'),
+        if (c.currentRate > 0)
+          _row(t.dacCapsCurrentlyAt, _khz(context, c.currentRate)),
+        _row(t.dacCapsUsbTiming,
+            c.isAsync ? t.dacCapsAsync : t.dacCapsSync),
+        _row(
+            t.dacCapsVolumeControl,
+            c.volumeHostControllable
+                ? t.dacCapsVolumeOverUsb
+                : t.dacCapsVolumeDeviceOnly),
+        if (c.supportsDsd) _row(t.dacCapsDsd, t.dacCapsDsdSupported),
       ],
     );
   }
 
-  static String _khz(int hz) {
+  static String _khz(BuildContext context, int hz) {
     final k = hz / 1000.0;
     final s = k == k.roundToDouble() ? k.toStringAsFixed(0) : k.toStringAsFixed(1);
-    return '$s kHz';
+    return AppLocalizations.of(context).dacCapsKhz(s);
   }
 
   Widget _row(String label, String value) => Padding(
@@ -219,8 +245,9 @@ class DacCapabilitiesScreen extends StatelessWidget {
   }
 
   Widget _technical(BuildContext context, DacCapabilities c) => ExpansionTile(
-        title: const Text('Technical details'),
-        subtitle: const Text('For support reports'),
+        title: Text(AppLocalizations.of(context).dacCapsTechnical),
+        subtitle:
+            Text(AppLocalizations.of(context).dacCapsTechnicalSubtitle),
         children: [
           Padding(
             padding: const EdgeInsets.all(12),

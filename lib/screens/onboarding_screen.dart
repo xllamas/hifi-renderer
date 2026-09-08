@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
 /// First-run setup: the permissions a renderer needs to behave like an
 /// appliance, offered once and never insisted on.
 ///
@@ -81,45 +82,48 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.rerun ? 'Setup' : 'Set up HiFi Renderer'),
+        title: Text(widget.rerun
+            ? AppLocalizations.of(context).onboardingTitleRerun
+            : AppLocalizations.of(context).onboardingTitle),
         automaticallyImplyLeading: widget.rerun,
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Text(
-            'This phone is going to sit somewhere and be a renderer. Android '
-            'and most phone makers assume no app wants to do that, so a few '
-            'things have to be turned on by hand.',
-            style: TextStyle(fontSize: 14, height: 1.4, color: Colors.white70),
+          Text(
+            AppLocalizations.of(context).onboardingIntro,
+            style: const TextStyle(
+                fontSize: 14, height: 1.4, color: Colors.white70),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'None of it is required to try the app, and you can change any of '
-            'it later in Settings.',
-            style: TextStyle(fontSize: 12.5, color: Colors.white38),
+          Text(
+            AppLocalizations.of(context).onboardingOptional,
+            style: const TextStyle(fontSize: 12.5, color: Colors.white38),
           ),
           const SizedBox(height: 24),
 
           _step(
             n: 1,
             done: notifications,
-            title: 'Show a notification',
+            title: AppLocalizations.of(context).onboardingNotifications,
             detail: notifications
-                ? 'Granted. The renderer will show its notification while '
-                    'running.'
-                : 'Android will not let the renderer keep running in the '
-                    'background without one, and it is the only visible sign '
-                    'the renderer is alive.',
-            action: notifications ? null : 'Allow',
+                ? AppLocalizations.of(context).onboardingNotificationsGranted
+                : AppLocalizations.of(context).onboardingNotificationsWhy,
+            action: notifications
+                ? null
+                : AppLocalizations.of(context).onboardingAllow,
             onAction: () async {
+              // Resolved before the await. Afterwards this State may be gone,
+              // and the strings are needed precisely on the paths where the
+              // platform call took a while.
+              final t = AppLocalizations.of(context);
               final what =
                   await _channel.invokeMethod<String>('requestNotifications');
               if (!mounted) return;
               if (what == 'unavailable') {
-                _say('This phone has no notification settings screen to open.');
+                _say(t.onboardingNoNotificationScreen);
               } else if (what == 'settings') {
-                _say('Android stopped asking — turn notifications on there.');
+                _say(t.onboardingNotificationsInSettings);
               }
               _refresh();
             },
@@ -128,12 +132,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           _step(
             n: 2,
             done: battery,
-            title: 'Stop Android suspending it',
+            title: AppLocalizations.of(context).onboardingBattery,
             detail: battery
-                ? 'Granted. Android will not suspend the renderer when idle.'
-                : 'Without this, Android suspends the app when the screen has '
-                    'been off for a while, and playback stops mid-track.',
-            action: battery ? null : 'Grant',
+                ? AppLocalizations.of(context).onboardingBatteryGranted
+                : AppLocalizations.of(context).onboardingBatteryWhy,
+            action: battery
+                ? null
+                : AppLocalizations.of(context).settingsGrant,
             onAction: () async {
               await _channel.invokeMethod('requestBatteryExemption');
               _refresh();
@@ -147,27 +152,25 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             n: 3,
             done: null,
             title: hasVendor
-                ? 'Autostart${_manufacturer.isEmpty ? '' : ' ($_manufacturer)'}'
-                : 'Your phone maker\'s own restrictions',
+                ? (_manufacturer.isEmpty
+                    ? AppLocalizations.of(context).onboardingVendorKnownNoName
+                    : AppLocalizations.of(context)
+                        .onboardingVendorKnown(_manufacturer))
+                : AppLocalizations.of(context).onboardingVendorUnknown,
             detail: hasVendor
-                ? 'Phones from this maker usually add background-app '
-                    'restrictions of their own, separate from Android\'s, and '
-                    'they are the usual reason a renderer does not come back '
-                    'after a reboot. The app cannot detect them — it only '
-                    'knows this maker has such a screen — and it cannot tell '
-                    'whether you granted anything there, so this step never '
-                    'ticks.'
-                : 'We have no known settings screen for this phone. If the '
-                    'renderer stops when idle or does not return after a '
-                    'reboot, look for "autostart", "background apps" or '
-                    '"protected apps" in your phone\'s own battery settings.',
-            action: hasVendor ? 'Open settings' : null,
+                ? AppLocalizations.of(context).onboardingVendorKnownDetail
+                : AppLocalizations.of(context).onboardingVendorUnknownDetail,
+            action: hasVendor
+                ? AppLocalizations.of(context).settingsOpenSettings
+                : null,
             onAction: () async {
+              final couldNotOpen =
+                  AppLocalizations.of(context).settingsCouldNotOpen;
               final opened =
                   await _channel.invokeMethod<String>('openVendorAutostart') ?? '';
               if (!mounted) return;
               if (opened.isEmpty) {
-                _say('Could not open that screen on this phone.');
+                _say(couldNotOpen);
               }
             },
           ),
@@ -175,11 +178,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           _step(
             n: 4,
             done: null,
-            title: 'Your DAC',
-            detail: 'Plug the USB DAC in when you are ready. Android asks for '
-                'permission the first time it is attached, so there is nothing '
-                'to do here — and the renderer follows whatever DAC is '
-                'connected rather than being configured for one.',
+            title: AppLocalizations.of(context).onboardingDac,
+            detail: AppLocalizations.of(context).onboardingDacDetail,
             action: null,
             onAction: null,
           ),
@@ -187,15 +187,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           const SizedBox(height: 12),
           FilledButton(
             onPressed: _finish,
-            child: Text(ready ? 'Done' : 'Finish anyway'),
+            child: Text(ready
+                ? AppLocalizations.of(context).onboardingDone
+                : AppLocalizations.of(context).onboardingFinishAnyway),
           ),
           const SizedBox(height: 10),
           Text(
             ready
-                ? 'Everything the app can check is granted.'
-                : 'Skipping is fine. The renderer will run; it may just not '
-                    'survive being left alone, and Settings will tell you if '
-                    'something is stopping it.',
+                ? AppLocalizations.of(context).onboardingAllGranted
+                : AppLocalizations.of(context).onboardingSkippingIsFine,
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.white38, fontSize: 12),
           ),
@@ -235,7 +235,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('$n. $title',
+                  Text(AppLocalizations.of(context).onboardingStep(n, title),
                       style: const TextStyle(
                           fontSize: 15.5, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 6),

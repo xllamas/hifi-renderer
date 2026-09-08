@@ -233,4 +233,201 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsLanguageHelp =>
       'The renderer follows this phone unless you choose otherwise. A box set up on a spare phone often inherits a language nobody wanted.';
+
+  @override
+  String get onboardingTitle => 'Set up HiFi Renderer';
+
+  @override
+  String get onboardingTitleRerun => 'Setup';
+
+  @override
+  String get onboardingIntro =>
+      'This phone is going to sit somewhere and be a renderer. Android and most phone makers assume no app wants to do that, so a few things have to be turned on by hand.';
+
+  @override
+  String get onboardingOptional =>
+      'None of it is required to try the app, and you can change any of it later in Settings.';
+
+  @override
+  String get onboardingNotifications => 'Show a notification';
+
+  @override
+  String get onboardingNotificationsGranted =>
+      'Granted. The renderer will show its notification while running.';
+
+  @override
+  String get onboardingNotificationsWhy =>
+      'Android will not let the renderer keep running in the background without one, and it is the only visible sign the renderer is alive.';
+
+  @override
+  String get onboardingAllow => 'Allow';
+
+  @override
+  String get onboardingNoNotificationScreen =>
+      'This phone has no notification settings screen to open.';
+
+  @override
+  String get onboardingNotificationsInSettings =>
+      'Android stopped asking — turn notifications on there.';
+
+  @override
+  String get onboardingBattery => 'Stop Android suspending it';
+
+  @override
+  String get onboardingBatteryGranted =>
+      'Granted. Android will not suspend the renderer when idle.';
+
+  @override
+  String get onboardingBatteryWhy =>
+      'Without this, Android suspends the app when the screen has been off for a while, and playback stops mid-track.';
+
+  @override
+  String onboardingVendorKnown(String vendor) {
+    return 'Autostart ($vendor)';
+  }
+
+  @override
+  String get onboardingVendorKnownNoName => 'Autostart';
+
+  @override
+  String get onboardingVendorUnknown => 'Your phone maker\'s own restrictions';
+
+  @override
+  String get onboardingVendorKnownDetail =>
+      'Phones from this maker usually add background-app restrictions of their own, separate from Android\'s, and they are the usual reason a renderer does not come back after a reboot. The app cannot detect them — it only knows this maker has such a screen — and it cannot tell whether you granted anything there, so this step never ticks.';
+
+  @override
+  String get onboardingVendorUnknownDetail =>
+      'We have no known settings screen for this phone. If the renderer stops when idle or does not return after a reboot, look for \"autostart\", \"background apps\" or \"protected apps\" in your phone\'s own battery settings.';
+
+  @override
+  String get onboardingDac => 'Your DAC';
+
+  @override
+  String get onboardingDacDetail =>
+      'Plug the USB DAC in when you are ready. Android asks for permission the first time it is attached, so there is nothing to do here — and the renderer follows whatever DAC is connected rather than being configured for one.';
+
+  @override
+  String get onboardingDone => 'Done';
+
+  @override
+  String get onboardingFinishAnyway => 'Finish anyway';
+
+  @override
+  String get onboardingAllGranted => 'Everything the app can check is granted.';
+
+  @override
+  String get onboardingSkippingIsFine =>
+      'Skipping is fine. The renderer will run; it may just not survive being left alone, and Settings will tell you if something is stopping it.';
+
+  @override
+  String onboardingStep(int number, String title) {
+    return '$number. $title';
+  }
+
+  @override
+  String get dacCapsTitle => 'DAC capabilities';
+
+  @override
+  String get dacCapsReprobe => 'Re-probe';
+
+  @override
+  String get dacCapsNotProbed => 'Not probed yet';
+
+  @override
+  String get dacCapsNotProbedDetail => 'Connect a USB DAC and tap refresh.';
+
+  @override
+  String get dacCapsUnknownError => 'Unknown error.';
+
+  @override
+  String get dacCapsNoDevice => 'No DAC found';
+
+  @override
+  String get dacCapsPermissionNeeded => 'Permission needed';
+
+  @override
+  String get dacCapsOpenFailed => 'Could not open the DAC';
+
+  @override
+  String get dacCapsProbeFailed => 'Probe failed';
+
+  @override
+  String get dacCapsNotUsable => 'Not usable for bit-perfect playback';
+
+  @override
+  String get dacCapsWorthKnowing => 'Things worth knowing';
+
+  @override
+  String get dacCapsWhatItSupports => 'What it supports';
+
+  @override
+  String dacCapsIdentity(
+    String version,
+    String speed,
+    String vendor,
+    String product,
+  ) {
+    return 'USB Audio Class $version · $speed-speed · $vendor:$product';
+  }
+
+  @override
+  String get dacCapsSampleRates => 'Sample rates';
+
+  @override
+  String get dacCapsBitDepths => 'Bit depths';
+
+  @override
+  String get dacCapsChannels => 'Channels';
+
+  @override
+  String get dacCapsCurrentlyAt => 'Currently running at';
+
+  @override
+  String get dacCapsUsbTiming => 'USB timing';
+
+  @override
+  String get dacCapsVolumeControl => 'Volume control';
+
+  @override
+  String get dacCapsDsd => 'DSD';
+
+  @override
+  String get dacCapsUnknown => 'Unknown';
+
+  @override
+  String dacCapsRateRange(String low, String high, int count) {
+    return '$low – $high ($count rates)';
+  }
+
+  @override
+  String dacCapsBitDepth(int bits) {
+    return '$bits-bit';
+  }
+
+  @override
+  String get dacCapsAsync => 'Asynchronous (DAC clock)';
+
+  @override
+  String get dacCapsSync => 'Synchronous';
+
+  @override
+  String get dacCapsVolumeOverUsb => 'Supported over USB';
+
+  @override
+  String get dacCapsVolumeDeviceOnly => 'On the device only';
+
+  @override
+  String get dacCapsDsdSupported => 'Supported by the hardware';
+
+  @override
+  String get dacCapsTechnical => 'Technical details';
+
+  @override
+  String get dacCapsTechnicalSubtitle => 'For support reports';
+
+  @override
+  String dacCapsKhz(String value) {
+    return '$value kHz';
+  }
 }
