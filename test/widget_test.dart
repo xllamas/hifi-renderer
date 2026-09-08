@@ -1096,6 +1096,153 @@ void main() {
     });
   });
 
+  group('Layout in every language', () {
+    /// The Redmi this renderer runs on: 1080x2400 at density 440, less the
+    /// status and navigation bars SafeArea removes. Guessing the geometry
+    /// tests a phone nobody owns.
+    void asRedmi(WidgetTester tester) {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.75;
+      tester.view.padding = const FakeViewPadding(top: 108, bottom: 130);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPadding);
+    }
+
+    Widget appIn(Locale locale, Widget home) => MaterialApp(
+          locale: locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: home,
+        );
+
+    // Flutter throws a real exception on overflow rather than merely drawing
+    // the striped bar, so pumping each screen in each language *is* the
+    // assertion. German and the wordier Romance strings run well past the
+    // English they were laid out against, and the badge row is the tightest
+    // place in the app.
+    for (final locale in AppLocalizations.supportedLocales) {
+      testWidgets('the guest badge row fits in $locale', (tester) async {
+        asRedmi(tester);
+        // The worst case on that row: a format badge beside the longest of
+        // the three fidelity labels, with a sender name in the title.
+        final status = RendererStatus.parse(
+            '{"transportState":"PLAYING","title":null,"senderName":"Walrus",'
+            '"formatBadge":"ALAC 16/44.1","sourceFormat":"ALAC",'
+            '"sourceRate":44100,"sourceBits":16,"bitPerfect":false,'
+            '"senderAltered":true,"output":"usb","dacConnected":true,'
+            '"dacName":"SMSL USB AUDIO","dacCount":2}');
+        await tester.pumpWidget(appIn(
+          locale,
+          NowPlayingScreen(
+            status: status,
+            onOpenSettings: () {},
+            onPlayPause: () {},
+            onNext: () {},
+            onPrevious: () {},
+            onVolumeChanged: (_) {},
+          ),
+        ));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('the failure banner fits in $locale', (tester) async {
+        asRedmi(tester);
+        // The longest headline the app can show, with a technical detail
+        // under it and album art competing for the same screen.
+        final status = RendererStatus.parse(
+            '{"transportState":"STOPPED","title":"Chameleon",'
+            '"artist":"Herbie Hancock","album":"Head Hunters",'
+            '"durationSeconds":945,"formatBadge":"FLAC 24/96",'
+            '"sourceFormat":"FLAC","sourceRate":96000,"sourceBits":24,'
+            '"dacConnected":true,"dacName":"SMSL USB AUDIO","dacCount":1,'
+            '"lastError":"rateUnplayable","lastErrorArgs":[192000,48000],'
+            '"lastErrorDetail":"no PCM alt-setting holds 24-bit 2ch at 192000 Hz"}');
+        await tester.pumpWidget(appIn(
+          locale,
+          NowPlayingScreen(
+            status: status,
+            onOpenSettings: () {},
+            onPlayPause: () {},
+            onNext: () {},
+            onPrevious: () {},
+            onVolumeChanged: (_) {},
+          ),
+        ));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('the system-audio row fits in $locale', (tester) async {
+        asRedmi(tester);
+        // The row under the badge, which the other cases never reach because
+        // they all play through a DAC. It overflowed by 12 pixels in German
+        // on a real phone while every test here passed, because every status
+        // above says output=usb.
+        final status = RendererStatus.parse(
+            '{"transportState":"PLAYING","title":"First — Redbook",'
+            '"artist":"Test Signals","album":"OpenHome Playlist",'
+            '"durationSeconds":30,"positionSeconds":12,'
+            '"formatBadge":"FLAC 16/44.1","sourceFormat":"FLAC",'
+            '"sourceRate":44100,"sourceBits":16,"bitPerfect":false,'
+            '"output":"android","dacConnected":false,"dacCount":0}');
+        await tester.pumpWidget(appIn(
+          locale,
+          NowPlayingScreen(
+            status: status,
+            onOpenSettings: () {},
+            onPlayPause: () {},
+            onNext: () {},
+            onPrevious: () {},
+            onVolumeChanged: (_) {},
+          ),
+        ));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('the output-device row fits in $locale', (tester) async {
+        asRedmi(tester);
+        // A long hardware name beside the "1 of N" counter, which grows with
+        // translation. The name may be elided; the row may not overflow.
+        final status = RendererStatus.parse(
+            '{"transportState":"PLAYING","title":"Chameleon",'
+            '"durationSeconds":945,"formatBadge":"FLAC 24/96",'
+            '"sourceFormat":"FLAC","sourceRate":96000,"sourceBits":24,'
+            '"bitPerfect":true,"output":"usb","dacConnected":true,'
+            '"dacName":"Topping D90SE Balanced USB Audio Interface",'
+            '"dacCount":3}');
+        await tester.pumpWidget(appIn(
+          locale,
+          NowPlayingScreen(
+            status: status,
+            onOpenSettings: () {},
+            onPlayPause: () {},
+            onNext: () {},
+            onPrevious: () {},
+            onVolumeChanged: (_) {},
+          ),
+        ));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('the idle screen fits in $locale', (tester) async {
+        asRedmi(tester);
+        await tester.pumpWidget(appIn(
+          locale,
+          NowPlayingScreen(
+            status: const RendererStatus(
+                rendererName: 'Living Room', dacConnected: true),
+            onOpenSettings: () {},
+            onPlayPause: () {},
+            onNext: () {},
+            onPrevious: () {},
+            onVolumeChanged: (_) {},
+          ),
+        ));
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
+
   group('UI', () {
     const channel = MethodChannel('com.hifirend/renderer');
     TestWidgetsFlutterBinding.ensureInitialized();
