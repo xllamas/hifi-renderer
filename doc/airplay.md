@@ -313,50 +313,69 @@ DAAP, artwork and progress.
 ## AirPlay 2: assessed, not attempted
 
 Appearing in Music's and Tidal's own device pickers means being an AirPlay 2
-receiver on `_airplay._tcp`. That was scoped on 2026-09-08 and rejected, on a
-blocker that does not yield to effort.
+receiver on `_airplay._tcp`. Scoped 2026-09-08, and the conclusion stands --
+but the *first* version of this section gave the wrong reason and is corrected
+below, because the wrong reason would have sent the next reader down a blind
+alley.
 
-**AirPlay 2 synchronises clocks with PTP (IEEE 1588) on UDP 319 and 320.**
-Those are privileged ports, and an unprivileged Android process cannot bind
-them. Measured on the test phone, with a high-port control to show it is the
-port number and not the tooling:
+### The reason it is not PTP
+
+The original claim here was that AirPlay 2 needs PTP (IEEE 1588) on UDP 319
+and 320, that an unprivileged Android process cannot bind those, and that this
+blocks AirPlay 2 outright. The measurement is real and repeatable:
 
     $ adb shell toybox nc -l -p 319
     nc: bind: Permission denied
     $ adb shell toybox nc -l -p 33190
     (blocks -- bound fine)
 
-This is why shairport-sync delegates PTP to `nqptp`, a *separate root helper*:
-it cannot do this from inside the media process either, and it has root to fall
-back on. An Android app does not. Rooting the phone is not available to a
-household appliance, and the ways round it -- a `VpnService` intercepting those
-packets, or iptables redirection -- are respectively wildly disproportionate
-for an audio app and root-dependent in turn.
+The *inference drawn from it was wrong*. PhairPlay -- an open-source AirPlay 2
+receiver for Android TV, Kotlin, unrooted, sideloaded -- does AirPlay 2
+discovery, HomeKit-style pairing, FairPlay key decryption, RTSP and
+mirroring-with-audio on a stock Android device. Its timing is Apple's
+simplified NTP-over-UDP on an ordinary high port:
 
-The rest of the work is large in its own right. Against a real AirPlay 2
-receiver on the same network:
+    TimingHandler -- Responds to Apple NTP timing probes for A/V synchronization
+    handler.start(scope)   // listens on TIMING_PORT (6002)
 
-    ours:    txtvers=1 ch=2 cn=0,1 et=0,1 md=0,1,2 tp=UDP vn=3 vs=105.1
-             am=AirPort10,115
-    Walrus:  features=0x4A7FCFD5,0x38174FDE flags=0x204 pk=73dda4... pi=...
-             protovers=1.1 srcvers=960.13.1 model=Mac16,12 deviceid=... psi=...
+No privileged port anywhere in it. It advertises with the same `NsdManager`
+this app already uses, registering *both* services on port 7000:
 
-`pk` and `pi` are not decoration: they anchor HomeKit-derived pairing. Full
-support means pair-setup and pair-verify (Ed25519, X25519, HKDF-SHA512,
-ChaCha20-Poly1305), an encrypted RTSP channel afterwards, Apple binary plists
-in place of SDP, and a *buffered* audio mode in which the receiver pulls audio
-over a separate channel -- architecturally unlike the push-RTP path this
-receiver is built on. More work than the whole of AirPlay 1 here to date,
-behind a blocker that stops it working at the end of it.
+    _airplay._tcp   deviceid, features=0x5A7FFFF7,0x1E, model, srcvers,
+                    vv=2, pi=<persistent uuid>, flags=0x4
+    _raop._tcp      cn=0,1,2,3  et=0,3,5  md=0,1,2  vn=65537  tp=UDP  am=<model>
 
-One limit on that confidence: the port measurement and the record comparison
-are measurements, but "PTP has no unprivileged fallback" is a reading of how
-the reference receiver behaves rather than something proven exhaustively.
+So the achievable surface of AirPlay 2 on unrooted Android is much larger than
+this document first claimed, and the pairing and FairPlay work -- the part that
+looked most forbidding -- is demonstrably writable in Kotlin.
 
-**The reframe that matters.** This is the guest path on a household appliance,
-and a guest is far likelier to be holding an iPhone than sitting at the owner's
-Mac. iOS senders use AirPlay 1 and do send metadata, so the case that matters
-most may already work with what is written -- untested only because the one
-sender to hand is structurally the one that cannot exercise it. AirPlay 2 buys
-macOS *app-level* pickers and nothing else, since macOS can already reach this
-receiver for audio. Verify with an iPhone before spending anything here.
+### The reason it is still not worth doing here
+
+Two things, and neither is about privilege.
+
+**The role we want is the one nobody has finished.** Music and Tidal address a
+speaker through *buffered audio*, AirPlay 2 stream type 103 -- not the realtime
+or mirroring paths. PhairPlay's own README: "Buffered audio (AirPlay 2 type
+103) is accepted but not yet played back", listed as in progress. That is the
+furthest along an open Android AirPlay 2 receiver has got, and type 103
+playback is precisely the piece still missing. Whether PTP is what makes that
+piece hard is an open question this document should not answer twice.
+
+**The achievable part is the part this app does not want.** Mirroring audio is
+AAC-ELD or AAC-LC. This renderer exists to put untouched samples into a DAC,
+and it already receives *lossless ALAC* over AirPlay 1. Implementing AirPlay 2
+mirroring would be a large piece of work whose reward is a worse codec than the
+one already arriving. Only type 103 carries lossless audio, and type 103 is the
+unfinished part.
+
+So: not blocked, but poorly aimed. If AirPlay 2 is ever revisited, PhairPlay is
+the reference to read first -- <https://github.com/mazer666/PhairPlay> -- and
+the question to answer before writing anything is what type 103 playback
+actually requires for timing.
+
+**The reframe that matters, unchanged.** This is the guest path on a household
+appliance, and a guest is far likelier to be holding an iPhone than sitting at
+the owner's Mac. iOS senders use AirPlay 1 and do send metadata, so the case
+that matters most may already work with what is written -- untested only
+because the one sender to hand is structurally the one that cannot exercise it.
+Verify with an iPhone before spending anything here.
