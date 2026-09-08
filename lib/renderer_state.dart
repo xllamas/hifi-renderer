@@ -29,6 +29,11 @@ class RendererStatus {
   /// false, which on its own does not say why.
   final bool senderAltered;
 
+  /// Who is streaming to us, when the renderer could work it out. Null far
+  /// more often than not — AirPlay 1 carries no sender name — so nothing may
+  /// depend on it being there.
+  final String? senderName;
+
   /// Which output is carrying audio: 'usb' or 'android'.
   final String output;
   final int dacVolume;
@@ -84,6 +89,7 @@ class RendererStatus {
     this.dacCount = 0,
     this.bitPerfect = false,
     this.senderAltered = false,
+    this.senderName,
     this.output = 'usb',
     this.dacVolume = -1,
     this.dacVolumeSupported = false,
@@ -119,6 +125,7 @@ class RendererStatus {
         dacCount: (j['dacCount'] as num?)?.toInt() ?? 0,
         bitPerfect: j['bitPerfect'] as bool? ?? false,
         senderAltered: j['senderAltered'] as bool? ?? false,
+        senderName: j['senderName'] as String?,
         output: j['output'] as String? ?? 'usb',
         dacVolume: (j['dacVolume'] as num?)?.toInt() ?? -1,
         dacVolumeSupported: j['dacVolumeSupported'] as bool? ?? false,
@@ -145,6 +152,16 @@ class RendererStatus {
   /// Playing through Android's mixer instead of a DAC, so nothing is
   /// bit-perfect and the screen must not imply otherwise.
   bool get usingSystemAudio => output == 'android';
+
+  /// What to call whatever is playing.
+  ///
+  /// A guest streaming over AirPlay usually gives us no track name at all —
+  /// macOS routes system audio through a sender with no concept of a track —
+  /// so naming *who* has the output is both the best available answer and, for
+  /// the owner hearing music start unexpectedly, generally the more useful
+  /// one. A real title always wins when there is one.
+  String get displayTitle =>
+      title ?? (senderName != null ? 'AirPlay from $senderName' : 'Unknown track');
 
   /// The DAC takes a volume but will not report one, so its own knob or remote
   /// cannot be followed and this shows the last value sent.
@@ -177,6 +194,7 @@ class RendererStatus {
         dacCount: dacCount,
         bitPerfect: bitPerfect,
         senderAltered: senderAltered,
+        senderName: senderName,
         output: output,
         dacVolume: volume,
         dacVolumeSupported: dacVolumeSupported,

@@ -253,7 +253,7 @@ class NowPlayingScreen extends StatelessWidget {
       crossAxisAlignment: cross,
       children: [
         Text(
-          status.title ?? 'Unknown track',
+          status.displayTitle,
           textAlign: align,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,

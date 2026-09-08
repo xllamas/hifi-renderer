@@ -336,8 +336,28 @@ gives the sender's host:
     $ dns-sd -L iTunes_Ctrl_20BC6070E22D669E _dacp._tcp local
     ... can be reached at Walrus.local.:57047
 
-`Walrus` is the sending Mac. So "AirPlay from Walrus" is available from the
-`dacp-id` header plus one mDNS resolve, which `NsdManager` can already do.
+`Walrus` is the sending Mac -- but that name is in the SRV record's *target*,
+and `NsdManager` resolves it away. Asked to resolve the same service, Android
+returns `192.168.100.134` and no name, which is what the first implementation
+got and correctly refused to show. Both shortcuts out are dead ends, measured:
+the phone cannot resolve `Walrus.local` at all (`ping: unknown host`), and the
+Mac answers a reverse PTR for its own address with `No Such Record`.
+
+What works is a second hop. `_companion-link._tcp` -- Apple's Continuity
+service, advertised by Macs and iPhones alike -- carries the friendly name as
+its *instance* name, which `NsdManager` does expose. So the sender's address
+comes from the DACP service and the name comes from whichever Continuity
+advertisement shares that address:
+
+    _dacp._tcp   iTunes_Ctrl_20BC6070E22D669E -> 192.168.100.134
+    _companion-link._tcp   "Walrus"           -> 192.168.100.134   match
+
+Both hops anchor on addresses returned by the same resolver rather than on the
+RTSP peer address: senders connect over IPv6 -- macOS was seen doing it -- and
+matching an IPv6 peer against an IPv4 advertisement would never hit, in a way
+that would look like "it works for some senders". Verified on the Redmi against
+macOS 26: `airplay: sender is 'Walrus' at 192.168.100.134`, and the screen
+reads *AirPlay from Walrus*.
 
 That same channel is the other way to metadata, and a more promising one than
 DAAP on this route: DACP is a remote-control protocol, so a receiver holding

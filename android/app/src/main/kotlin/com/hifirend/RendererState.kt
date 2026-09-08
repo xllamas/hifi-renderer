@@ -68,6 +68,17 @@ object RendererState {
      */
     @Volatile var senderAltered: Boolean = false
 
+    /**
+     * Who is streaming to us, when that could be worked out, for the screen to
+     * name in place of a track it does not know.
+     *
+     * Only ever a real name. AirPlay 1 sends no sender name in its headers, so
+     * this is resolved the long way round -- see [com.hifirend.airplay
+     * .DacpSenderName] -- and comes back empty often enough that the screen
+     * must read perfectly well without it.
+     */
+    @Volatile var senderName: String? = null
+
     /** Which output is carrying audio: "usb" or "android". */
     @Volatile var output: String = "usb"
 
@@ -149,7 +160,7 @@ object RendererState {
 
     fun clearTrack() {
         title = null; artist = null; album = null; albumArtUri = null
-        durationSeconds = 0
+        durationSeconds = 0; senderName = null
         clearFormat()
     }
 
@@ -178,6 +189,7 @@ object RendererState {
         append(",\"dacCount\":").append(dacCount)
         append(",\"bitPerfect\":").append(bitPerfect)
         append(",\"senderAltered\":").append(senderAltered)
+        append(",\"senderName\":").append(q(senderName))
         append(",\"output\":").append(q(output))
         append(",\"playlistLength\":").append(playlistLength)
         append(",\"playlistPosition\":").append(playlistPosition)

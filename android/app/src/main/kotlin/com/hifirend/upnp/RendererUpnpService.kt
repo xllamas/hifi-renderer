@@ -426,6 +426,17 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                     senderAltered = true)
                 Log.i(TAG, "airplay: decoder configured=$configured, engine=$started")
                 publishGuestStream(format)
+                // Best-effort and off the audio path. If a name arrives it
+                // replaces the fallback on screen; if it never does, the
+                // screen is exactly as it would have been.
+                params.dacpId?.let { id ->
+                    senderName = com.hifirend.airplay.DacpSenderName(applicationContext)
+                    senderName?.resolve(id) { name ->
+                        if (activeSource == SOURCE_AIRPLAY) {
+                            com.hifirend.RendererState.senderName = name
+                        }
+                    }
+                }
 
                 // Bind before answering SETUP: the ports go into that reply,
                 // and a sender told port 0 has nowhere to send and gives up.
@@ -463,6 +474,8 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                 // for exactly the reason a stopped local track must not.
                 com.hifirend.RendererState.transportState = "STOPPED"
                 com.hifirend.RendererState.clearTrack()
+                senderName?.stop()
+                senderName = null
                 airPlayAudio?.let {
                     Log.i(TAG, "airplay: session ended after ${it.packets.get()} packets, " +
                         "${it.bytesDecrypted.get()} bytes decrypted, " +
@@ -505,6 +518,9 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
      * the sender does supply one over SET_PARAMETER, and parsing that DAAP
      * payload is its own piece of work rather than something to guess at here.
      */
+    /** Resolves who is streaming, for as long as a guest holds the output. */
+    private var senderName: com.hifirend.airplay.DacpSenderName? = null
+
     private fun publishGuestStream(format: com.hifirend.airplay.RaopFormat) {
         val st = com.hifirend.RendererState
         // The owner's last track has to go first. The playlist stops when the

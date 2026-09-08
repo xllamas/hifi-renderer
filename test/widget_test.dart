@@ -1336,6 +1336,49 @@ void main() {
       expect(find.text('ALAC 16/44.1'), findsOneWidget);
     });
 
+    testWidgets('a guest with no track name is named by its sender', (tester) async {
+      // macOS routes system audio through a sender with no concept of a track,
+      // so the DAAP body arrives with every string field empty and the screen
+      // has no title to show. Naming who has the output is the better answer,
+      // and for an owner hearing music start unexpectedly it is the more
+      // useful one.
+      const guest = """
+{"transportState":"PLAYING","formatBadge":"ALAC 16/44.1","sourceFormat":"ALAC",
+"sourceRate":44100,"sourceBits":16,"bitPerfect":false,"senderAltered":true,
+"output":"usb","dacConnected":true,"dacName":"SMSL USB AUDIO","dacCount":1,
+"senderName":"Walrus"}
+""";
+      final status = RendererStatus.parse(guest);
+      expect(status.title, isNull);
+      expect(status.displayTitle, 'AirPlay from Walrus');
+
+      await tester.pumpWidget(MaterialApp(
+        home: NowPlayingScreen(
+          status: status,
+          onOpenSettings: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
+          onVolumeChanged: (_) {},
+        ),
+      ));
+      expect(find.text('AirPlay from Walrus'), findsOneWidget);
+      expect(find.text('Unknown track'), findsNothing);
+    });
+
+    test('a real title always outranks the sender name', () {
+      // The fallback is for the case with no title. An iPhone that does send
+      // one must not have it hidden behind the name of the phone.
+      final named = RendererStatus.parse(
+        '{"title":"Chameleon","senderName":"Walrus","output":"usb"}',
+      );
+      expect(named.displayTitle, 'Chameleon');
+
+      // And with neither, the wording is unchanged from before.
+      final bare = RendererStatus.parse('{"output":"usb"}');
+      expect(bare.displayTitle, 'Unknown track');
+    });
+
     test('a volume change does not quietly restore the bit-perfect claim', () {
       // copyWithVolume rebuilds the whole record field by field, so a field it
       // forgets silently reverts to its default -- and this field's default is

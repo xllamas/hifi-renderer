@@ -270,6 +270,7 @@ class RaopRtspServer(
             formatParameters = announced["fmtp"].orEmpty(),
             senderControlPort = control,
             senderTimingPort = timing,
+            dacpId = request["DACP-ID"],
         )
         runCatching { onSessionReady(params) }
             .onFailure { Log.w(TAG, "AirPlay session setup failed: ${it.message}") }
@@ -301,6 +302,13 @@ data class RaopSessionParams(
     val formatParameters: String,
     val senderControlPort: Int,
     val senderTimingPort: Int,
+    /**
+     * The sender's `DACP-ID`, which is the only handle AirPlay 1 gives us on
+     * who is streaming. Not an identity to trust -- it is a remote-control
+     * token, not authentication -- but it names a Bonjour service that resolves
+     * to the sender's host. See [DacpSenderName].
+     */
+    val dacpId: String? = null,
     var serverAudioPort: Int = 0,
     var serverControlPort: Int = 0,
     var serverTimingPort: Int = 0,
