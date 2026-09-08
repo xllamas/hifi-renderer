@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+      The launcher label, and the one the appliance answers to everywhere else:
+      on the network, in DLNA controllers, in AirPlay pickers. Deliberately not
+      translated, and deliberately kept separate from widget_label: they read
+      the same today but name different things, and a future rename of one
+      should not silently move the other.
+    -->
+    <string name="app_name">HiFi Renderer</string>
     <string name="widget_label">HiFi Renderer</string>
     <string name="widget_description">Now playing, format and transport for the renderer.</string>
     <string name="widget_art">Album art</string>
