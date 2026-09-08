@@ -615,4 +615,45 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get playFileStreamHealth => 'Stream health';
+
+  @override
+  String get errServerUnreachable =>
+      'The renderer lost contact with the media server.';
+
+  @override
+  String get errServerRefused => 'The media server refused this track.';
+
+  @override
+  String get errDownloadFailed =>
+      'This track could not be downloaded from the server.';
+
+  @override
+  String get errUndecodableFormat =>
+      'This track is in a format the renderer cannot decode.';
+
+  @override
+  String get errDacRateUnsupported =>
+      'This DAC cannot be set to this track\'s rate or bit depth.';
+
+  @override
+  String get errDacConnectionLost =>
+      'The renderer lost its connection to the DAC.';
+
+  @override
+  String get errTrackCouldNotBePlayed => 'This track could not be played.';
+
+  @override
+  String errRateUnplayable(String rate, String ceiling) {
+    return 'This DAC cannot play $rate; its highest rate is $ceiling.';
+  }
+
+  @override
+  String errStoppedAfterFailures(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Stopped after $count tracks in a row could not be played.',
+    );
+    return '$_temp0';
+  }
 }

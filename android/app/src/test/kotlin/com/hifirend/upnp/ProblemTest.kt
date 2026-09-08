@@ -18,6 +18,11 @@ import org.junit.Test
  * The fetch knows better, so the fetch's reason now wins. These pin that
  * ordering, because the decoder's wording still matches the format case and
  * would quietly take priority again if the branches were ever reordered.
+ *
+ * What is asserted is the *code*, not a sentence. The sentences live in
+ * lib/l10n now, in ten languages, and a test that pinned the English one here
+ * would fail on every rewording while proving nothing about the mapping --
+ * which is the only thing this file exists to protect.
  */
 class ProblemTest {
 
@@ -25,7 +30,7 @@ class ProblemTest {
     fun `an unreachable server is not reported as a format problem`() {
         val d = Problem.describe(
             "the media server could not be reached: Failed to connect to /192.168.100.41:57645")
-        assertEquals("The renderer lost contact with the media server.", d.headline)
+        assertEquals(Problem.SERVER_UNREACHABLE, d.code)
         // The technical wording is kept for whoever walks over to the screen.
         assertTrue(d.detail!!.contains("192.168.100.41:57645"))
     }
@@ -33,61 +38,61 @@ class ProblemTest {
     @Test
     fun `a server that stops responding is a server problem`() {
         assertEquals(
-            "The renderer lost contact with the media server.",
-            Problem.describe("the media server stopped responding: timeout").headline,
+            Problem.SERVER_UNREACHABLE,
+            Problem.describe("the media server stopped responding: timeout").code,
         )
     }
 
     @Test
     fun `an unresolvable host is a server problem`() {
         assertEquals(
-            "The renderer lost contact with the media server.",
-            Problem.describe("the media server's address could not be resolved: nas.local").headline,
+            Problem.SERVER_UNREACHABLE,
+            Problem.describe("the media server's address could not be resolved: nas.local").code,
         )
     }
 
     @Test
     fun `an HTTP error says the server refused it, not that the file is wrong`() {
         assertEquals(
-            "The media server refused this track.",
-            Problem.describe("the server answered HTTP 404 for this track").headline,
+            Problem.SERVER_REFUSED,
+            Problem.describe("the server answered HTTP 404 for this track").code,
         )
     }
 
     @Test
     fun `a genuine format failure still reports as one`() {
         assertEquals(
-            "This track is in a format the renderer cannot decode.",
-            Problem.describe("not a decodable FLAC stream").headline,
+            Problem.UNDECODABLE,
+            Problem.describe("not a decodable FLAC stream").code,
         )
         assertEquals(
-            "This track is in a format the renderer cannot decode.",
+            Problem.UNDECODABLE,
             Problem.describe(
-                "unsupported or unrecognised audio format (audio/L16;rate=44100)").headline,
+                "unsupported or unrecognised audio format (audio/L16;rate=44100)").code,
         )
     }
 
     @Test
     fun `a rate mismatch still blames neither the file nor the network`() {
         assertEquals(
-            "This DAC cannot be set to this track's rate or bit depth.",
-            Problem.describe("no PCM alt-setting holds 24-bit 2ch at 96000 Hz").headline,
+            Problem.DAC_RATE_UNSUPPORTED,
+            Problem.describe("no PCM alt-setting holds 24-bit 2ch at 96000 Hz").code,
         )
     }
 
     @Test
     fun `a USB failure still points at the DAC`() {
         assertEquals(
-            "The renderer lost its connection to the DAC.",
-            Problem.describe("libusb: iso transfer submit failed").headline,
+            Problem.DAC_LOST,
+            Problem.describe("libusb: iso transfer submit failed").code,
         )
     }
 
     @Test
     fun `anything unrecognised stays honestly vague`() {
         assertEquals(
-            "This track could not be played.",
-            Problem.describe("something nobody has seen before").headline,
+            Problem.UNKNOWN,
+            Problem.describe("something nobody has seen before").code,
         )
     }
 }

@@ -1009,6 +1009,43 @@ void main() {
     });
   });
 
+  group('Failure headlines', () {
+    late AppLocalizations t;
+    setUpAll(() async => t = await englishStrings());
+
+    test('a code the app does not know degrades to the generic headline', () {
+      // Codes are composed on the Kotlin side and the sentences live here, so
+      // the two can drift: a failure added there without a string here must
+      // show something a person can read. A screen reading "dacConnectionLost"
+      // across a room is worse than one saying the track could not be played.
+      final unknown = RendererStatus.parse('{"lastError":"somethingNewInKotlin"}');
+      expect(unknown.errorMessage(t), 'This track could not be played.');
+    });
+
+    test('no failure means no headline', () {
+      expect(RendererStatus.parse('{}').errorMessage(t), isNull);
+    });
+
+    test('a parameterised code with no arguments does not crash', () {
+      // Defensive rather than theoretical: the args cross a method channel as
+      // JSON, and a mismatch between the two sides would otherwise take out
+      // the whole screen at exactly the moment something has already failed.
+      final bare = RendererStatus.parse('{"lastError":"rateUnplayable"}');
+      expect(bare.errorMessage(t), 'This track could not be played.');
+      final short =
+          RendererStatus.parse('{"lastError":"rateUnplayable","lastErrorArgs":[96000]}');
+      expect(short.errorMessage(t), 'This track could not be played.');
+    });
+
+    test('rates are formatted where they are read, not where they are sent', () {
+      // The engine sends hertz because only the screen knows how the reader
+      // writes a number; 44100 has to come back as 44.1 and 96000 as 96.
+      final s = RendererStatus.parse(
+          '{"lastError":"rateUnplayable","lastErrorArgs":[44100,96000]}');
+      expect(s.errorMessage(t), 'This DAC cannot play 44.1 kHz; its highest rate is 96 kHz.');
+    });
+  });
+
   group('UI', () {
     const channel = MethodChannel('com.hifirend/renderer');
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -1046,7 +1083,7 @@ void main() {
               '{"rendererName":"Living Room","transportState":"STOPPED",'
                   '"title":"Below My Feet","artist":"Mumford & Sons",'
                   '"dacConnected":true,"dacName":"SPACETOUCH USB Audio","dacCount":1,'
-                  '"lastError":"This track is in a format the renderer cannot decode.",'
+                  '"lastError":"undecodableFormat",'
                   '"lastErrorDetail":"unsupported or unrecognised audio format '
                   '(audio/L16;rate=44100;channels=2)"}',
             'probeUsb' => _al400,
@@ -1156,7 +1193,7 @@ void main() {
         '{"rendererName":"Living Room","transportState":"STOPPED",'
         '"title":"Dead 3","artist":"Test Signals","dacConnected":true,'
         '"dacName":"SMSL USB AUDIO","dacCount":1,"bitPerfect":false,'
-        '"lastError":"Stopped after 3 tracks in a row could not be played."}',
+        '"lastError":"stoppedAfterFailures","lastErrorArgs":[3]}',
       );
 
       await tester.pumpWidget(localizedApp(
@@ -1223,7 +1260,7 @@ void main() {
         '"durationSeconds":945,"formatBadge":"FLAC 16/44.1","sourceFormat":"FLAC",'
         '"sourceRate":44100,"sourceBits":16,"bitPerfect":true,'
         '"dacConnected":true,"dacName":"SMSL USB AUDIO","dacCount":1,'
-        '"lastError":"The renderer lost contact with the media server.",'
+        '"lastError":"serverUnreachable",'
         '"lastErrorDetail":"the media server could not be reached: '
         'Failed to connect to /192.168.100.41:57645"}',
       );
@@ -1252,7 +1289,7 @@ void main() {
               '{"rendererName":"Living Room","transportState":"STOPPED",'
                   '"title":"Bird Machine","dacConnected":true,'
                   '"dacName":"SPACETOUCH USB Audio","dacCount":1,'
-                  '"lastError":"This DAC cannot play 192 kHz; its highest rate is 48 kHz."}',
+                  '"lastError":"rateUnplayable","lastErrorArgs":[192000,48000]}',
             'probeUsb' => _al400,
             _ => null,
           });

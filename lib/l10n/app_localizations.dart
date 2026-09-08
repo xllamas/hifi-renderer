@@ -1112,6 +1112,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Stream health'**
   String get playFileStreamHealth;
+
+  /// Failure headline: the machine holding the music stopped answering. Blames the network rather than the file, which matters — the decoder cannot tell a vanished server from a corrupt file, and saying the wrong one sends people hunting through their library.
+  ///
+  /// In en, this message translates to:
+  /// **'The renderer lost contact with the media server.'**
+  String get errServerUnreachable;
+
+  /// Failure headline: the server answered, but with an error rather than the audio.
+  ///
+  /// In en, this message translates to:
+  /// **'The media server refused this track.'**
+  String get errServerRefused;
+
+  /// Failure headline: the transfer started and did not finish.
+  ///
+  /// In en, this message translates to:
+  /// **'This track could not be downloaded from the server.'**
+  String get errDownloadFailed;
+
+  /// Failure headline: the file arrived intact but is in a format the app has no decoder for.
+  ///
+  /// In en, this message translates to:
+  /// **'This track is in a format the renderer cannot decode.'**
+  String get errUndecodableFormat;
+
+  /// Failure headline: nothing is broken — the file and the DAC simply do not meet. The wording deliberately blames neither.
+  ///
+  /// In en, this message translates to:
+  /// **'This DAC cannot be set to this track\'s rate or bit depth.'**
+  String get errDacRateUnsupported;
+
+  /// Failure headline: the USB link to the converter failed — unplugged, or the hardware stopped responding.
+  ///
+  /// In en, this message translates to:
+  /// **'The renderer lost its connection to the DAC.'**
+  String get errDacConnectionLost;
+
+  /// Failure headline used when nothing more specific could be determined.
+  ///
+  /// In en, this message translates to:
+  /// **'This track could not be played.'**
+  String get errTrackCouldNotBePlayed;
+
+  /// Shown when a track is refused before being fetched because its sample rate is above anything the DAC can clock. Both values arrive already formatted, as in '192 kHz'.
+  ///
+  /// In en, this message translates to:
+  /// **'This DAC cannot play {rate}; its highest rate is {ceiling}.'**
+  String errRateUnplayable(String rate, String ceiling);
+
+  /// Shown when a playlist gives up after several tracks failed consecutively. The count is the point: one bad file is bad luck, several in a row means the source is gone.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, other{Stopped after {count} tracks in a row could not be played.}}'**
+  String errStoppedAfterFailures(int count);
 }
 
 class _AppLocalizationsDelegate

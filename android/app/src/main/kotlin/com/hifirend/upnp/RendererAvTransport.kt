@@ -214,7 +214,8 @@ class RendererAvTransport(
     fun onPlaybackFailed(message: String) {
         Log.e(TAG, "engine failed during playback: $message")
         Problem.describe(message).let {
-            com.hifirend.RendererState.lastError = it.headline
+            com.hifirend.RendererState.lastError = it.code
+            com.hifirend.RendererState.lastErrorArgs = it.args
             com.hifirend.RendererState.lastErrorDetail = it.detail
         }
         // Tear the stream down. Since a gapless hand-over leaves the sink
@@ -277,7 +278,8 @@ class RendererAvTransport(
             // it first, and not look like the renderer simply stopped.
             unplayableRate(next.track.sampleFrequency)?.let { why ->
                 Log.i(TAG, "auto-advance refused before fetch: $why")
-                com.hifirend.RendererState.lastError = why
+                com.hifirend.RendererState.lastError = why.code
+                com.hifirend.RendererState.lastErrorArgs = why.args
                 com.hifirend.RendererState.lastErrorDetail = null
                 playback?.stop()
                 transportState = TransportState.STOPPED
@@ -332,7 +334,8 @@ class RendererAvTransport(
         // for everything else.
         unplayableRate(queue.current?.track?.sampleFrequency ?: 0)?.let { why ->
             Log.i(TAG, "refusing before fetch: $why")
-            com.hifirend.RendererState.lastError = why
+            com.hifirend.RendererState.lastError = why.code
+            com.hifirend.RendererState.lastErrorArgs = why.args
             com.hifirend.RendererState.lastErrorDetail = null
             transportState = TransportState.STOPPED
             publishState()
@@ -359,13 +362,12 @@ class RendererAvTransport(
      * A plain-language reason the announced track cannot play, or null when
      * there is no reason to think it cannot.
      */
-    private fun unplayableRate(announced: Int): String? {
+    private fun unplayableRate(announced: Int): Problem.Described? {
         val rates = com.hifirend.RendererState.dacRates
         if (rates.isEmpty()) return null                    // capabilities unknown
         if (announced <= 0) return null                     // server said nothing
         if (rates.contains(announced)) return null
-        val ceiling = rates.max()
-        return "This DAC cannot play ${khz(announced)}; its highest rate is ${khz(ceiling)}."
+        return Problem.rateUnplayable(announced, rates.max())
     }
 
     private fun khz(hz: Int): String {

@@ -716,7 +716,8 @@ class HttpStreamPlayback(private val context: Context) {
             lastEngineError = j.optString("error").takeIf { it.isNotBlank() }
             lastEngineError?.let {
                 val described = com.hifirend.upnp.Problem.describe(it)
-                RendererState.lastError = described.headline
+                RendererState.lastError = described.code
+                RendererState.lastErrorArgs = described.args
                 RendererState.lastErrorDetail = described.detail
             }
         } catch (_: Throwable) {

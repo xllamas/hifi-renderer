@@ -119,10 +119,21 @@ object RendererState {
 
     /**
      * Why the last track did not play, in words meant for the screen. The
+     * A *code* naming the sentence, not the sentence: the wording lives in
+     * lib/l10n so it exists in every language the app ships in. The
      * engine's own wording is kept in [lastErrorDetail] rather than shown as
      * the headline -- see [com.hifirend.upnp.Problem].
      */
     @Volatile var lastError: String? = null
+
+    /**
+     * Values filling the placeholders in [lastError]'s sentence, in order.
+     *
+     * Integers because every parameterised failure counts something: a sample
+     * rate in hertz, a number of tracks. They are formatted where they are
+     * shown, not here, since only the screen knows the reader's conventions.
+     */
+    @Volatile var lastErrorArgs: List<Int> = emptyList()
 
     /** The technical message behind [lastError], or null when there is none. */
     @Volatile var lastErrorDetail: String? = null
@@ -199,6 +210,7 @@ object RendererState {
         append(",\"dacVolumeReadback\":").append(q(dacVolumeReadback))
         append(",\"underruns\":").append(underruns)
         append(",\"lastError\":").append(q(lastError))
+        append(",\"lastErrorArgs\":").append(lastErrorArgs.joinToString(",", "[", "]"))
         append(",\"lastErrorDetail\":").append(q(lastErrorDetail))
         append("}")
     }

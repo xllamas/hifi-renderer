@@ -77,7 +77,7 @@ class NowPlayingScreen extends StatelessWidget {
   /// it landed on top of the format badge, so the two things the screen was
   /// meant to be answering -- what is playing, and why nothing is -- obscured
   /// each other.
-  Widget _problem() => Container(
+  Widget _problem(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: Colors.amber.withValues(alpha: 0.10),
@@ -94,7 +94,7 @@ class NowPlayingScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    status.lastError!,
+                    status.errorMessage(AppLocalizations.of(context))!,
                     // Bounded so an unusually long headline cannot push the
                     // banner off the screen again. Three lines is enough for
                     // every message Problem composes.
@@ -148,7 +148,7 @@ class NowPlayingScreen extends StatelessWidget {
               const SizedBox(height: 24),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: _edge * 2),
-                child: _problem(),
+                child: _problem(context),
               ),
             ],
           ],
@@ -194,7 +194,7 @@ class NowPlayingScreen extends StatelessWidget {
           ],
           if (_hasProblem) ...[
             const SizedBox(height: 18),
-            _problem(),
+            _problem(context),
           ],
           const Spacer(),
         ],
@@ -237,7 +237,7 @@ class NowPlayingScreen extends StatelessWidget {
                 ],
                 if (_hasProblem) ...[
                   const SizedBox(height: 16),
-                  _problem(),
+                  _problem(context),
                 ],
               ],
             ),

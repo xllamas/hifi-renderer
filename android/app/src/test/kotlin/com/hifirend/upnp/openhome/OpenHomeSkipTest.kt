@@ -88,11 +88,12 @@ class OpenHomeSkipTest {
         OpenHomePlaylist(listOf("a", "b", "c"), engine).playAction()
 
         // The shape of the failure is the useful part: three consecutive
-        // failures point at the source, where one points at a file.
-        assertTrue(
-            "headline was: ${RendererState.lastError}",
-            RendererState.lastError!!.contains("3 tracks in a row"),
-        )
+        // failures point at the source, where one points at a file. The count
+        // travels beside the code rather than baked into a sentence, since the
+        // sentence is assembled in whatever language the reader is using.
+        assertEquals(
+            com.hifirend.upnp.Problem.STRIKES, RendererState.lastError)
+        assertEquals(listOf(3), RendererState.lastErrorArgs)
         assertTrue(RendererState.lastErrorDetail != null)
     }
 

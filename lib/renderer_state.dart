@@ -47,7 +47,14 @@ class RendererStatus {
 
   /// Why the last track did not play, in words meant to be read from across a
   /// room. The engine's own wording is in [lastErrorDetail].
+  ///
+  /// A *code* naming the sentence rather than the sentence itself — the
+  /// service composes these with no idea what language anyone is reading in.
+  /// [errorMessage] turns it back into words.
   final String? lastError;
+
+  /// Values filling the placeholders in [lastError]'s sentence, in order.
+  final List<int> lastErrorArgs;
 
   /// The technical message behind [lastError], when there is one.
   final String? lastErrorDetail;
@@ -98,6 +105,7 @@ class RendererStatus {
     this.dacVolumeReadback = 'unknown',
     this.underruns = 0,
     this.lastError,
+    this.lastErrorArgs = const [],
     this.lastErrorDetail,
     this.playlistLength = 0,
     this.playlistPosition = 0,
@@ -134,6 +142,10 @@ class RendererStatus {
         dacVolumeReadback: j['dacVolumeReadback'] as String? ?? 'unknown',
         underruns: (j['underruns'] as num?)?.toInt() ?? 0,
         lastError: j['lastError'] as String?,
+        lastErrorArgs: (j['lastErrorArgs'] as List?)
+                ?.map((e) => (e as num).toInt())
+                .toList() ??
+            const [],
         lastErrorDetail: j['lastErrorDetail'] as String?,
         playlistLength: (j['playlistLength'] as num?)?.toInt() ?? 0,
         playlistPosition: (j['playlistPosition'] as num?)?.toInt() ?? 0,
@@ -154,6 +166,56 @@ class RendererStatus {
   /// Playing through Android's mixer instead of a DAC, so nothing is
   /// bit-perfect and the screen must not imply otherwise.
   bool get usingSystemAudio => output == 'android';
+
+  /// The failure headline, in the reader's language.
+  ///
+  /// The service sends a code because it composes these with no idea what
+  /// language anyone is reading in, and because a sentence stored on the
+  /// Android side would have to be translated there too — two sources of
+  /// truth for one sentence, and the far side is the one nobody remembers to
+  /// update.
+  ///
+  /// An unrecognised code falls back to the generic headline rather than
+  /// showing the code itself. A screen reading "dacConnectionLost" across a
+  /// room is worse than one saying a track could not be played, and a code
+  /// added on the Kotlin side without a string here should degrade rather
+  /// than leak.
+  String? errorMessage(AppLocalizations t) {
+    final code = lastError;
+    if (code == null) return null;
+    switch (code) {
+      case 'serverUnreachable':
+        return t.errServerUnreachable;
+      case 'serverRefused':
+        return t.errServerRefused;
+      case 'downloadFailed':
+        return t.errDownloadFailed;
+      case 'undecodableFormat':
+        return t.errUndecodableFormat;
+      case 'dacRateUnsupported':
+        return t.errDacRateUnsupported;
+      case 'dacConnectionLost':
+        return t.errDacConnectionLost;
+      case 'rateUnplayable':
+        if (lastErrorArgs.length < 2) return t.errTrackCouldNotBePlayed;
+        return t.errRateUnplayable(
+            formatKhz(lastErrorArgs[0]), formatKhz(lastErrorArgs[1]));
+      case 'stoppedAfterFailures':
+        if (lastErrorArgs.isEmpty) return t.errTrackCouldNotBePlayed;
+        return t.errStoppedAfterFailures(lastErrorArgs.first);
+      default:
+        return t.errTrackCouldNotBePlayed;
+    }
+  }
+
+  /// A sample rate in kilohertz. The engine sends hertz because only the
+  /// screen knows how the reader writes a number.
+  static String formatKhz(int hz) {
+    final k = hz / 1000.0;
+    return k == k.roundToDouble()
+        ? '${k.toStringAsFixed(0)} kHz'
+        : '${k.toStringAsFixed(1)} kHz';
+  }
 
   /// What to call whatever is playing.
   ///
@@ -206,6 +268,7 @@ class RendererStatus {
         dacVolumeReadback: dacVolumeReadback,
         underruns: underruns,
         lastError: lastError,
+        lastErrorArgs: lastErrorArgs,
         lastErrorDetail: lastErrorDetail,
         playlistLength: playlistLength,
         playlistPosition: playlistPosition,

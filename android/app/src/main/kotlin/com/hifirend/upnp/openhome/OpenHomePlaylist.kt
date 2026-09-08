@@ -341,7 +341,7 @@ class OpenHomePlaylist(
         publishTrack()
         unplayableRate(track.track.sampleFrequency)?.let { why ->
             Log.i(TAG, "OH refusing before fetch: $why")
-            skipAfterFailure(Problem.plain(why))
+            skipAfterFailure(why)
             return
         }
         playback?.onTrackChanged()
@@ -355,6 +355,7 @@ class OpenHomePlaylist(
         // and leaving it set would put a stale banner back on the screen the
         // moment this playlist stopped for any reason at all.
         RendererState.lastError = null
+        RendererState.lastErrorArgs = emptyList()
         RendererState.lastErrorDetail = null
         setTransportState("Playing")
     }
@@ -425,7 +426,8 @@ class OpenHomePlaylist(
     private fun skipAfterFailure(problem: Problem.Described) {
         consecutiveFailures++
         skippedThisRun++
-        RendererState.lastError = problem.headline
+        RendererState.lastError = problem.code
+        RendererState.lastErrorArgs = problem.args
         RendererState.lastErrorDetail = problem.detail
         playback?.stop()
 
@@ -435,9 +437,11 @@ class OpenHomePlaylist(
             // Say what actually happened. "Stopped" with the last track's
             // technical message would suggest one bad file, when the shape of
             // the failure -- three in a row -- says the source is gone.
-            RendererState.lastError =
-                "Stopped after $consecutiveFailures tracks in a row could not be played."
-            RendererState.lastErrorDetail = problem.detail ?: problem.headline
+            Problem.stoppedAfterFailures(consecutiveFailures).let {
+                RendererState.lastError = it.code
+                RendererState.lastErrorArgs = it.args
+            }
+            RendererState.lastErrorDetail = problem.detail
             setTransportState("Stopped")
             return
         }
@@ -477,11 +481,10 @@ class OpenHomePlaylist(
         }
     }
 
-    private fun unplayableRate(announced: Int): String? {
+    private fun unplayableRate(announced: Int): Problem.Described? {
         val rates = RendererState.dacRates
         if (rates.isEmpty() || announced <= 0 || rates.contains(announced)) return null
-        val ceiling = rates.max()
-        return "This DAC cannot play ${khz(announced)}; its highest rate is ${khz(ceiling)}."
+        return Problem.rateUnplayable(announced, rates.max())
     }
 
     private fun khz(hz: Int): String {

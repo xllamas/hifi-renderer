@@ -935,5 +935,56 @@
   "playFileStreamHealth": "Stream health",
   "@playFileStreamHealth": {
     "description": "Heading above live statistics for the playing stream."
+  },
+  "errServerUnreachable": "The renderer lost contact with the media server.",
+  "@errServerUnreachable": {
+    "description": "Failure headline: the machine holding the music stopped answering. Blames the network rather than the file, which matters — the decoder cannot tell a vanished server from a corrupt file, and saying the wrong one sends people hunting through their library."
+  },
+
+  "errServerRefused": "The media server refused this track.",
+  "@errServerRefused": {
+    "description": "Failure headline: the server answered, but with an error rather than the audio."
+  },
+
+  "errDownloadFailed": "This track could not be downloaded from the server.",
+  "@errDownloadFailed": {
+    "description": "Failure headline: the transfer started and did not finish."
+  },
+
+  "errUndecodableFormat": "This track is in a format the renderer cannot decode.",
+  "@errUndecodableFormat": {
+    "description": "Failure headline: the file arrived intact but is in a format the app has no decoder for."
+  },
+
+  "errDacRateUnsupported": "This DAC cannot be set to this track's rate or bit depth.",
+  "@errDacRateUnsupported": {
+    "description": "Failure headline: nothing is broken — the file and the DAC simply do not meet. The wording deliberately blames neither."
+  },
+
+  "errDacConnectionLost": "The renderer lost its connection to the DAC.",
+  "@errDacConnectionLost": {
+    "description": "Failure headline: the USB link to the converter failed — unplugged, or the hardware stopped responding."
+  },
+
+  "errTrackCouldNotBePlayed": "This track could not be played.",
+  "@errTrackCouldNotBePlayed": {
+    "description": "Failure headline used when nothing more specific could be determined."
+  },
+
+  "errRateUnplayable": "This DAC cannot play {rate}; its highest rate is {ceiling}.",
+  "@errRateUnplayable": {
+    "description": "Shown when a track is refused before being fetched because its sample rate is above anything the DAC can clock. Both values arrive already formatted, as in '192 kHz'.",
+    "placeholders": {
+      "rate": {"type": "String", "example": "192 kHz"},
+      "ceiling": {"type": "String", "example": "96 kHz"}
+    }
+  },
+
+  "errStoppedAfterFailures": "{count, plural, other{Stopped after {count} tracks in a row could not be played.}}",
+  "@errStoppedAfterFailures": {
+    "description": "Shown when a playlist gives up after several tracks failed consecutively. The count is the point: one bad file is bad luck, several in a row means the source is gone.",
+    "placeholders": {
+      "count": {"type": "int", "example": "3"}
+    }
   }
 }

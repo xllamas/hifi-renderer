@@ -15,17 +15,54 @@ package com.hifirend.upnp
  * falls into very few categories: the track is wrong for this DAC, the DAC is
  * in trouble, or something else went wrong -- and a headline that tried to be
  * more specific would only be repeating the detail in longer words.
+ *
+ * What crosses to the screen is a **code**, not a sentence. The headline is a
+ * sentence a person reads, so it has to exist in every language the app ships
+ * in, and translations live in one place: `lib/l10n`. Composing English here
+ * and translating it there would mean two sources of truth for the same
+ * sentence, and the Kotlin one would be the one nobody remembered to update.
+ * [detail] stays as the engine wrote it -- it is diagnostic, it goes in bug
+ * reports, and it is more useful in English.
  */
 object Problem {
 
-    data class Described(val headline: String, val detail: String?)
+    /**
+     * @param code names the sentence; `lib/l10n/app_en.arb` holds the wording.
+     * @param args fill its placeholders, in order. Integers because every
+     *   parameterised failure so far is counting something -- a sample rate,
+     *   a number of tracks.
+     * @param detail the engine's own words, kept in English.
+     */
+    data class Described(
+        val code: String,
+        val args: List<Int> = emptyList(),
+        val detail: String? = null,
+    )
 
-    /** Already-plain messages, such as a refusal composed for the user. */
-    fun plain(message: String) = Described(message, null)
+    const val SERVER_UNREACHABLE = "serverUnreachable"
+    const val SERVER_REFUSED = "serverRefused"
+    const val DOWNLOAD_FAILED = "downloadFailed"
+    const val UNDECODABLE = "undecodableFormat"
+    const val DAC_RATE_UNSUPPORTED = "dacRateUnsupported"
+    const val DAC_LOST = "dacConnectionLost"
+    const val UNKNOWN = "trackCouldNotBePlayed"
+    const val RATE_UNPLAYABLE = "rateUnplayable"
+    const val STRIKES = "stoppedAfterFailures"
+
+    /**
+     * A track refused before it was fetched, because the DAC cannot clock its
+     * rate. Both rates travel as hertz and are formatted for display on the
+     * other side, where the reader's conventions are known.
+     */
+    fun rateUnplayable(announcedHz: Int, ceilingHz: Int) =
+        Described(RATE_UNPLAYABLE, listOf(announcedHz, ceilingHz))
+
+    /** The playlist gave up after this many tracks failed one after another. */
+    fun stoppedAfterFailures(count: Int) = Described(STRIKES, listOf(count))
 
     fun describe(technical: String): Described {
         val m = technical.lowercase()
-        val headline = when {
+        val code = when {
             // Checked first, and deliberately so. A server that goes away
             // mid-playlist reaches the decoder as a stream that ended early,
             // and the decoder's honest report of that ("not a decodable FLAC
@@ -33,35 +70,29 @@ object Problem {
             // someone to look at their files when the fault is their network.
             m.contains("media server could not be reached") ||
                 m.contains("media server stopped responding") ||
-                m.contains("address could not be resolved") ->
-                "The renderer lost contact with the media server."
+                m.contains("address could not be resolved") -> SERVER_UNREACHABLE
 
-            m.contains("server answered http") ->
-                "The media server refused this track."
+            m.contains("server answered http") -> SERVER_REFUSED
 
-            m.contains("could not be fetched") ->
-                "This track could not be downloaded from the server."
+            m.contains("could not be fetched") -> DOWNLOAD_FAILED
 
             m.contains("unsupported or unrecognised") ||
                 m.contains("not a decodable") ||
                 m.contains("not integer pcm") ||
-                m.contains("no mp3 frame") ->
-                "This track is in a format the renderer cannot decode."
+                m.contains("no mp3 frame") -> UNDECODABLE
 
             // The DAC is fine and the file is fine; they simply do not meet.
             m.contains("does not support") ||
                 m.contains("no pcm alt-setting") ||
                 m.contains("set sample rate") ||
-                m.contains("which no dac can be configured for") ->
-                "This DAC cannot be set to this track's rate or bit depth."
+                m.contains("which no dac can be configured for") -> DAC_RATE_UNSUPPORTED
 
             m.contains("libusb") || m.contains("claim_interface") ||
                 m.contains("set_alt_setting") || m.contains("iso transfer") ||
-                m.contains("no pcm isochronous") || m.contains("audio class version") ->
-                "The renderer lost its connection to the DAC."
+                m.contains("no pcm isochronous") || m.contains("audio class version") -> DAC_LOST
 
-            else -> "This track could not be played."
+            else -> UNKNOWN
         }
-        return Described(headline, technical)
+        return Described(code, detail = technical)
     }
 }
