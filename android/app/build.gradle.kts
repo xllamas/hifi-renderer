@@ -91,6 +91,16 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // R8 needs telling what not to touch. Everything this app does
+            // across a boundary -- jUPnP's annotated actions, the JNI bridge --
+            // is resolved by name at runtime and looks unused to a shrinker.
+            // See proguard-rules.pro; the failure mode is a build that works
+            // and an app that does not.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
