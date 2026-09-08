@@ -28,50 +28,6 @@ class RaopAdvertiser(private val context: Context) {
     private var nsd: NsdManager? = null
     private var listener: NsdManager.RegistrationListener? = null
 
-    /** The 12 hex digits senders read as a hardware address. */
-    fun hardwareId(udn: String): String {
-        val hex = udn.filter { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }.uppercase()
-        return (hex + "000000000000").substring(0, 12)
-    }
-
-    fun hardwareAddressBytes(udn: String): ByteArray =
-        hardwareId(udn).chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-
-    /**
-     * The capability record. These values describe what this receiver will
-     * actually accept, and each one is load-bearing:
-     *
-     *   `tp`   transports -- UDP only; we do not implement the TCP variant.
-     *   `sm`   no metadata over the audio channel.
-     *   `sv`   no volume control via this record (RTSP SET_PARAMETER carries it).
-     *   `ek`   encryption key present: 1, because AirPlay 1 audio is AES.
-     *   `et`   encryption types -- 0 (none) and 1 (RSA/AES), the pair every
-     *          sender understands.
-     *   `cn`   codecs -- 0 (PCM) and 1 (ALAC). AAC variants are deliberately
-     *          absent: claiming them means being sent them.
-     *   `ch`   two channels, `ss` 16 bits, `sr` 44100 -- AirPlay 1's only
-     *          format, and exactly what the existing push-PCM path expects.
-     *   `vn`   RSA version, always 3.
-     *   `txtvers` record version, always 1.
-     */
-    fun txtRecords(): Map<String, String> = linkedMapOf(
-        "txtvers" to "1",
-        "ch" to "2",
-        "cn" to "0,1",
-        "et" to "0,1",
-        "sv" to "false",
-        "da" to "true",
-        "sr" to "44100",
-        "ss" to "16",
-        "pw" to "false",
-        "sm" to "false",
-        "tp" to "UDP",
-        "vn" to "3",
-        "vs" to "105.1",
-        "md" to "0,1,2",
-        "am" to "AirPort10,115",
-    )
-
     fun start(friendlyName: String, udn: String, port: Int) {
         stop()
         val manager = context.getSystemService(Context.NSD_SERVICE) as? NsdManager
@@ -115,7 +71,69 @@ class RaopAdvertiser(private val context: Context) {
         listener = null
     }
 
-    private companion object {
-        const val TAG = "hifirend"
+    companion object {
+        private const val TAG = "hifirend"
+
+        /** The 12 hex digits senders read as a hardware address. */
+        fun hardwareId(udn: String): String {
+            val hex = udn.filter { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }.uppercase()
+            return (hex + "000000000000").substring(0, 12)
+        }
+
+        fun hardwareAddressBytes(udn: String): ByteArray =
+            hardwareId(udn).chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+        /**
+         * The capability record. These values describe what this receiver will
+         * actually accept, and each one is load-bearing:
+         *
+         *   `tp`   transports -- UDP only; we do not implement the TCP variant.
+         *   `sm`   no metadata over the audio channel.
+         *   `sv`   no volume control via this record (RTSP SET_PARAMETER carries it).
+         *   `ek`   encryption key present: 1, because AirPlay 1 audio is AES.
+         *   `et`   encryption types -- 0 (none) and 1 (RSA/AES), the pair every
+         *          sender understands.
+         *   `cn`   codecs -- 0 (PCM) and 1 (ALAC). AAC variants are deliberately
+         *          absent: claiming them means being sent them.
+         *   `ch`   two channels, `ss` 16 bits, `sr` 44100 -- AirPlay 1's only
+         *          format, and exactly what the existing push-PCM path expects.
+         *   `vn`   RSA version, always 3.
+         *   `md`   metadata we will actually be sent: 0 (text) and 2 (progress).
+         *          Artwork (1) is deliberately absent for the same reason the AAC
+         *          codecs are -- claiming it means being sent it, and every JPEG a
+         *          sender pushes for a picture nothing can display is bandwidth
+         *          spent on the guest path for nothing.
+         *   `am`   the model. Consistent with the AirPort Express key this
+         *          receiver authenticates with, and read by iOS senders. It does
+         *          *not* make macOS list us in Music -- that was tested; see
+         *          doc/airplay.md.
+         *   `txtvers` record version, always 1.
+         *
+         * Checked field by field against shairport-sync on 2026-09-08, this being
+         * the reference AirPlay 1 receiver and the one to be wrong against. Two
+         * differences were ours to fix -- `ek` was documented here but never sent,
+         * and `md` claimed artwork this receiver discards. `tp` stays UDP-only and
+         * `vn` stays 3: the first is honest about what is implemented, and the
+         * second demonstrably works with every sender tried, which is worth more
+         * than matching a reference for its own sake.
+         */
+        fun txtRecords(): Map<String, String> = linkedMapOf(
+            "txtvers" to "1",
+            "ch" to "2",
+            "cn" to "0,1",
+            "et" to "0,1",
+            "sv" to "false",
+            "da" to "true",
+            "sr" to "44100",
+            "ss" to "16",
+            "pw" to "false",
+            "sm" to "false",
+            "ek" to "1",
+            "tp" to "UDP",
+            "vn" to "3",
+            "vs" to "105.1",
+            "md" to "0,2",
+            "am" to "AirPort10,115",
+        )
     }
 }

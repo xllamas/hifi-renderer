@@ -396,7 +396,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         val advertiser = com.hifirend.airplay.RaopAdvertiser(applicationContext)
         val rtsp = com.hifirend.airplay.RaopRtspServer(
             crypto = crypto,
-            hardwareAddress = advertiser.hardwareAddressBytes(udn),
+            hardwareAddress = com.hifirend.airplay.RaopAdvertiser.hardwareAddressBytes(udn),
             onSessionReady = { params ->
                 Log.i(TAG, "airplay: session negotiated, key=${params.aesKey != null} " +
                     "iv=${params.aesIv != null} fmtp='${params.formatParameters}'")

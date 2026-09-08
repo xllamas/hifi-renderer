@@ -310,6 +310,61 @@ string-reading path remains unverified in the field, and an iOS sender is the
 way to verify it -- iPhones still speak AirPlay 1 to legacy receivers and send
 DAAP, artwork and progress.
 
+### Checked against shairport-sync
+
+Volumio was put on the network on 2026-09-08 specifically to compare. It runs
+shairport-sync, which is *the* reference AirPlay 1 receiver and the right thing
+to be wrong against.
+
+    Volumio   sf=0x4 fv=76400.10 am=ShairportSync vs=105.1 tp=TCP,UDP vn=65537
+              md=0,2 ss=16 sr=44100 da=true sv=false et=0,1 ek=1 cn=0,1 ch=2
+              txtvers=1 pw=false
+
+    ours      txtvers=1 am=AirPort10,115 ch=2 cn=0,1 da=true et=0,1 md=0,1,2
+              pw=false sm=false sr=44100 ss=16 sv=false tp=UDP vn=3 vs=105.1
+
+Two differences were ours to fix.
+
+**`ek=1` was documented and never sent.** This class's own KDoc had described
+it -- "encryption key present: 1, because AirPlay 1 audio is AES" -- since the
+advertisement was written, and `txtRecords()` never included it. Nothing fails
+when a comment and a map disagree, which is exactly why it survived; only a
+field-by-field diff against another implementation finds it.
+
+**`md=0,1,2` claimed artwork this receiver discards.** `md` is the metadata a
+sender may push: 0 text, 1 artwork, 2 progress. Claiming artwork got us a JPEG
+per track for a picture nothing displays, and it contradicted the rule stated
+three lines above it in the same comment block, about the codec list --
+"claiming them means being sent them". shairport-sync advertises `0,2`.
+
+The fix is measurable, and `md` turns out to be honoured exactly:
+
+    before   SET_PARAMETER type=image/none                 0 bytes
+             SET_PARAMETER type=application/x-dmap-tagged  82 bytes
+    after    SET_PARAMETER type=application/x-dmap-tagged  82 bytes
+
+Artwork pushes went to zero; the text channel is untouched.
+
+`tp` stays `UDP` where shairport-sync says `TCP,UDP`, because only the UDP path
+exists here and a sender taking us at our word would find nothing listening.
+`vn` stays 3 against their 65537: every sender tried connects at 3, and
+matching a reference for its own sake is not a reason to change something that
+works.
+
+**And the finding that matters more than any of it:** Volumio shows no track
+information either, playing from the same Mac over the same network. That is a
+mature reference implementation, advertising `md=0,2`, reaching the result this
+receiver reaches. The metadata gap on macOS is the sender's, not ours, and no
+TXT field changes it.
+
+One incidental catch from writing the tests. `hardwareId()` is fed
+`UDN.toString()`, which returns `uuid:24ca6786-...` -- and `d` is a hex digit,
+so the `d` in "uui**d**:" supplies the *leading* digit. This receiver has been
+on the network as `D24CA6786B69`, not the `24CA6786B69B` the bare UUID gives.
+Accidental, and now load-bearing: senders may remember a receiver by its
+hardware address, so tidying the prefix away would present us as a different
+device. Pinned by a test.
+
 ### There is no sender name in the headers
 
 PhairPlay shows "Audio from <sender>" where this shows "Unknown track", which
