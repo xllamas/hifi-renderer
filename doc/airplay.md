@@ -217,6 +217,18 @@ implementation worth reading:
    resampled*, where a local FLAC on the same DAC still reads `FLAC 16/44.1`
    beside the green tick.
 
+   One defect surfaced only in a second screenshot, once a local track had
+   played *before* the guest arrived: the screen kept the owner's title,
+   artist, album and cover art and hung them on the guest's stream. The
+   playlist stops when the guest claims the source but deliberately remembers
+   which track it stopped on, and nothing on this path cleared it -- so
+   publishing a transport and a badge over the top assembled the stale fields
+   into a convincing, wrong now-playing card. Worse than the tick it replaced:
+   that overstated quality, this named a track that was not playing.
+   `publishGuestStream()` clears the track first, which is load-bearing --
+   `clearTrack()` reaches `clearFormat()`, so anything written before it is
+   thrown away.
+
    Still missing: the guest's track name. The sender does send one over
    `SET_PARAMETER`, so the screen says "Unknown track" rather than naming it.
    Parsing that DAAP payload is its own piece of work and belongs with the rest

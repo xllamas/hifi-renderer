@@ -506,6 +506,17 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
      */
     private fun publishGuestStream(format: com.hifirend.airplay.RaopFormat) {
         val st = com.hifirend.RendererState
+        // The owner's last track has to go first. The playlist stops when the
+        // guest claims the source, but stopping does not forget *which* track
+        // it stopped on -- deliberately, so a failure still has something to
+        // point at -- and nothing else on this path clears it. Left alone, the
+        // screen labels a guest's stream with the owner's title, artist, album
+        // and cover art, which is a more confident lie than the bit-perfect
+        // tick ever was: it names a specific track that is not playing.
+        //
+        // This must come first: clearTrack() clears the format with it, so
+        // anything set before this call is thrown away.
+        st.clearTrack()
         st.transportState = "PLAYING"
         st.sourceFormat = "ALAC"
         st.sourceRate = format.sampleRate
