@@ -39,6 +39,7 @@ class RaopRtspServer(
     private val hardwareAddress: ByteArray,
     private val onSessionReady: (RaopSessionParams) -> Unit,
     private val onTeardown: () -> Unit,
+    private val onMetadata: (DaapMetadata) -> Unit = {},
 ) {
 
     @Volatile var port: Int = 0
@@ -121,7 +122,8 @@ class RaopRtspServer(
                     }
                     "SETUP" -> setup(request, announced)
                     "RECORD" -> reply(request).header("Audio-Latency", "2205")
-                    "FLUSH", "SET_PARAMETER", "GET_PARAMETER" -> reply(request)
+                    "SET_PARAMETER" -> setParameter(request)
+                    "FLUSH", "GET_PARAMETER" -> reply(request)
                     "TEARDOWN" -> {
                         torndown = true
                         runCatching { onTeardown() }
@@ -157,6 +159,47 @@ class RaopRtspServer(
             request.cseq?.let { header("CSeq", it) }
             header("Server", "AirTunes/105.1")
         }
+
+    /**
+     * The out-of-band half of a session: metadata, artwork, volume, progress.
+     *
+     * All four arrive as SET_PARAMETER and are told apart only by
+     * Content-Type, which is why the type is dispatched on rather than the
+     * body sniffed. A sender sends these whenever it likes -- several times
+     * before the first audio packet, again on every track change -- so this
+     * has to be cheap and must never fail the request: a receiver that answers
+     * anything but 200 here is dropped by the sender, and losing a session
+     * over a cosmetic field would be a poor trade.
+     *
+     * Only DMAP is read today. Artwork (`image/jpeg`) and progress
+     * (`text/parameters`) are acknowledged and dropped, which is honest --
+     * nothing downstream can show them yet.
+     */
+    private fun setParameter(request: RtspRequest): RtspResponse {
+        val type = request["Content-Type"]?.substringBefore(';')?.trim()?.lowercase()
+        // Says which of the four this was. Without it, "no title appeared" is
+        // indistinguishable from "the sender never sent one" -- and a Mac
+        // sending its system audio genuinely sends no metadata at all, only
+        // volume, which is a property of how it was pointed at us rather than
+        // a fault to hunt.
+        Log.i(TAG, "airplay: SET_PARAMETER type=${type ?: "none"} ${request.body.size} bytes")
+        if (type == DaapMetadata.CONTENT_TYPE && request.body.isNotEmpty()) {
+            val metadata = runCatching { DaapMetadata.parse(request.body) }.getOrNull()
+            if (metadata == null || metadata.isEmpty) {
+                // Worth a line: "the title did not appear" has two very
+                // different causes -- the sender did not send one, or it sent
+                // one this does not read -- and the tags separate them.
+                Log.i(TAG, "airplay: metadata carried nothing to show " +
+                    "(${request.body.size} bytes, tags=${DaapMetadata.tags(request.body)})")
+            } else {
+                Log.i(TAG, "airplay: metadata '${metadata.title}' by '${metadata.artist}' " +
+                    "album='${metadata.album}' ${metadata.durationSeconds}s")
+                runCatching { onMetadata(metadata) }
+                    .onFailure { Log.w(TAG, "airplay: metadata handler threw: ${it.message}") }
+            }
+        }
+        return reply(request)
+    }
 
     private fun options(request: RtspRequest, local: InetAddress): RtspResponse {
         val response = reply(request).header(

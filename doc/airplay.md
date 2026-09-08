@@ -229,11 +229,134 @@ implementation worth reading:
    `clearTrack()` reaches `clearFormat()`, so anything written before it is
    thrown away.
 
-   Still missing: the guest's track name. The sender does send one over
-   `SET_PARAMETER`, so the screen says "Unknown track" rather than naming it.
-   Parsing that DAAP payload is its own piece of work and belongs with the rest
-   of the metadata, not with the fidelity claim.
+   The guest's track name is dealt with below, in *Metadata*, and the answer
+   turned out to be about the sender rather than about parsing.
 6. **The appliance-shell extraction**, which the protocol doc says is owed and
    which this protocol is the one to pay for. Deliberately deferred until there
    is a real second-shape protocol to extract *against* rather than a guessed
    one.
+
+## Metadata
+
+AirPlay carries nothing about the track in the audio stream -- RAOP sends bare
+ALAC frames -- so everything the screen can say about a guest's music arrives
+out of band, as a `SET_PARAMETER` whose body is DMAP: Apple's tag-length-value
+encoding, four ASCII bytes of tag, four big-endian bytes of length, then the
+payload. `DaapMetadata` reads it, keeping `minm` (title), `asar` (artist),
+`asal` (album), `asgn` (genre) and `astm` (duration, in milliseconds).
+
+Parsed rather than scanned for. Lengths are what separate one field from the
+next, so a reader that hunts for `minm` and takes bytes until the next
+printable run returns half a title, or a title with the next tag glued on, and
+the result looks like a bug in the *sender*. Every length is checked against
+what is actually left in the buffer, and a length that overruns ends the walk
+rather than reading past it. The tests are weighted accordingly: the happy path
+is one of eleven, and the rest are truncation, an overrunning length, junk
+where a tag should be, and an empty `minm` between tracks that must not blank a
+title already on screen.
+
+Senders disagree about wrapping -- iOS and macOS send a `mlit` container,
+several third-party senders send the fields bare -- so both are read. Nesting
+is followed only into a closed set of known container tags, because there is no
+flag in the encoding saying whether a payload is nested, and a UTF-8 title of
+the right length looks like valid DMAP often enough to matter. An unknown
+container is skipped whole: fields are lost, never invented.
+
+`publishGuestMetadata()` is guarded on the guest still holding the output.
+Senders keep the RTSP connection alive across a source change and go on
+announcing tracks after the owner has taken the DAC back -- a phone left paused
+in a pocket does exactly this -- and writing that through would put a guest's
+title on the owner's music. The same fault as leaving the owner's title on a
+guest's stream, in the other direction. Fields are applied one at a time, so a
+later message carrying only an album does not erase the title.
+
+### macOS cannot exercise any of it
+
+Measured 2026-09-08 against macOS 26.6.2. A session established, played
+cleanly, and sent this:
+
+    SET_PARAMETER type=text/parameters            20 bytes
+    SET_PARAMETER type=image/none                  0 bytes
+    SET_PARAMETER type=application/x-dmap-tagged  82 bytes
+    metadata carried nothing to show (82 bytes,
+      tags=[mlit, mper, asal, asar, ascp, asgn, minm, asdk, caps])
+
+The walk found all nine tags in the right order, so the container handling is
+proven against a real sender. The string fields are simply *empty*: 82 bytes is
+exactly the nine headers plus `mper` (8), `asdk` (1) and `caps` (1), leaving
+zero bytes for `minm`, `asar`, `asal`, `asgn` and `ascp`. `image/none, 0 bytes`
+says the same about artwork.
+
+That is `coreaudiod`'s signature, and it is a property of the route rather than
+a fault. On macOS 26 an AirPlay 1 receiver is reachable **only** through
+Control Centre's sound output, where the sender is the system audio daemon --
+which has no concept of a track and sends the envelope with nothing in it.
+Music and Tidal never offer the renderer at all:
+
+    Music.app's AirPlay device list:   Walrus only
+    _airplay._tcp advertisers:         Walrus only     (AirPlay 2)
+    HiFi Renderer advertises:          _raop._tcp only (AirPlay 1)
+
+`am=AirPort10,115` was added on the theory that the missing model field was
+what excluded us -- shairport-sync sets it and we did not. It is on the wire
+and it changed nothing: Music's list was identical across four polls. Kept
+anyway, because iOS senders read it and it is consistent with the AirPort
+Express key this receiver already authenticates with, but **it is not a fix for
+anything** and should not be read as one.
+
+So the empty-field guard is doing the real work on this route: it leaves
+"Unknown track" standing rather than replacing it with blank strings. The
+string-reading path remains unverified in the field, and an iOS sender is the
+way to verify it -- iPhones still speak AirPlay 1 to legacy receivers and send
+DAAP, artwork and progress.
+
+## AirPlay 2: assessed, not attempted
+
+Appearing in Music's and Tidal's own device pickers means being an AirPlay 2
+receiver on `_airplay._tcp`. That was scoped on 2026-09-08 and rejected, on a
+blocker that does not yield to effort.
+
+**AirPlay 2 synchronises clocks with PTP (IEEE 1588) on UDP 319 and 320.**
+Those are privileged ports, and an unprivileged Android process cannot bind
+them. Measured on the test phone, with a high-port control to show it is the
+port number and not the tooling:
+
+    $ adb shell toybox nc -l -p 319
+    nc: bind: Permission denied
+    $ adb shell toybox nc -l -p 33190
+    (blocks -- bound fine)
+
+This is why shairport-sync delegates PTP to `nqptp`, a *separate root helper*:
+it cannot do this from inside the media process either, and it has root to fall
+back on. An Android app does not. Rooting the phone is not available to a
+household appliance, and the ways round it -- a `VpnService` intercepting those
+packets, or iptables redirection -- are respectively wildly disproportionate
+for an audio app and root-dependent in turn.
+
+The rest of the work is large in its own right. Against a real AirPlay 2
+receiver on the same network:
+
+    ours:    txtvers=1 ch=2 cn=0,1 et=0,1 md=0,1,2 tp=UDP vn=3 vs=105.1
+             am=AirPort10,115
+    Walrus:  features=0x4A7FCFD5,0x38174FDE flags=0x204 pk=73dda4... pi=...
+             protovers=1.1 srcvers=960.13.1 model=Mac16,12 deviceid=... psi=...
+
+`pk` and `pi` are not decoration: they anchor HomeKit-derived pairing. Full
+support means pair-setup and pair-verify (Ed25519, X25519, HKDF-SHA512,
+ChaCha20-Poly1305), an encrypted RTSP channel afterwards, Apple binary plists
+in place of SDP, and a *buffered* audio mode in which the receiver pulls audio
+over a separate channel -- architecturally unlike the push-RTP path this
+receiver is built on. More work than the whole of AirPlay 1 here to date,
+behind a blocker that stops it working at the end of it.
+
+One limit on that confidence: the port measurement and the record comparison
+are measurements, but "PTP has no unprivileged fallback" is a reading of how
+the reference receiver behaves rather than something proven exhaustively.
+
+**The reframe that matters.** This is the guest path on a household appliance,
+and a guest is far likelier to be holding an iPhone than sitting at the owner's
+Mac. iOS senders use AirPlay 1 and do send metadata, so the case that matters
+most may already work with what is written -- untested only because the one
+sender to hand is structurally the one that cannot exercise it. AirPlay 2 buys
+macOS *app-level* pickers and nothing else, since macOS can already reach this
+receiver for audio. Verify with an iPhone before spending anything here.

@@ -455,6 +455,7 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                     airPlayAudio = session
                 }
             },
+            onMetadata = { metadata -> publishGuestMetadata(metadata) },
             onTeardown = {
                 runCatching { NativeBridge.pcmEndOfStream() }
                 // The badge describes a stream that is running. A guest who
@@ -537,6 +538,38 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         }
         Log.i(TAG, "airplay: screen says ${st.formatBadge()}, " +
             "bitPerfect=${st.bitPerfect} senderAltered=${st.senderAltered} out=${st.output}")
+    }
+
+    /**
+     * Names the guest's track on the screen.
+     *
+     * Guarded on the guest still holding the output. Senders keep the RTSP
+     * connection alive across a source change and go on sending metadata
+     * after the owner has taken the DAC back -- a phone left paused in a
+     * pocket will announce its next track quite happily -- and writing that
+     * over the owner's track would put a guest's title on the owner's music.
+     * The same mistake as leaving the owner's title on a guest's stream, in
+     * the other direction.
+     *
+     * Empty metadata is dropped rather than published. A sender emits a
+     * SET_PARAMETER carrying only a persistent id between tracks, and taking
+     * it literally would blank a title that is still correct.
+     */
+    private fun publishGuestMetadata(metadata: com.hifirend.airplay.DaapMetadata) {
+        if (activeSource != SOURCE_AIRPLAY) {
+            Log.i(TAG, "airplay: ignoring metadata; the guest no longer has the output")
+            return
+        }
+        if (metadata.isEmpty) return
+        val st = com.hifirend.RendererState
+        // Field by field, keeping what the sender did not send. Metadata
+        // arrives in pieces -- a title first, the album a moment later -- and
+        // assigning the whole record each time makes each message erase the
+        // one before it.
+        metadata.title?.let { st.title = it }
+        metadata.artist?.let { st.artist = it }
+        metadata.album?.let { st.album = it }
+        if (metadata.durationSeconds > 0) st.durationSeconds = metadata.durationSeconds
     }
 
     private fun rebindRouter(reason: String) {

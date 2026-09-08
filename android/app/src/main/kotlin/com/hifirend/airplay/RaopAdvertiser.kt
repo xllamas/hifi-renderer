@@ -69,6 +69,7 @@ class RaopAdvertiser(private val context: Context) {
         "vn" to "3",
         "vs" to "105.1",
         "md" to "0,1,2",
+        "am" to "AirPort10,115",
     )
 
     fun start(friendlyName: String, udn: String, port: Int) {
