@@ -310,6 +310,43 @@ string-reading path remains unverified in the field, and an iOS sender is the
 way to verify it -- iPhones still speak AirPlay 1 to legacy receivers and send
 DAAP, artwork and progress.
 
+### There is no sender name in the headers
+
+PhairPlay shows "Audio from <sender>" where this shows "Unknown track", which
+is a better answer and a more useful one -- when unexpected music starts, the
+owner mostly wants to know *who* has the output, not what the track is called.
+Whether that is reachable over AirPlay 1 was worth measuring rather than
+guessing, so every request's headers are now logged once per method per
+connection (never bodies: the ANNOUNCE body carries the AES key).
+
+macOS 26 sends four headers and no more, on every method:
+
+    cseq, dacp-id: 20BC6070E22D669E, active-remote: 4266753127,
+    user-agent: AirPlay/960.13.1
+
+No `X-Apple-Client-Name`, no `Client-Instance`, no friendly name anywhere. The
+obvious implementation would have read a header that does not exist.
+
+The name is still reachable, by a longer route. `dacp-id` names a Bonjour
+service the sender advertises for its own remote control, and resolving it
+gives the sender's host:
+
+    $ dns-sd -B _dacp._tcp local
+    iTunes_Ctrl_20BC6070E22D669E
+    $ dns-sd -L iTunes_Ctrl_20BC6070E22D669E _dacp._tcp local
+    ... can be reached at Walrus.local.:57047
+
+`Walrus` is the sending Mac. So "AirPlay from Walrus" is available from the
+`dacp-id` header plus one mDNS resolve, which `NsdManager` can already do.
+
+That same channel is the other way to metadata, and a more promising one than
+DAAP on this route: DACP is a remote-control protocol, so a receiver holding
+`dacp-id` and `active-remote` can ask the *sender* what is playing rather than
+wait to be told, and can send play/pause/next back. Probing it here got as far
+as proving the endpoint is live and no further -- `/server-info` 404,
+`/ctrl-int/1/playstatusupdate` 400 -- so the request shape needs real work
+rather than a guess. Worth knowing it exists; not worth assuming it is easy.
+
 ## AirPlay 2: assessed, not attempted
 
 Appearing in Music's and Tidal's own device pickers means being an AirPlay 2

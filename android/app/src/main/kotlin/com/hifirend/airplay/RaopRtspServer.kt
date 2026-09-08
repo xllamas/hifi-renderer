@@ -94,6 +94,8 @@ class RaopRtspServer(
             val input = socket.getInputStream()
             val output = socket.getOutputStream()
             var announced: Map<String, String> = emptyMap()
+            // Which methods have had their headers logged on this connection.
+            val headersSeen = HashSet<String>()
 
             while (running.get() && !socket.isClosed) {
                 val request = try {
@@ -103,6 +105,7 @@ class RaopRtspServer(
                     break
                 }
                 Log.i(TAG, "airplay: ${request.method} ${request.uri}")
+                logHeadersOnce(request, headersSeen)
 
                 if (already) {
                     // Someone is already connected. Say so properly rather
@@ -159,6 +162,34 @@ class RaopRtspServer(
             request.cseq?.let { header("CSeq", it) }
             header("Server", "AirTunes/105.1")
         }
+
+    /**
+     * Logs a request's headers the first time each method is seen on a
+     * connection.
+     *
+     * Once per method rather than once per request: a sender sends OPTIONS
+     * every two seconds as a keepalive, and logging those headers would bury
+     * the session. Once per *connection* rather than once per process, because
+     * the interesting question is what a particular sender offers, and the
+     * next sender may be a different one.
+     *
+     * Here to answer a specific question. A guest streaming system audio sends
+     * no track metadata at all -- measured, see doc/airplay.md -- so the screen
+     * says "Unknown track" for the whole session. Naming the sender instead
+     * would be a better answer and a more useful one, since the owner mostly
+     * wants to know *who* has taken the output. Whether that is possible
+     * depends on whether a sender identifies itself in a header, and guessing
+     * which header is how the wrong one gets read for a release.
+     *
+     * Bodies are never logged. The ANNOUNCE body carries the session's AES
+     * key.
+     */
+    private fun logHeadersOnce(request: RtspRequest, seen: MutableSet<String>) {
+        if (!seen.add(request.method)) return
+        for ((name, value) in request.headers) {
+            Log.i(TAG, "airplay:   ${request.method} header $name: $value")
+        }
+    }
 
     /**
      * The out-of-band half of a session: metadata, artwork, volume, progress.
