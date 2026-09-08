@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hifirend/l10n/app_localizations.dart';
 
 import 'package:hifirend/main.dart';
 import 'package:hifirend/renderer_state.dart';
@@ -12,6 +13,22 @@ import 'package:hifirend/screens/now_playing_screen.dart';
 import 'package:hifirend/usb/dac_capabilities.dart';
 import 'package:hifirend/usb/rate_sweep.dart';
 import 'package:hifirend/usb/stability_soak.dart';
+
+/// Wraps a screen the way the real app does.
+///
+/// Every screen now reads its text through AppLocalizations, which is an
+/// inherited widget: a bare MaterialApp does not provide one and the screen
+/// throws while building. Tests must therefore stand up the same delegates the
+/// app does, or they test a configuration that never ships.
+Future<AppLocalizations> englishStrings() =>
+    AppLocalizations.delegate.load(const Locale('en'));
+
+Widget localizedApp({required Widget home}) => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: home,
+    );
+
 
 /// Modelled on the real AL400 probe output.
 const _al400 = '''
@@ -159,7 +176,7 @@ void main() {
           '"ignoringBatteryOptimizations":false,"manufacturer":"xiaomi",'
           '"hasVendorSettings":true,"unexpectedDeaths":0}');
 
-      await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+      await tester.pumpWidget(localizedApp(home: const OnboardingScreen()));
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.textContaining('Show a notification'), findsOneWidget);
@@ -186,7 +203,7 @@ void main() {
           '"ignoringBatteryOptimizations":true,"manufacturer":"xiaomi",'
           '"hasVendorSettings":true,"unexpectedDeaths":0}');
 
-      await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+      await tester.pumpWidget(localizedApp(home: const OnboardingScreen()));
       await tester.pump(const Duration(milliseconds: 100));
 
       // Granted steps stop offering their button.
@@ -211,7 +228,7 @@ void main() {
           '"ignoringBatteryOptimizations":true,"manufacturer":"acme",'
           '"hasVendorSettings":false,"unexpectedDeaths":0}');
 
-      await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+      await tester.pumpWidget(localizedApp(home: const OnboardingScreen()));
       await tester.pump(const Duration(milliseconds: 100));
 
       // No Intent to offer, so it must say what to look for by hand rather
@@ -227,7 +244,7 @@ void main() {
           '"ignoringBatteryOptimizations":true,"manufacturer":"",'
           '"hasVendorSettings":false,"unexpectedDeaths":0}', calls: calls);
 
-      await tester.pumpWidget(const MaterialApp(home: OnboardingScreen()));
+      await tester.pumpWidget(localizedApp(home: const OnboardingScreen()));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.scrollUntilVisible(find.text('Done'), 200,
           scrollable: find.byType(Scrollable));
@@ -271,7 +288,7 @@ void main() {
         };
       });
 
-      await tester.pumpWidget(const MaterialApp(home: PlaybackTestScreen()));
+      await tester.pumpWidget(localizedApp(home: const PlaybackTestScreen()));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tap(find.text('Choose a file'));
       await tester.pump(const Duration(milliseconds: 600));
@@ -306,7 +323,7 @@ void main() {
         };
       });
 
-      await tester.pumpWidget(const MaterialApp(home: PlaybackTestScreen()));
+      await tester.pumpWidget(localizedApp(home: const PlaybackTestScreen()));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tap(find.text('Choose a file'));
       await tester.pump(const Duration(milliseconds: 300));
@@ -327,7 +344,7 @@ void main() {
             _ => null,
           });
 
-      await tester.pumpWidget(const MaterialApp(home: PlaybackTestScreen()));
+      await tester.pumpWidget(localizedApp(home: const PlaybackTestScreen()));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tap(find.text('Choose a file'));
       await tester.pump(const Duration(milliseconds: 300));
@@ -369,7 +386,7 @@ void main() {
     testWidgets('reports being killed, above the settings that fix it',
         (tester) async {
       mock(deaths: 3);
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: SettingsScreen(
           status: const RendererStatus(),
           probe: ValueNotifier(const DacProbeState()),
@@ -409,7 +426,7 @@ void main() {
         };
       });
 
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: SettingsScreen(
           status: const RendererStatus(),
           probe: ValueNotifier(const DacProbeState()),
@@ -436,7 +453,7 @@ void main() {
 
     testWidgets('says nothing when it has never been killed', (tester) async {
       mock(deaths: 0);
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: SettingsScreen(
           status: const RendererStatus(),
           probe: ValueNotifier(const DacProbeState()),
@@ -451,7 +468,7 @@ void main() {
     testWidgets('states the vendor restriction as an inference, not a fact',
         (tester) async {
       mock(deaths: 0);
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: SettingsScreen(
           status: const RendererStatus(),
           probe: ValueNotifier(const DacProbeState()),
@@ -505,7 +522,7 @@ void main() {
       });
 
       await tester.pumpWidget(
-          const MaterialApp(home: DacVerificationScreen()));
+          localizedApp(home: const DacVerificationScreen()));
       await tester.pump(const Duration(milliseconds: 100));
 
       await tester.tap(find.text('Run rate sweep'));
@@ -552,7 +569,7 @@ void main() {
           });
 
       await tester.pumpWidget(
-          const MaterialApp(home: DacVerificationScreen()));
+          localizedApp(home: const DacVerificationScreen()));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tap(find.text('Run rate sweep'));
       for (var i = 0; i < 240; i++) {
@@ -581,7 +598,7 @@ void main() {
           });
 
       await tester.pumpWidget(
-          const MaterialApp(home: DacVerificationScreen()));
+          localizedApp(home: const DacVerificationScreen()));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tap(find.text('Run rate sweep'));
       for (var i = 0; i < 60; i++) {
@@ -639,14 +656,14 @@ void main() {
       });
 
       await tester.pumpWidget(
-          const MaterialApp(home: DacVerificationScreen()));
+          localizedApp(home: const DacVerificationScreen()));
       await tester.pump(const Duration(milliseconds: 100));
       await tester.tap(find.text('Run rate sweep'));
       await tester.pump(const Duration(milliseconds: 600));
 
       // Replace the screen while a rate is still streaming: every setState
       // after this point is happening on a dead widget.
-      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pumpWidget(localizedApp(home: const SizedBox()));
       for (var i = 0; i < 30; i++) {
         await tester.pump(const Duration(milliseconds: 500));
       }
@@ -1007,7 +1024,7 @@ void main() {
       );
       expect(dlna.hasLocalPlaylist, isFalse);
 
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: NowPlayingScreen(
           status: dlna,
           onOpenSettings: () {},
@@ -1024,7 +1041,7 @@ void main() {
     testWidgets('skip buttons are live, and disabled at the ends of the list',
         (tester) async {
       Future<void> show(RendererStatus s, {VoidCallback? onNext}) =>
-          tester.pumpWidget(MaterialApp(
+          tester.pumpWidget(localizedApp(
             home: NowPlayingScreen(
               status: s,
               onOpenSettings: () {},
@@ -1086,7 +1103,7 @@ void main() {
         '"lastError":"Stopped after 3 tracks in a row could not be played."}',
       );
 
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: NowPlayingScreen(
           status: stopped,
           onOpenSettings: () {},
@@ -1112,7 +1129,7 @@ void main() {
         '"sourceRate":96000,"sourceBits":24,"bitPerfect":true,"output":"usb"}',
       );
 
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: NowPlayingScreen(
           status: paused,
           onOpenSettings: () {},
@@ -1155,7 +1172,7 @@ void main() {
         'Failed to connect to /192.168.100.41:57645"}',
       );
 
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: NowPlayingScreen(
           status: status,
           onOpenSettings: () {},
@@ -1281,7 +1298,7 @@ void main() {
       final status = RendererStatus.parse(playing);
       expect(status.usingSystemAudio, isTrue);
       expect(status.bitPerfect, isFalse);
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: NowPlayingScreen(
           status: status,
           onOpenSettings: () {},
@@ -1319,7 +1336,7 @@ void main() {
       // warning would be a different and wrong statement.
       expect(status.usingSystemAudio, isFalse);
 
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: NowPlayingScreen(
           status: status,
           onOpenSettings: () {},
@@ -1350,9 +1367,9 @@ void main() {
 """;
       final status = RendererStatus.parse(guest);
       expect(status.title, isNull);
-      expect(status.displayTitle, 'AirPlay from Walrus');
+      expect(status.displayTitle(await englishStrings()), 'AirPlay from Walrus');
 
-      await tester.pumpWidget(MaterialApp(
+      await tester.pumpWidget(localizedApp(
         home: NowPlayingScreen(
           status: status,
           onOpenSettings: () {},
@@ -1366,17 +1383,17 @@ void main() {
       expect(find.text('Unknown track'), findsNothing);
     });
 
-    test('a real title always outranks the sender name', () {
+    test('a real title always outranks the sender name', () async {
       // The fallback is for the case with no title. An iPhone that does send
       // one must not have it hidden behind the name of the phone.
       final named = RendererStatus.parse(
         '{"title":"Chameleon","senderName":"Walrus","output":"usb"}',
       );
-      expect(named.displayTitle, 'Chameleon');
+      expect(named.displayTitle(await englishStrings()), 'Chameleon');
 
       // And with neither, the wording is unchanged from before.
       final bare = RendererStatus.parse('{"output":"usb"}');
-      expect(bare.displayTitle, 'Unknown track');
+      expect(bare.displayTitle(await englishStrings()), 'Unknown track');
     });
 
     test('a volume change does not quietly restore the bit-perfect claim', () {

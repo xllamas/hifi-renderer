@@ -1,0 +1,90 @@
+{
+  "@@locale": "en",
+
+  "settingsTooltip": "Settings",
+  "@settingsTooltip": {
+    "description": "Tooltip on the gear button in the corner of the now-playing screen."
+  },
+
+  "idleReady": "Ready — waiting for a controller",
+  "@idleReady": {
+    "description": "Shown on the idle screen when a DAC is attached and the renderer is waiting to be sent a track by a DLNA/OpenHome controller. 'Controller' is the phone or app that tells the renderer what to play; the renderer never chooses for itself."
+  },
+
+  "idleNoDac": "No DAC connected",
+  "@idleNoDac": {
+    "description": "Shown on the idle screen when no USB digital-to-analogue converter is plugged in. DAC is a standard audio abbreviation and is usually left untranslated."
+  },
+
+  "unknownTrack": "Unknown track",
+  "@unknownTrack": {
+    "description": "Shown in place of a track title when the sender gave us none. Must stay short: it is displayed at large size where a title would be."
+  },
+
+  "airPlayFromSender": "AirPlay from {sender}",
+  "@airPlayFromSender": {
+    "description": "Shown in place of a track title while a guest streams over AirPlay and sent no track name. Names the device streaming to us, so the owner can see who has taken the output. 'AirPlay' is an Apple product name and is never translated.",
+    "placeholders": {
+      "sender": {
+        "type": "String",
+        "example": "Walrus"
+      }
+    }
+  },
+
+  "previousTrack": "Previous track",
+  "@previousTrack": {
+    "description": "Tooltip on the skip-backwards button."
+  },
+
+  "nextTrack": "Next track",
+  "@nextTrack": {
+    "description": "Tooltip on the skip-forwards button."
+  },
+
+  "pause": "Pause",
+  "@pause": {
+    "description": "Tooltip on the transport button while audio is playing."
+  },
+
+  "play": "Play",
+  "@play": {
+    "description": "Tooltip on the transport button while audio is stopped or paused."
+  },
+
+  "volumeWriteOnly": "This DAC does not report its volume back, so this shows the last value sent from here.",
+  "@volumeWriteOnly": {
+    "description": "Explains a volume slider whose position cannot be trusted to match the hardware: the DAC accepts a volume but always reports its maximum back, so the number shown is what the app last sent rather than what the device is actually set to. Small print under the slider."
+  },
+
+  "systemAudioDetail": "Phone speaker or headphones — resampled by Android",
+  "@systemAudioDetail": {
+    "description": "Shown when no DAC is attached and audio is going out through the phone itself. 'Resampled' means the sample rate was converted, which is the thing this app exists to avoid, so the wording should not soften it."
+  },
+
+  "dacOneOf": "(1 of {count})",
+  "@dacOneOf": {
+    "description": "Appears after the name of the DAC in use when more than one USB audio device is attached, to say that others were found. Always the first of several.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+
+  "bitPerfect": "bit-perfect",
+  "@bitPerfect": {
+    "description": "The green badge shown when the audio reaches the DAC completely unaltered — not resampled, not volume-adjusted, bit for bit the source. This is the central promise of the whole app, so it should use whatever term audio enthusiasts in the target language actually use; keep it lower case and short enough to sit beside a format badge."
+  },
+
+  "systemAudioBadge": "system audio",
+  "@systemAudioBadge": {
+    "description": "Amber badge shown when audio is going through the phone's own output rather than a USB DAC, and so is not bit-perfect. Short: it sits beside a format badge like 'FLAC 16/44.1'."
+  },
+
+  "airPlaySenderResampled": "AirPlay · sender resampled",
+  "@airPlaySenderResampled": {
+    "description": "Amber badge shown while a guest streams over AirPlay. The audio reaches the DAC untouched by us, but the sending device already converted its sample rate and applied its own volume, so the app must not claim bit-perfect. 'AirPlay' is never translated; the middle dot is a separator. Short: it sits beside a format badge."
+  }
+}

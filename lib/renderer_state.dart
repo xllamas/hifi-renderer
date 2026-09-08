@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'l10n/app_localizations.dart';
+
 /// What the renderer is doing, as published by the Android service.
 ///
 /// The service owns playback and keeps running with no UI, so this is a
@@ -160,8 +162,11 @@ class RendererStatus {
   /// so naming *who* has the output is both the best available answer and, for
   /// the owner hearing music start unexpectedly, generally the more useful
   /// one. A real title always wins when there is one.
-  String get displayTitle =>
-      title ?? (senderName != null ? 'AirPlay from $senderName' : 'Unknown track');
+  ///
+  /// Takes the strings rather than reading them from a context, so the
+  /// precedence stays in one place and is testable without pumping a widget.
+  String displayTitle(AppLocalizations t) => title ??
+      (senderName != null ? t.airPlayFromSender(senderName!) : t.unknownTrack);
 
   /// The DAC takes a volume but will not report one, so its own knob or remote
   /// cannot be followed and this shows the last value sent.

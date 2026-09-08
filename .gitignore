@@ -49,3 +49,7 @@ app.*.map.json
 
 # AirPlay RAOP private key, supplied per doc/airplay.md, never committed.
 android/app/src/main/assets/airplay/raop_key.pkcs8
+
+# gen-l10n writes this when a translation is missing a key; it is a build
+# artefact, and an empty one is the normal state.
+l10n_missing.txt

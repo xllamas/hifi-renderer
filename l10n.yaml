@@ -1,0 +1,14 @@
+# Where the translations live and what gets generated from them.
+#
+# app_en.arb is the source of truth: every string is written there first, with
+# a description saying where it appears and what constrains it, because a
+# translator sees the string and nothing else. The other files are translations
+# of it and carry no descriptions.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+# Untranslated strings fall back to English rather than failing the build: a
+# missing translation should show an English word, never an empty screen.
+untranslated-messages-file: l10n_missing.txt
+nullable-getter: false

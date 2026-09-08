@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../renderer_state.dart';
 
 /// The main screen: album art, track information, and the format and
@@ -52,7 +53,7 @@ class NowPlayingScreen extends StatelessWidget {
               child: IconButton(
                 onPressed: onOpenSettings,
                 icon: const Icon(Icons.settings, color: Colors.white38),
-                tooltip: 'Settings',
+                tooltip: AppLocalizations.of(context).settingsTooltip,
               ),
             ),
           ],
@@ -132,13 +133,13 @@ class NowPlayingScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               status.dacConnected
-                  ? 'Ready — waiting for a controller'
-                  : 'No DAC connected',
+                  ? AppLocalizations.of(context).idleReady
+                  : AppLocalizations.of(context).idleNoDac,
               style: const TextStyle(color: Colors.white38),
             ),
             if (status.dacConnected && status.dacName != null) ...[
               const SizedBox(height: 18),
-              _outputDevice(),
+              _outputDevice(context),
             ],
             // A refusal that emptied the queue leaves nothing playing, and the
             // reason has to survive that or the screen goes back to looking
@@ -173,23 +174,23 @@ class NowPlayingScreen extends StatelessWidget {
           const Spacer(),
           Center(child: _art(art)),
           const SizedBox(height: 28),
-          _titleBlock(centred: true),
+          _titleBlock(context, centred: true),
           const SizedBox(height: 22),
           _progress(),
           const SizedBox(height: 12),
-          _controls(centred: true),
+          _controls(context, centred: true),
           if (status.canControlVolume) ...[
             const SizedBox(height: 4),
-            _volume(),
+            _volume(context),
           ],
           const SizedBox(height: 16),
-          Center(child: _formatBadge()),
+          Center(child: _formatBadge(context)),
           if (status.usingSystemAudio) ...[
             const SizedBox(height: 10),
-            Center(child: _systemOutput()),
+            Center(child: _systemOutput(context)),
           ] else if (status.dacName != null) ...[
             const SizedBox(height: 10),
-            Center(child: _outputDevice()),
+            Center(child: _outputDevice(context)),
           ],
           if (_hasProblem) ...[
             const SizedBox(height: 18),
@@ -216,23 +217,23 @@ class NowPlayingScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _titleBlock(centred: false),
+                _titleBlock(context, centred: false),
                 const SizedBox(height: 20),
                 _progress(),
                 const SizedBox(height: 8),
-                _controls(centred: false),
+                _controls(context, centred: false),
                 if (status.canControlVolume) ...[
                   const SizedBox(height: 4),
-                  _volume(),
+                  _volume(context),
                 ],
                 const SizedBox(height: 14),
-                _formatBadge(),
+                _formatBadge(context),
                 if (status.usingSystemAudio) ...[
                   const SizedBox(height: 10),
-                  _systemOutput(),
+                  _systemOutput(context),
                 ] else if (status.dacName != null) ...[
                   const SizedBox(height: 10),
-                  _outputDevice(),
+                  _outputDevice(context),
                 ],
                 if (_hasProblem) ...[
                   const SizedBox(height: 16),
@@ -246,14 +247,14 @@ class NowPlayingScreen extends StatelessWidget {
     );
   }
 
-  Widget _titleBlock({required bool centred}) {
+  Widget _titleBlock(BuildContext context, {required bool centred}) {
     final align = centred ? TextAlign.center : TextAlign.start;
     final cross = centred ? CrossAxisAlignment.center : CrossAxisAlignment.start;
     return Column(
       crossAxisAlignment: cross,
       children: [
         Text(
-          status.displayTitle,
+          status.displayTitle(AppLocalizations.of(context)),
           textAlign: align,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
@@ -344,7 +345,7 @@ class NowPlayingScreen extends StatelessWidget {
   /// at the ends of a list — the shape of the controls should not change under
   /// someone's thumb as a playlist advances — unless repeat is on, in which
   /// case both ends stay reachable.
-  Widget _controls({required bool centred}) => Row(
+  Widget _controls(BuildContext context, {required bool centred}) => Row(
         mainAxisAlignment:
             centred ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: [
@@ -355,7 +356,7 @@ class NowPlayingScreen extends StatelessWidget {
               icon: const Icon(Icons.skip_previous),
               color: Colors.white70,
               disabledColor: Colors.white24,
-              tooltip: 'Previous track',
+              tooltip: AppLocalizations.of(context).previousTrack,
             ),
             const SizedBox(width: 8),
           ],
@@ -364,7 +365,9 @@ class NowPlayingScreen extends StatelessWidget {
             iconSize: 34,
             padding: const EdgeInsets.all(12),
             icon: Icon(status.isPlaying ? Icons.pause : Icons.play_arrow),
-            tooltip: status.isPlaying ? 'Pause' : 'Play',
+            tooltip: status.isPlaying
+                ? AppLocalizations.of(context).pause
+                : AppLocalizations.of(context).play,
           ),
           if (status.hasLocalPlaylist) ...[
             const SizedBox(width: 8),
@@ -374,7 +377,7 @@ class NowPlayingScreen extends StatelessWidget {
               icon: const Icon(Icons.skip_next),
               color: Colors.white70,
               disabledColor: Colors.white24,
-              tooltip: 'Next track',
+              tooltip: AppLocalizations.of(context).nextTrack,
             ),
           ],
         ],
@@ -383,7 +386,7 @@ class NowPlayingScreen extends StatelessWidget {
   /// Only shown when the DAC actually accepts volume changes. A slider that
   /// silently does nothing is worse than no slider — which is exactly the
   /// confusion this app exists to spare people.
-  Widget _volume() => Column(
+  Widget _volume(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
@@ -408,12 +411,11 @@ class NowPlayingScreen extends StatelessWidget {
           // own knob cannot be followed. Saying so is better than showing a
           // number that quietly stops being true.
           if (status.volumeIsWriteOnly)
-            const Padding(
-              padding: EdgeInsets.only(left: 26, right: 34),
+            Padding(
+              padding: const EdgeInsets.only(left: 26, right: 34),
               child: Text(
-                'This DAC does not report its volume back, so this shows the '
-                'last value sent from here.',
-                style: TextStyle(fontSize: 11, color: Colors.white30),
+                AppLocalizations.of(context).volumeWriteOnly,
+                style: const TextStyle(fontSize: 11, color: Colors.white30),
               ),
             ),
         ],
@@ -421,20 +423,20 @@ class NowPlayingScreen extends StatelessWidget {
 
   /// Where the audio is going when there is no DAC: the phone's own output,
   /// with what that costs stated rather than implied.
-  Widget _systemOutput() => Row(
+  Widget _systemOutput(BuildContext context) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.phone_android, size: 14, color: Colors.amberAccent),
           const SizedBox(width: 6),
-          const Text('Phone speaker or headphones — resampled by Android',
-              style: TextStyle(fontSize: 12, color: Colors.white38)),
+          Text(AppLocalizations.of(context).systemAudioDetail,
+              style: const TextStyle(fontSize: 12, color: Colors.white38)),
         ],
       );
 
   /// Where the audio is going. On a phone that may have several USB devices
   /// attached -- a hub, an Ethernet adapter, more than one DAC -- naming the
   /// output is the difference between trusting the screen and guessing.
-  Widget _outputDevice() => Row(
+  Widget _outputDevice(BuildContext context) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.usb, size: 14, color: Colors.white30),
@@ -450,7 +452,7 @@ class NowPlayingScreen extends StatelessWidget {
           ),
           if (status.dacCount > 1) ...[
             const SizedBox(width: 6),
-            Text('(1 of ${status.dacCount})',
+            Text(AppLocalizations.of(context).dacOneOf(status.dacCount),
                 style: const TextStyle(fontSize: 11, color: Colors.white24)),
           ],
         ],
@@ -458,7 +460,7 @@ class NowPlayingScreen extends StatelessWidget {
 
   /// Format and resolution, plus whether samples are reaching the DAC
   /// untouched — the thing this app exists to guarantee.
-  Widget _formatBadge() {
+  Widget _formatBadge(BuildContext context) {
     final badge = status.formatBadge;
     if (badge == null) return const SizedBox.shrink();
     return Row(
@@ -482,8 +484,8 @@ class NowPlayingScreen extends StatelessWidget {
           const SizedBox(width: 10),
           const Icon(Icons.verified, size: 15, color: Colors.greenAccent),
           const SizedBox(width: 5),
-          const Text('bit-perfect',
-              style: TextStyle(fontSize: 12, color: Colors.greenAccent)),
+          Text(AppLocalizations.of(context).bitPerfect,
+              style: const TextStyle(fontSize: 12, color: Colors.greenAccent)),
         ]
         // Never leave this ambiguous. Saying nothing would let the fallback
         // pass for the real thing, and the difference between them is the
@@ -493,8 +495,8 @@ class NowPlayingScreen extends StatelessWidget {
           const Icon(Icons.warning_amber_outlined,
               size: 15, color: Colors.amberAccent),
           const SizedBox(width: 5),
-          const Text('system audio',
-              style: TextStyle(fontSize: 12, color: Colors.amberAccent)),
+          Text(AppLocalizations.of(context).systemAudioBadge,
+              style: const TextStyle(fontSize: 12, color: Colors.amberAccent)),
         ]
         // A guest streaming over AirPlay reaches the DAC by the same
         // untouched path as everything else, so the fallback warning would be
@@ -506,8 +508,8 @@ class NowPlayingScreen extends StatelessWidget {
           const SizedBox(width: 10),
           const Icon(Icons.cast_connected, size: 15, color: Colors.amberAccent),
           const SizedBox(width: 5),
-          const Text('AirPlay · sender resampled',
-              style: TextStyle(fontSize: 12, color: Colors.amberAccent)),
+          Text(AppLocalizations.of(context).airPlaySenderResampled,
+              style: const TextStyle(fontSize: 12, color: Colors.amberAccent)),
         ],
       ],
     );

@@ -31,6 +31,13 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Translations. The renderer is an appliance a guest may pick up, so the
+  # interface follows the phone it is being read on rather than the language
+  # the owner set the box up in.
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -56,6 +63,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Generates AppLocalizations from lib/l10n/*.arb; see l10n.yaml.
+  generate: true
 
   # To add assets to your application, add an assets section, like this:
   # assets:

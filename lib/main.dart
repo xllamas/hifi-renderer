@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'l10n/app_localizations.dart';
+import 'locale_setting.dart';
 import 'renderer_state.dart';
 import 'screens/now_playing_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -12,14 +14,44 @@ import 'usb/dac_capabilities.dart';
 
 void main() => runApp(const HifiRendApp());
 
-class HifiRendApp extends StatelessWidget {
+class HifiRendApp extends StatefulWidget {
   const HifiRendApp({super.key});
 
   @override
+  State<HifiRendApp> createState() => _HifiRendAppState();
+}
+
+class _HifiRendAppState extends State<HifiRendApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild the whole app when the language changes, because every string
+    // on every pushed route was resolved at build time.
+    LocaleSetting.instance.addListener(_onLocaleChanged);
+    LocaleSetting.instance.load();
+  }
+
+  @override
+  void dispose() {
+    LocaleSetting.instance.removeListener(_onLocaleChanged);
+    super.dispose();
+  }
+
+  void _onLocaleChanged() => setState(() {});
+
+  @override
   Widget build(BuildContext context) => MaterialApp(
+        // Not localised. It is the appliance's name, the same one that appears
+        // on the network and in controllers, and translating it would make the
+        // box answer to two different names.
         title: 'HiFi Renderer',
         debugShowCheckedModeBanner: false,
         theme: ThemeData.dark(useMaterial3: true),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        // Null means "follow the phone", which is the default and the right
+        // one for an appliance a guest may pick up.
+        locale: LocaleSetting.instance.locale,
         home: const RendererHome(),
       );
 }
