@@ -688,10 +688,13 @@ class HttpStreamPlayback(private val context: Context) {
             RendererState.positionSeconds = j.optInt("positionSeconds")
             engineRunning = j.optBoolean("running")
             decoding = j.optBoolean("decoding")
-            // Nothing between the decoder and the DAC alters samples, so a
-            // running USB stream is bit-perfect by construction. A fallback
-            // path would have to clear this.
+            // Composed by the engine, which is the only layer that sees both
+            // the sink and where the samples came from. It is deliberately not
+            // re-derived here from `output`: a USB sink carrying a guest's
+            // pre-resampled AirPlay stream is not bit-perfect, and that is
+            // invisible from this side.
             RendererState.bitPerfect = j.optBoolean("bitPerfect")
+            RendererState.senderAltered = j.optBoolean("senderAltered")
             RendererState.output = j.optString("output").takeIf { it.isNotBlank() } ?: "usb"
             RendererState.dacVolumeSupported = j.optBoolean("volumeSupported")
             j.optString("volumeReadback").takeIf { it.isNotBlank() }

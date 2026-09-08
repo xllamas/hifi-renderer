@@ -495,6 +495,19 @@ class NowPlayingScreen extends StatelessWidget {
           const SizedBox(width: 5),
           const Text('system audio',
               style: TextStyle(fontSize: 12, color: Colors.amberAccent)),
+        ]
+        // A guest streaming over AirPlay reaches the DAC by the same
+        // untouched path as everything else, so the fallback warning would be
+        // wrong here — but the sender resampled the audio and applied its own
+        // volume before it ever arrived, so the tick would be a lie. It gets
+        // its own words, and they name the path so the owner can see at a
+        // glance that a guest has the output rather than that something broke.
+        else if (status.senderAltered) ...[
+          const SizedBox(width: 10),
+          const Icon(Icons.cast_connected, size: 15, color: Colors.amberAccent),
+          const SizedBox(width: 5),
+          const Text('AirPlay · sender resampled',
+              style: TextStyle(fontSize: 12, color: Colors.amberAccent)),
         ],
       ],
     );

@@ -417,8 +417,15 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
                     sampleRate = format.sampleRate,
                 )
                 val fd = playback.openOutputForPush()
-                val started = NativeBridge.startPcmStream(fd, format.sampleRate, format.channels, 0)
+                // The transport is lossless ALAC, but that is not the same
+                // as bit-perfect: the sender resamples anything that is not
+                // 44.1 kHz and applies its own volume before a byte reaches
+                // us. Carrying that faithfully to the DAC does not make it the
+                // source's bits, and the screen must not say it does.
+                val started = NativeBridge.startPcmStream(fd, format.sampleRate, format.channels, 0,
+                    senderAltered = true)
                 Log.i(TAG, "airplay: decoder configured=$configured, engine=$started")
+                publishGuestStream(format)
 
                 // Bind before answering SETUP: the ports go into that reply,
                 // and a sender told port 0 has nowhere to send and gives up.
@@ -450,6 +457,11 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
             },
             onTeardown = {
                 runCatching { NativeBridge.pcmEndOfStream() }
+                // The badge describes a stream that is running. A guest who
+                // has gone must not leave "ALAC 16/44.1" behind on the screen,
+                // for exactly the reason a stopped local track must not.
+                com.hifirend.RendererState.transportState = "STOPPED"
+                com.hifirend.RendererState.clearTrack()
                 airPlayAudio?.let {
                     Log.i(TAG, "airplay: session ended after ${it.packets.get()} packets, " +
                         "${it.bytesDecrypted.get()} bytes decrypted, " +
@@ -465,6 +477,55 @@ class RendererUpnpService : AndroidUpnpServiceImpl() {
         }.onFailure { Log.w(TAG, "airplay: could not start: ${it.message}") }
         airPlayRtsp = rtsp
         airPlayAdvertiser = advertiser
+    }
+
+    /**
+     * Tells the screen a guest has the output, and what may not be claimed
+     * about it.
+     *
+     * The engine's state normally reaches [RendererState] through
+     * HttpStreamPlayback's track watcher, which only runs while *it* is
+     * fetching a track. The guest path never goes through it -- AirPlay opens
+     * the output and pushes PCM directly -- so without this the now-playing
+     * screen sits blank for an entire guest session: no format, no transport,
+     * a stopped-looking renderer while music is plainly coming out of the DAC.
+     * That is not merely untidy. The whole of this path's honesty problem is a
+     * bit-perfect question left unanswered, and a blank screen answers it no
+     * better than a wrong badge does.
+     *
+     * [bitPerfect] and [senderAltered] are read back from the engine rather
+     * than decided here. Composing them a second time in Kotlin is how the two
+     * answers drift apart, and the engine is the only layer that can see both
+     * the sink and where the samples came from.
+     *
+     * The format is ALAC because that is what the sender sent; what reaches
+     * the DAC is the PCM it decoded to, and calling the badge "PCM" would
+     * describe our plumbing rather than the guest's music. There is no title:
+     * the sender does supply one over SET_PARAMETER, and parsing that DAAP
+     * payload is its own piece of work rather than something to guess at here.
+     */
+    private fun publishGuestStream(format: com.hifirend.airplay.RaopFormat) {
+        val st = com.hifirend.RendererState
+        st.transportState = "PLAYING"
+        st.sourceFormat = "ALAC"
+        st.sourceRate = format.sampleRate
+        st.sourceBits = format.bitDepth
+        st.channels = format.channels
+        val status = runCatching { org.json.JSONObject(NativeBridge.streamStatus()) }.getOrNull()
+        if (status != null) {
+            st.bitPerfect = status.optBoolean("bitPerfect")
+            st.senderAltered = status.optBoolean("senderAltered")
+            st.deviceBits = status.optInt("deviceBits")
+            st.output = status.optString("output").takeIf { it.isNotBlank() } ?: "usb"
+        } else {
+            // Never fall through claiming bit-perfect. If the engine could not
+            // be asked, the honest answer is the one we already know from the
+            // fact that this is a guest at all.
+            st.bitPerfect = false
+            st.senderAltered = true
+        }
+        Log.i(TAG, "airplay: screen says ${st.formatBadge()}, " +
+            "bitPerfect=${st.bitPerfect} senderAltered=${st.senderAltered} out=${st.output}")
     }
 
     private fun rebindRouter(reason: String) {

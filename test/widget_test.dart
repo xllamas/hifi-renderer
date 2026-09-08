@@ -1296,6 +1296,59 @@ void main() {
       expect(find.textContaining('resampled by Android'), findsOneWidget);
     });
 
+    testWidgets('an AirPlay guest is named, not silently un-ticked', (tester) async {
+      // The guest path reaches the DAC by exactly the same untouched route as
+      // a local file, so the sink is honest in reporting itself bit-perfect --
+      // and the renderer must still not claim it, because the sender resampled
+      // to 44.1 kHz and applied its own volume before a byte arrived. Dropping
+      // the tick is necessary but not sufficient: a missing tick is equally
+      // consistent with the fallback output and with nothing playing, and the
+      // owner is owed the actual reason.
+      const guest = '''
+{"rendererName":"HiFi Renderer","transportState":"PLAYING","title":"Guest Track",
+"artist":"Someone's Phone","durationSeconds":210,"positionSeconds":12,
+"formatBadge":"ALAC 16/44.1","sourceFormat":"ALAC","sourceRate":44100,
+"sourceBits":16,"channels":2,"dacConnected":true,"dacName":"SMSL USB AUDIO",
+"dacCount":1,"bitPerfect":false,"senderAltered":true,"output":"usb",
+"dacVolume":50,"dacVolumeSupported":true,"underruns":0}
+''';
+      final status = RendererStatus.parse(guest);
+      expect(status.senderAltered, isTrue);
+      expect(status.bitPerfect, isFalse);
+      // Not the fallback: the DAC really is carrying this, so the system-audio
+      // warning would be a different and wrong statement.
+      expect(status.usingSystemAudio, isFalse);
+
+      await tester.pumpWidget(MaterialApp(
+        home: NowPlayingScreen(
+          status: status,
+          onOpenSettings: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
+          onVolumeChanged: (_) {},
+        ),
+      ));
+
+      expect(find.text('bit-perfect'), findsNothing);
+      expect(find.text('system audio'), findsNothing);
+      expect(find.textContaining('sender resampled'), findsOneWidget);
+      expect(find.text('ALAC 16/44.1'), findsOneWidget);
+    });
+
+    test('a volume change does not quietly restore the bit-perfect claim', () {
+      // copyWithVolume rebuilds the whole record field by field, so a field it
+      // forgets silently reverts to its default -- and this field's default is
+      // the claiming one. Turning the knob during a guest's stream would have
+      // put the tick back.
+      final guest = RendererStatus.parse(
+        '{"transportState":"PLAYING","formatBadge":"ALAC 16/44.1",'
+        '"bitPerfect":false,"senderAltered":true,"output":"usb"}',
+      );
+      expect(guest.copyWithVolume(42).senderAltered, isTrue);
+      expect(guest.copyWithVolume(42).bitPerfect, isFalse);
+    });
+
     testWidgets('idle state names the renderer without crashing', (tester) async {
       messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
             'rendererState' =>

@@ -57,7 +57,17 @@ public:
     /** Bytes per sample the decoder should pack into. */
     virtual int deviceSubslot() const = 0;
 
-    /** True only when samples reach the hardware unaltered. */
+    /**
+     * Whether *this sink* hands the hardware what it was given, unaltered.
+     *
+     * Scoped to the sink on purpose, and deliberately not published as the
+     * whole answer. Bit-perfect is a property of the entire path, and a sink
+     * cannot see past its own input: an AirPlay sender resamples and
+     * attenuates everything before a single byte reaches us, so a USB sink
+     * truthfully reporting that it changed nothing would still be describing
+     * a stream that was already changed. Whoever knows where the samples came
+     * from composes the two -- see StreamPlayer::status().
+     */
     virtual bool bitPerfect() const = 0;
 
     /** Short name for the output path, for the UI and the logs. */

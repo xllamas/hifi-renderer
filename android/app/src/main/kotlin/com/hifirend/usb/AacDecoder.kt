@@ -57,7 +57,10 @@ class AacDecoder {
         val channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
         Log.i(TAG, "aac: $mime $rate Hz ${channels}ch")
 
-        val started = NativeBridge.startPcmStream(fd, rate, channels, seekSeconds)
+        // MediaCodec is a decoder, not the mixer: this is the file's own audio
+        // at the file's own rate, so the path stays eligible for bit-perfect.
+        val started = NativeBridge.startPcmStream(fd, rate, channels, seekSeconds,
+            senderAltered = false)
         if (!started.contains("\"ok\":true")) {
             extractor.release()
             onFailure(started)

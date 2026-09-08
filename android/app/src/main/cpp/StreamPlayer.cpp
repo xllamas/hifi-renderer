@@ -82,6 +82,9 @@ public:
         relaxed_ = relaxed;
         format_ = formatFromMime(mime);
         mime_ = mime;
+        // Decoded here from the source's own bytes: nothing has been between
+        // the file and this decoder.
+        senderAltered_ = false;
 
         stream_ = std::make_unique<NetworkStream>();
         std::string err;
@@ -112,8 +115,16 @@ public:
      * mixer, so its PCM output still reaches the DAC untouched. The samples
      * arrive here as 16-bit little-endian and are widened the same way every
      * other source is.
+     *
+     * [senderAltered] is the one thing this layer cannot work out for itself.
+     * PCM from MediaCodec is the source's own audio and nothing has touched
+     * it; PCM from an AirPlay sender has already been resampled to 44.1 kHz
+     * and had the sender's volume applied before it left the other machine.
+     * Both arrive through this same door, look identical once here, and only
+     * the caller knows which is which.
      */
-    std::string startPcm(int fd, uint32_t rate, int channels, int seekSeconds) {
+    std::string startPcm(int fd, uint32_t rate, int channels, int seekSeconds,
+                         bool senderAltered) {
         std::lock_guard<std::mutex> lock(mutex_);
         stopLocked();
 
@@ -128,6 +139,7 @@ public:
         }
 
         pcmMode_ = true;
+        senderAltered_ = senderAltered;
         pcmChannels_ = channels;
         sourceBits_ = 16;
         sourceChannels_ = channels;
@@ -139,7 +151,8 @@ public:
         finished_.store(false);
         error_.clear();
         running_.store(true);
-        LOGI("pcm: %u Hz %dch from MediaCodec", rate, channels);
+        LOGI("pcm: %u Hz %dch pushed in%s", rate, channels,
+             senderAltered ? " (already resampled by the sender: NOT bit-perfect)" : "");
         return "{\"ok\":true}";
     }
 
@@ -310,6 +323,15 @@ public:
         s += ",\"positionSeconds\":" +
              std::to_string(positionBase_.load() + (r ? framesDecoded_.load() / r : 0));
         s += ",\"sourceFormat\":\"" + std::string(formatName(format_)) + "\"";
+        // The one claim this app may not get wrong, so it is composed in the
+        // single place that can see both halves of it: a sink that alters
+        // nothing, carrying samples that nobody altered on the way here.
+        // Neither half is sufficient alone -- the USB sink is always honest
+        // about itself, which is exactly why it must not be asked about the
+        // stream.
+        const bool exact = sink_->bitPerfect() && !senderAltered_;
+        s += ",\"bitPerfect\":" + std::string(exact ? "true" : "false");
+        s += ",\"senderAltered\":" + std::string(senderAltered_ ? "true" : "false");
         s += ",\"sourceBits\":" + std::to_string(sourceBits_);
         s += ",\"channels\":" + std::to_string(sourceChannels_);
         s += ",\"finished\":" + std::string(finished_.load() ? "true" : "false");
@@ -604,6 +626,15 @@ private:
     std::string mime_;
     bool pcmMode_ = false;
     bool pcmStarted_ = false;
+    /**
+     * Whether whoever handed us these samples had already changed them.
+     *
+     * Only the AirPlay path sets this. It is not a property of the sink and
+     * not a property of the format -- lossless ALAC arrives here having been
+     * resampled and attenuated by the sender, which is invisible from every
+     * other vantage point in the engine.
+     */
+    bool senderAltered_ = false;
     int pcmChannels_ = 2;
     int sourceBits_ = 0;
     int sourceChannels_ = 0;
@@ -641,11 +672,13 @@ Java_com_hifirend_NativeBridge_nativePushStreamData(JNIEnv *env, jobject,
 
 JNIEXPORT jstring JNICALL
 Java_com_hifirend_NativeBridge_nativeStartPcmStream(JNIEnv *env, jobject, jint fd, jint rate,
-                                                    jint channels, jint seekSeconds) {
+                                                    jint channels, jint seekSeconds,
+                                                    jboolean senderAltered) {
     return env->NewStringUTF(
         StreamPlayer::instance()
             .startPcm(static_cast<int>(fd), static_cast<uint32_t>(rate),
-                      static_cast<int>(channels), static_cast<int>(seekSeconds))
+                      static_cast<int>(channels), static_cast<int>(seekSeconds),
+                      senderAltered == JNI_TRUE)
             .c_str());
 }
 

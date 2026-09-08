@@ -81,6 +81,21 @@ object MulticastWatchdog {
      * counter advancing 10.02 seconds' worth across a ten-second window -- and
      * costs a controller about two seconds before the renderer answers again
      * on its new port.
+     *
+     * Confirmed in the field overnight 2026-09-07 into 09-08, which is what
+     * this constant was waiting for -- the unit tests could only replay the
+     * timestamps that suggested it. Four lapses in the retained window, each
+     * detected at ninety seconds and cured in about 1.2 s, and the pair that
+     * matters:
+     *
+     *     08:01:13  rejoining the group   (multicast back immediately after)
+     *     08:04:09  rejoining the group
+     *
+     * 176 seconds apart. Under the old flat ten-minute backoff the second
+     * would have been refused until 08:11 -- seven minutes undiscoverable
+     * against a window promising ninety seconds. Every `not rejoining` line in
+     * the run is the harmless one logged half a second after a heal, while the
+     * rebind is still in flight; none held off a real outage.
      */
     const val WORKING_BACKOFF_MS = 2 * 60_000L
 

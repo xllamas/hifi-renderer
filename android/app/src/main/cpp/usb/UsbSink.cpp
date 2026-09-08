@@ -793,7 +793,7 @@ std::string UsbSink::statusJson() const {
         "\"feedbackAccepted\":%u,\"feedbackRejected\":%u,"
         "\"packetErrors\":%llu,\"packetsSubmitted\":%llu,"
         "\"volumeSupported\":%s,\"volumeReadback\":\"%s\","
-        "\"bitPerfect\":true,\"output\":\"usb\","
+        "\"output\":\"usb\","
         "\"rebuffers\":%llu,\"ringFillPercent\":%d}",
         running_.load() ? "true" : "false",
         paused_.load() ? "true" : "false", rate_, altSetting(), deviceBits(),

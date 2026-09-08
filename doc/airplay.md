@@ -174,14 +174,53 @@ implementation worth reading:
    `SOURCE_PLAYLIST` and `SOURCE_UPNP_AV`, through the existing `claim` /
    `onSourceSelected` seam. A guest arriving mid-album is the case to design,
    not the case to discover.
-5. **Say it is not bit-perfect**, on the screen, whenever this path is live.
-   **Now urgent rather than tidy:** `UsbSink::bitPerfect()` returns a hardcoded
-   `true`, so with AirPlay playing the app currently *claims* bit-perfect. The
-   transport is lossless ALAC, but the sender resamples anything that is not
-   44.1 kHz before it ever reaches us, so the claim is not ours to make on this
-   path. An app whose whole argument is that it does not lie about this must
-   not lie about this. Nothing else should be built on top of the guest path
-   until it is fixed.
+5. ~~Say it is not bit-perfect, on the screen, whenever this path is live.~~
+   **Done 2026-09-08.**
+
+   `UsbSink::bitPerfect()` was a hardcoded `true`, and the sinks published that
+   as `"bitPerfect"` in their own status. Both halves were wrong in the same
+   way: bit-perfect is a property of the whole path, and a sink cannot see past
+   its own input. The USB sink was *honest* about itself -- it does alter
+   nothing -- which is exactly why it must not be the one asked about the
+   stream.
+
+   So the sinks no longer publish the key at all. `StreamPlayer::status()`
+   composes it, being the only layer that sees both the sink and where the
+   samples came from:
+
+       const bool exact = sink_->bitPerfect() && !senderAltered_;
+
+   `senderAltered` is declared at each call site rather than inferred, and
+   `NativeBridge.startPcmStream` deliberately has no default for it -- a
+   default would have to be `false`, which is the *claiming* answer, and the
+   whole of this bug was one path inheriting a claim nobody made for it.
+
+   The screen half turned out to be a second, separate defect, and the
+   screenshot is what found it. `publishEngineState()` runs only inside
+   HttpStreamPlayback's track watcher, which the guest path never enters --
+   AirPlay opens the output and pushes PCM directly. So through an entire guest
+   session the now-playing screen sat blank: no format, no transport, a
+   stopped-looking renderer while ALAC was plainly decoding to the DAC. A blank
+   screen answers the bit-perfect question no better than a wrong badge does.
+   `publishGuestStream()` now publishes the session, reading `bitPerfect` and
+   `senderAltered` back *from the engine* rather than recomposing them in
+   Kotlin -- composing them twice is how two answers drift apart.
+
+   Verified on the Redmi against a real macOS sender, same SMSL DAC, minutes
+   apart:
+
+       configure: 44100 Hz, source 16-bit -> alt 2, async +feedback
+       pcm: 44100 Hz 2ch pushed in (already resampled by the sender: NOT bit-perfect)
+       airplay: screen says ALAC 16/44.1, bitPerfect=false senderAltered=true out=usb
+
+   and the screen reads `ALAC 16/44.1` beside an amber *AirPlay - sender
+   resampled*, where a local FLAC on the same DAC still reads `FLAC 16/44.1`
+   beside the green tick.
+
+   Still missing: the guest's track name. The sender does send one over
+   `SET_PARAMETER`, so the screen says "Unknown track" rather than naming it.
+   Parsing that DAAP payload is its own piece of work and belongs with the rest
+   of the metadata, not with the fidelity claim.
 6. **The appliance-shell extraction**, which the protocol doc says is owed and
    which this protocol is the one to pay for. Deliberately deferred until there
    is a real second-shape protocol to extract *against* rather than a guessed

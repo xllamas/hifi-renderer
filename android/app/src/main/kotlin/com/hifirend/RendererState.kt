@@ -48,11 +48,25 @@ object RendererState {
     @Volatile var dacCount: Int = 0
 
     /**
-     * True only when samples reach the DAC unaltered. Lossy sources are still
-     * bit-perfect in the sense that matters here -- nothing is resampled or
-     * attenuated after decoding -- but a fallback path would not be.
+     * True only when samples reach the DAC unaltered, end to end. Lossy
+     * sources are still bit-perfect in the sense that matters here -- nothing
+     * is resampled or attenuated after decoding -- but a fallback path is not,
+     * and neither is anything a remote sender pre-processed.
      */
     @Volatile var bitPerfect: Boolean = false
+
+    /**
+     * True when the audio was already resampled or attenuated before it
+     * reached this renderer, which today means an AirPlay guest.
+     *
+     * Separate from [bitPerfect] because the screen owes the owner more than a
+     * missing tick. Losing the tick is equally consistent with the fallback
+     * output, with nothing playing, and with a guest streaming -- and only the
+     * last of those is a working, deliberate, non-bit-perfect path. Saying
+     * nothing would let the three blur together, which is the one thing the
+     * badge exists to prevent.
+     */
+    @Volatile var senderAltered: Boolean = false
 
     /** Which output is carrying audio: "usb" or "android". */
     @Volatile var output: String = "usb"
@@ -129,6 +143,7 @@ object RendererState {
     fun clearFormat() {
         sourceFormat = null; sourceRate = 0; sourceBits = 0; channels = 0
         deviceBits = 0; altSetting = -1; bitPerfect = false; output = "usb"
+        senderAltered = false
         positionSeconds = 0
     }
 
@@ -162,6 +177,7 @@ object RendererState {
         append(",\"dacConnected\":").append(dacConnected)
         append(",\"dacCount\":").append(dacCount)
         append(",\"bitPerfect\":").append(bitPerfect)
+        append(",\"senderAltered\":").append(senderAltered)
         append(",\"output\":").append(q(output))
         append(",\"playlistLength\":").append(playlistLength)
         append(",\"playlistPosition\":").append(playlistPosition)

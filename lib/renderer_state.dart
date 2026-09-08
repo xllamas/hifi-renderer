@@ -24,6 +24,11 @@ class RendererStatus {
   final int dacCount;
   final bool bitPerfect;
 
+  /// Whether the audio was already resampled or attenuated before it reached
+  /// the renderer — today, an AirPlay guest. Distinct from [bitPerfect] being
+  /// false, which on its own does not say why.
+  final bool senderAltered;
+
   /// Which output is carrying audio: 'usb' or 'android'.
   final String output;
   final int dacVolume;
@@ -78,6 +83,7 @@ class RendererStatus {
     this.dacConnected = false,
     this.dacCount = 0,
     this.bitPerfect = false,
+    this.senderAltered = false,
     this.output = 'usb',
     this.dacVolume = -1,
     this.dacVolumeSupported = false,
@@ -112,6 +118,7 @@ class RendererStatus {
         dacConnected: j['dacConnected'] as bool? ?? false,
         dacCount: (j['dacCount'] as num?)?.toInt() ?? 0,
         bitPerfect: j['bitPerfect'] as bool? ?? false,
+        senderAltered: j['senderAltered'] as bool? ?? false,
         output: j['output'] as String? ?? 'usb',
         dacVolume: (j['dacVolume'] as num?)?.toInt() ?? -1,
         dacVolumeSupported: j['dacVolumeSupported'] as bool? ?? false,
@@ -169,6 +176,7 @@ class RendererStatus {
         dacConnected: dacConnected,
         dacCount: dacCount,
         bitPerfect: bitPerfect,
+        senderAltered: senderAltered,
         output: output,
         dacVolume: volume,
         dacVolumeSupported: dacVolumeSupported,

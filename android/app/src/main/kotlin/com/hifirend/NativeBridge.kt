@@ -43,7 +43,7 @@ object NativeBridge {
     private external fun nativeGetDacVolume(): Int
     private external fun nativeSetDacVolume(percent: Int): Boolean
     private external fun nativeForgetVolumeLearning()
-    private external fun nativeStartPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int): String
+    private external fun nativeStartPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int, senderAltered: Boolean): String
     private external fun nativePushPcm(data: ByteArray, len: Int): Boolean
     private external fun nativePcmEndOfStream()
     private external fun nativeAlacConfigure(
@@ -122,10 +122,23 @@ object NativeBridge {
     /** True once the track reached its natural end rather than being stopped. */
     fun streamFinished(): Boolean = if (isLoaded) nativeStreamFinished() else false
 
-    /** Opens the DAC for PCM decoded by the platform (MediaCodec). */
-    fun startPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int): String =
+    /**
+     * Opens the DAC for PCM that was decoded somewhere other than the engine.
+     *
+     * [senderAltered] must be true when the samples were already resampled or
+     * attenuated before they got here -- an AirPlay sender does both -- and
+     * false when they are the source's own audio, as MediaCodec's output is.
+     * The engine cannot tell the two apart once they arrive, and it is what
+     * decides whether the screen may claim bit-perfect.
+     *
+     * Deliberately without a default. A default would have to be `false`, and
+     * `false` is the claiming answer -- the whole of this bug was one path
+     * inheriting a bit-perfect claim nobody had made on its behalf.
+     */
+    fun startPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int,
+                       senderAltered: Boolean): String =
         loadError?.let { """{"ok":false,"message":"native library failed to load"}""" }
-            ?: nativeStartPcmStream(fd, rate, channels, seekSeconds)
+            ?: nativeStartPcmStream(fd, rate, channels, seekSeconds, senderAltered)
 
     fun pushPcm(data: ByteArray, len: Int): Boolean =
         if (isLoaded) nativePushPcm(data, len) else false

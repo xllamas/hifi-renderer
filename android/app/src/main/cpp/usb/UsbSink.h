@@ -127,7 +127,14 @@ public:
 
     std::string statusJson() const override;
 
-    /** Samples reach the DAC untouched; that is the point of this sink. */
+    /**
+     * Samples reach the DAC untouched; that is the point of this sink.
+     *
+     * True of everything this class does to them, and of nothing that happened
+     * before they arrived -- a guest's AirPlay stream is resampled by the
+     * sender and is not made bit-perfect by being carried faithfully from
+     * here. Reporting the chain is StreamPlayer's job, not this one's.
+     */
     bool bitPerfect() const override { return true; }
     const char *outputName() const override { return "usb"; }
 

@@ -235,6 +235,11 @@ private:
         s += ",\"sourceBits\":" + std::to_string(sourceBits_);
         s += ",\"sourceChannels\":" + std::to_string(sourceChannels_);
         s += ",\"sourceFrames\":" + std::to_string(sourceFrames_);
+        // Nothing stands between a local file or the tone generator and this
+        // sink, so here the sink's own answer *is* the chain's. The sinks stop
+        // publishing the key themselves precisely so that saying this has to
+        // be deliberate -- see AudioSink::bitPerfect().
+        s += ",\"bitPerfect\":" + std::string(sink_->bitPerfect() ? "true" : "false");
         s += ",\"framesRead\":" + std::to_string(framesRead_.load());
         s += "}";
         return s;

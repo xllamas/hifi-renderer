@@ -173,7 +173,7 @@ std::string OboeSink::statusJson() const {
         "\"feedbackAccepted\":0,\"feedbackRejected\":0,"
         "\"packetErrors\":0,\"packetsSubmitted\":0,"
         "\"volumeSupported\":false,\"volumeReadback\":\"unproven\","
-        "\"bitPerfect\":false,\"output\":\"android\","
+        "\"output\":\"android\","
         "\"rebuffers\":%llu,\"ringFillPercent\":%d}",
         running_.load() ? "true" : "false",
         paused_.load() ? "true" : "false",
