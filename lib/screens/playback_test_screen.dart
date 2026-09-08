@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../usb/rate_sweep.dart';
+import '../l10n/app_localizations.dart';
 
 /// M8's other source: play one of the user's own files and watch it.
 ///
@@ -185,7 +186,7 @@ class _PlaybackTestScreenState extends State<PlaybackTestScreen> {
     await Clipboard.setData(ClipboardData(text: b.toString()));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Report copied')));
+        .showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).reportCopied)));
   }
 
   @override
@@ -193,38 +194,35 @@ class _PlaybackTestScreenState extends State<PlaybackTestScreen> {
     final running = _status['running'] == true;
     final r = _result;
     return Scaffold(
-      appBar: AppBar(title: const Text('Play a file')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).playFileTitle)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text(
-            'Plays one of your own files through the DAC and watches the '
-            'stream, which is the question the tone tests cannot ask: whether '
-            'the material you actually own plays cleanly. Only the rates that '
-            'material contains get tested.',
-            style: TextStyle(color: Colors.white54, fontSize: 12.5, height: 1.35),
+          Text(
+            AppLocalizations.of(context).playFileIntro,
+            style: const TextStyle(
+                color: Colors.white54, fontSize: 12.5, height: 1.35),
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: _busy ? null : _pick,
             icon: const Icon(Icons.folder_open),
-            label: const Text('Choose a file'),
+            label: Text(AppLocalizations.of(context).playFileChoose),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'FLAC, WAV, AIFF, MP3 and anything else the engine decodes.',
-            style: TextStyle(color: Colors.white38, fontSize: 11.5),
+          Text(
+            AppLocalizations.of(context).playFileFormats,
+            style: const TextStyle(color: Colors.white38, fontSize: 11.5),
           ),
 
           if (_files.isNotEmpty) ...[
             const SizedBox(height: 24),
-            Text('Pushed to the app cache',
+            Text(AppLocalizations.of(context).playFileCache,
                 style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 4),
-            const Text(
-              'The M2 harness. WAV only, and the fastest way to put a known '
-              'file on a phone you are debugging over adb.',
-              style: TextStyle(color: Colors.white38, fontSize: 11.5),
+            Text(
+              AppLocalizations.of(context).playFileCacheDetail,
+              style: const TextStyle(color: Colors.white38, fontSize: 11.5),
             ),
             const SizedBox(height: 8),
             for (final f in _files)
@@ -243,11 +241,12 @@ class _PlaybackTestScreenState extends State<PlaybackTestScreen> {
           FilledButton.tonalIcon(
             onPressed: _stop,
             icon: const Icon(Icons.stop),
-            label: const Text('Stop'),
+            label: Text(AppLocalizations.of(context).stop),
           ),
 
           const SizedBox(height: 24),
-          Text('Stream health', style: Theme.of(context).textTheme.titleMedium),
+          Text(AppLocalizations.of(context).playFileStreamHealth,
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Container(
             width: double.infinity,
@@ -302,7 +301,7 @@ class _PlaybackTestScreenState extends State<PlaybackTestScreen> {
             FilledButton.tonalIcon(
               onPressed: _copy,
               icon: const Icon(Icons.copy),
-              label: const Text('Copy report'),
+              label: Text(AppLocalizations.of(context).copyReport),
             ),
           ],
 

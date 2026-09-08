@@ -430,4 +430,189 @@ class AppLocalizationsEn extends AppLocalizations {
   String dacCapsKhz(String value) {
     return '$value kHz';
   }
+
+  @override
+  String get noteCannotPlayTitle => 'This device cannot play audio';
+
+  @override
+  String get noteCannotPlayDetail =>
+      'It advertises the USB audio class but offers no PCM output over an isochronous endpoint. Capture-only devices look like this — a USB microphone, or the recording half of a headset adapter.';
+
+  @override
+  String get noteUac1Title => 'This device uses USB Audio Class 1.0';
+
+  @override
+  String get noteUac1Detail =>
+      'Supported, with the limits the class itself imposes: full-speed USB caps the bandwidth, so UAC1 devices top out well below what a UAC2 DAC offers. Playback is still bit-perfect at the rates it does support — nothing is resampled.';
+
+  @override
+  String get noteAdaptiveTitle => 'This device follows the phone\'s clock';
+
+  @override
+  String get noteAdaptiveDetail =>
+      'Its endpoint is adaptive rather than asynchronous, so it adapts to the rate the phone sends instead of running its own clock and asking the phone to follow. Common on UAC1 hardware. Samples still arrive unaltered; the timing reference is simply the phone\'s.';
+
+  @override
+  String get noteVolumeDeviceTitle =>
+      'Volume is controlled by the DAC, not this app';
+
+  @override
+  String get noteVolumeOneWayDetail =>
+      'This device exposes no USB volume control. It does report its own knob or remote to the phone, but that is one-way: nothing sent from here can change its volume. Use the physical control.';
+
+  @override
+  String get noteVolumeNoneDetail =>
+      'This device exposes no USB volume control, so volume commands from a DLNA controller cannot reach it. Use the physical control.';
+
+  @override
+  String get noteVolumeAppTitle => 'Volume can be set from this app';
+
+  @override
+  String noteVolumeAppDetail(String detail) {
+    return 'The DAC exposes a USB volume control ($detail), so DLNA volume commands are passed straight to the hardware.';
+  }
+
+  @override
+  String notePaddedTitle(int bits) {
+    return '16-bit tracks are padded to $bits-bit';
+  }
+
+  @override
+  String notePaddedDetail(int bits) {
+    return 'This DAC offers no 16-bit mode, so CD-resolution files are placed in a $bits-bit container. The sample values are unchanged, so playback is still bit-perfect.';
+  }
+
+  @override
+  String get noteAsyncGoodTitle => 'Asynchronous USB with its own clock';
+
+  @override
+  String get noteAsyncGoodDetail =>
+      'The DAC drives timing rather than following the phone, which is the better arrangement for audio quality.';
+
+  @override
+  String get noteAsyncNoFeedbackTitle =>
+      'Asynchronous, but no feedback endpoint found';
+
+  @override
+  String get noteAsyncNoFeedbackDetail =>
+      'Timing cannot be tracked precisely, so occasional dropouts are possible on long playback.';
+
+  @override
+  String get noteDsdTitle => 'DSD capable';
+
+  @override
+  String get noteDsdDetail =>
+      'This DAC accepts native DSD. The app does not play DSD yet.';
+
+  @override
+  String get noteAltConfigTitle => 'Alternative USB mode available';
+
+  @override
+  String noteAltConfigDetail(int count) {
+    return 'The device offers $count USB configurations. Only the active one is used; some DACs keep a compatibility mode in the other.';
+  }
+
+  @override
+  String get noteClockErrorTitle => 'Could not read the supported sample rates';
+
+  @override
+  String get reportCopied => 'Report copied';
+
+  @override
+  String get copyReport => 'Copy report';
+
+  @override
+  String get stop => 'Stop';
+
+  @override
+  String get notReported => 'not reported';
+
+  @override
+  String get verifyTitle => 'DAC verification';
+
+  @override
+  String get verifyResults => 'Results';
+
+  @override
+  String get verifyFollow => 'Follow';
+
+  @override
+  String get soakTitle => 'Stability soak';
+
+  @override
+  String get soakRate => 'Rate';
+
+  @override
+  String get soakLength => 'Length';
+
+  @override
+  String soakStart(String rate, String duration) {
+    return 'Soak $rate for $duration';
+  }
+
+  @override
+  String soakProgress(String elapsed, String planned, String step) {
+    return '$elapsed of $planned  ·  $step';
+  }
+
+  @override
+  String get soakFaults => 'Faults';
+
+  @override
+  String get soakRingFill => 'Ring fill';
+
+  @override
+  String get soakMeasuredRate => 'Measured rate';
+
+  @override
+  String get soakUnderruns => 'Underruns';
+
+  @override
+  String get soakTransferErrors => 'Transfer errors';
+
+  @override
+  String get soakPacketErrors => 'Packet errors';
+
+  @override
+  String get soakRebuffers => 'Rebuffers';
+
+  @override
+  String get soakWorstRingFill => 'Worst ring fill';
+
+  @override
+  String get soakWorstDeviation => 'Worst deviation';
+
+  @override
+  String get soakDriftSpread => 'Drift spread';
+
+  @override
+  String get soakMeetsBar => 'Clears the ten-minute zero-dropout bar.';
+
+  @override
+  String get soakShortOfBar =>
+      'Short of the ten-minute bar, so it says nothing yet about the faults that only appear once the hardware is warm.';
+
+  @override
+  String get playFileTitle => 'Play a file';
+
+  @override
+  String get playFileIntro =>
+      'Plays one of your own files through the DAC and watches the stream, which is the question the tone tests cannot ask: whether the material you actually own plays cleanly. Only the rates that material contains get tested.';
+
+  @override
+  String get playFileChoose => 'Choose a file';
+
+  @override
+  String get playFileFormats =>
+      'FLAC, WAV, AIFF, MP3 and anything else the engine decodes.';
+
+  @override
+  String get playFileCache => 'Pushed to the app cache';
+
+  @override
+  String get playFileCacheDetail =>
+      'The M2 harness. WAV only, and the fastest way to put a known file on a phone you are debugging over adb.';
+
+  @override
+  String get playFileStreamHealth => 'Stream health';
 }

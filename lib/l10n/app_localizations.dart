@@ -794,6 +794,324 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{value} kHz'**
   String dacCapsKhz(String value);
+
+  /// Capability note for a USB device that identifies as audio hardware but has no playback output at all.
+  ///
+  /// In en, this message translates to:
+  /// **'This device cannot play audio'**
+  String get noteCannotPlayTitle;
+
+  /// Explains a device with no playback output: it is a recording device. 'Isochronous endpoint' is the USB term for the channel audio streams over; keep it recognisable to anyone who knows USB.
+  ///
+  /// In en, this message translates to:
+  /// **'It advertises the USB audio class but offers no PCM output over an isochronous endpoint. Capture-only devices look like this — a USB microphone, or the recording half of a headset adapter.'**
+  String get noteCannotPlayDetail;
+
+  /// Capability note naming the older of the two USB audio specifications.
+  ///
+  /// In en, this message translates to:
+  /// **'This device uses USB Audio Class 1.0'**
+  String get noteUac1Title;
+
+  /// Explains what USB Audio Class 1.0 costs and, importantly, what it does not: the ceiling is lower but the audio is still unaltered. 'Full-speed' is a USB speed grade, confusingly slower than 'high-speed'; keep the term.
+  ///
+  /// In en, this message translates to:
+  /// **'Supported, with the limits the class itself imposes: full-speed USB caps the bandwidth, so UAC1 devices top out well below what a UAC2 DAC offers. Playback is still bit-perfect at the rates it does support — nothing is resampled.'**
+  String get noteUac1Detail;
+
+  /// Capability note for a DAC whose USB endpoint is adaptive rather than asynchronous, meaning the phone provides the timing reference.
+  ///
+  /// In en, this message translates to:
+  /// **'This device follows the phone\'s clock'**
+  String get noteAdaptiveTitle;
+
+  /// Explains adaptive versus asynchronous USB timing, and reassures that the audio data itself is unchanged either way.
+  ///
+  /// In en, this message translates to:
+  /// **'Its endpoint is adaptive rather than asynchronous, so it adapts to the rate the phone sends instead of running its own clock and asking the phone to follow. Common on UAC1 hardware. Samples still arrive unaltered; the timing reference is simply the phone\'s.'**
+  String get noteAdaptiveDetail;
+
+  /// Capability note for a DAC that exposes no volume control over USB.
+  ///
+  /// In en, this message translates to:
+  /// **'Volume is controlled by the DAC, not this app'**
+  String get noteVolumeDeviceTitle;
+
+  /// For a DAC that tells the phone when its own knob moves but will not accept volume commands back. The asymmetry is the point.
+  ///
+  /// In en, this message translates to:
+  /// **'This device exposes no USB volume control. It does report its own knob or remote to the phone, but that is one-way: nothing sent from here can change its volume. Use the physical control.'**
+  String get noteVolumeOneWayDetail;
+
+  /// For a DAC with no USB volume control of any kind. Common on integrated amplifiers with a physical knob.
+  ///
+  /// In en, this message translates to:
+  /// **'This device exposes no USB volume control, so volume commands from a DLNA controller cannot reach it. Use the physical control.'**
+  String get noteVolumeNoneDetail;
+
+  /// Capability note for a DAC whose volume can be driven over USB.
+  ///
+  /// In en, this message translates to:
+  /// **'Volume can be set from this app'**
+  String get noteVolumeAppTitle;
+
+  /// Explains that volume commands reach the hardware directly. The placeholder is a short technical description of the control, and stays in English.
+  ///
+  /// In en, this message translates to:
+  /// **'The DAC exposes a USB volume control ({detail}), so DLNA volume commands are passed straight to the hardware.'**
+  String noteVolumeAppDetail(String detail);
+
+  /// Capability note for a DAC with no 16-bit mode, so CD-resolution audio is carried in a wider container.
+  ///
+  /// In en, this message translates to:
+  /// **'16-bit tracks are padded to {bits}-bit'**
+  String notePaddedTitle(int bits);
+
+  /// Explains that padding a 16-bit sample into a wider container does not alter it — the reassurance is the point of the note.
+  ///
+  /// In en, this message translates to:
+  /// **'This DAC offers no 16-bit mode, so CD-resolution files are placed in a {bits}-bit container. The sample values are unchanged, so playback is still bit-perfect.'**
+  String notePaddedDetail(int bits);
+
+  /// Capability note for the preferred timing arrangement, where the DAC drives the clock.
+  ///
+  /// In en, this message translates to:
+  /// **'Asynchronous USB with its own clock'**
+  String get noteAsyncGoodTitle;
+
+  /// Explains why asynchronous USB is preferable: the DAC's own clock is steadier than one recovered from the phone.
+  ///
+  /// In en, this message translates to:
+  /// **'The DAC drives timing rather than following the phone, which is the better arrangement for audio quality.'**
+  String get noteAsyncGoodDetail;
+
+  /// Capability note for a DAC that claims asynchronous timing but offers no channel to report its clock rate back.
+  ///
+  /// In en, this message translates to:
+  /// **'Asynchronous, but no feedback endpoint found'**
+  String get noteAsyncNoFeedbackTitle;
+
+  /// Explains the practical consequence of a missing feedback endpoint: audio may break up over long sessions.
+  ///
+  /// In en, this message translates to:
+  /// **'Timing cannot be tracked precisely, so occasional dropouts are possible on long playback.'**
+  String get noteAsyncNoFeedbackDetail;
+
+  /// Capability note for a DAC that accepts Direct Stream Digital.
+  ///
+  /// In en, this message translates to:
+  /// **'DSD capable'**
+  String get noteDsdTitle;
+
+  /// States plainly that the hardware supports DSD but the app does not send it, so nobody expects it to work.
+  ///
+  /// In en, this message translates to:
+  /// **'This DAC accepts native DSD. The app does not play DSD yet.'**
+  String get noteDsdDetail;
+
+  /// Capability note for a device offering more than one USB configuration.
+  ///
+  /// In en, this message translates to:
+  /// **'Alternative USB mode available'**
+  String get noteAltConfigTitle;
+
+  /// Explains that a second USB configuration exists but is unused — often a legacy or compatibility mode.
+  ///
+  /// In en, this message translates to:
+  /// **'The device offers {count} USB configurations. Only the active one is used; some DACs keep a compatibility mode in the other.'**
+  String noteAltConfigDetail(int count);
+
+  /// Capability note shown when interrogating the DAC's clock failed. The detail beneath it is the raw error and stays in English.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the supported sample rates'**
+  String get noteClockErrorTitle;
+
+  /// Confirmation after a diagnostic report is copied to the clipboard. The report itself stays in English, being diagnostic output.
+  ///
+  /// In en, this message translates to:
+  /// **'Report copied'**
+  String get reportCopied;
+
+  /// Button that copies a diagnostic report to the clipboard. Short: a compact action button.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy report'**
+  String get copyReport;
+
+  /// Button that halts a running test. Short: a compact action button.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get stop;
+
+  /// Value shown where a measurement was expected but the hardware gave none. Lower case: it stands in for a number in a results table.
+  ///
+  /// In en, this message translates to:
+  /// **'not reported'**
+  String get notReported;
+
+  /// Title of the screen that plays a test tone at every sample rate a DAC claims, to find which it truly handles.
+  ///
+  /// In en, this message translates to:
+  /// **'DAC verification'**
+  String get verifyTitle;
+
+  /// Heading above the per-rate verification results.
+  ///
+  /// In en, this message translates to:
+  /// **'Results'**
+  String get verifyResults;
+
+  /// Button that keeps the results list scrolled to the test currently running. Short: a compact button.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow'**
+  String get verifyFollow;
+
+  /// Title of the screen that plays for a long stretch at one sample rate to find faults that only appear once the hardware is warm.
+  ///
+  /// In en, this message translates to:
+  /// **'Stability soak'**
+  String get soakTitle;
+
+  /// Heading above the sample rate chooser. Short: it labels a row of chips.
+  ///
+  /// In en, this message translates to:
+  /// **'Rate'**
+  String get soakRate;
+
+  /// Heading above the soak duration chooser. Short: it labels a row of chips.
+  ///
+  /// In en, this message translates to:
+  /// **'Length'**
+  String get soakLength;
+
+  /// Button that begins the soak, naming the chosen sample rate and how long it will run.
+  ///
+  /// In en, this message translates to:
+  /// **'Soak {rate} for {duration}'**
+  String soakStart(String rate, String duration);
+
+  /// Progress line during a soak: time so far, total planned, and what the test is doing. The step is a short status word from the engine and is not translated.
+  ///
+  /// In en, this message translates to:
+  /// **'{elapsed} of {planned}  ·  {step}'**
+  String soakProgress(String elapsed, String planned, String step);
+
+  /// Results label: how many audible faults occurred. Any number above zero is a failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Faults'**
+  String get soakFaults;
+
+  /// Results label: how full the audio buffer stayed, as a percentage. A ring buffer feeds the DAC; if it empties, audio breaks up.
+  ///
+  /// In en, this message translates to:
+  /// **'Ring fill'**
+  String get soakRingFill;
+
+  /// Results label: the sample rate the DAC's own clock actually ran at, as opposed to the rate it was asked for.
+  ///
+  /// In en, this message translates to:
+  /// **'Measured rate'**
+  String get soakMeasuredRate;
+
+  /// Results label: times the buffer ran dry and the DAC had nothing to play. The standard audio term.
+  ///
+  /// In en, this message translates to:
+  /// **'Underruns'**
+  String get soakUnderruns;
+
+  /// Results label: failed USB transfers.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer errors'**
+  String get soakTransferErrors;
+
+  /// Results label: individual USB packets that failed within otherwise successful transfers.
+  ///
+  /// In en, this message translates to:
+  /// **'Packet errors'**
+  String get soakPacketErrors;
+
+  /// Results label: times playback had to pause and refill the buffer.
+  ///
+  /// In en, this message translates to:
+  /// **'Rebuffers'**
+  String get soakRebuffers;
+
+  /// Results label: the lowest the buffer ever got, as a percentage. The closer to zero, the closer it came to breaking up.
+  ///
+  /// In en, this message translates to:
+  /// **'Worst ring fill'**
+  String get soakWorstRingFill;
+
+  /// Results label: the furthest the DAC's measured clock strayed from its nominal rate.
+  ///
+  /// In en, this message translates to:
+  /// **'Worst deviation'**
+  String get soakWorstDeviation;
+
+  /// Results label: the range between the fastest and slowest measured clock readings across the soak.
+  ///
+  /// In en, this message translates to:
+  /// **'Drift spread'**
+  String get soakDriftSpread;
+
+  /// Verdict when a soak ran at least ten minutes with no faults at all. Ten minutes with zero dropouts is the standard this app holds a DAC to.
+  ///
+  /// In en, this message translates to:
+  /// **'Clears the ten-minute zero-dropout bar.'**
+  String get soakMeetsBar;
+
+  /// Verdict when a soak was clean but too short to count. The point is that a brief clean run proves nothing: some faults only appear after the hardware warms up.
+  ///
+  /// In en, this message translates to:
+  /// **'Short of the ten-minute bar, so it says nothing yet about the faults that only appear once the hardware is warm.'**
+  String get soakShortOfBar;
+
+  /// Title of the screen that plays one of the user's own files through the DAC and watches the stream for faults.
+  ///
+  /// In en, this message translates to:
+  /// **'Play a file'**
+  String get playFileTitle;
+
+  /// Explains what this test adds over the synthetic tone tests: real music, at whatever rates the user's own library happens to use.
+  ///
+  /// In en, this message translates to:
+  /// **'Plays one of your own files through the DAC and watches the stream, which is the question the tone tests cannot ask: whether the material you actually own plays cleanly. Only the rates that material contains get tested.'**
+  String get playFileIntro;
+
+  /// Button that opens the file picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a file'**
+  String get playFileChoose;
+
+  /// Lists accepted formats. The format names are not translated.
+  ///
+  /// In en, this message translates to:
+  /// **'FLAC, WAV, AIFF, MP3 and anything else the engine decodes.'**
+  String get playFileFormats;
+
+  /// Heading above files copied onto the phone by a developer over a debugging cable, rather than chosen by the user.
+  ///
+  /// In en, this message translates to:
+  /// **'Pushed to the app cache'**
+  String get playFileCache;
+
+  /// Explains the developer-pushed file list. 'M2 harness' is this project's own test rig and 'adb' is the Android debugging tool; neither is translated.
+  ///
+  /// In en, this message translates to:
+  /// **'The M2 harness. WAV only, and the fastest way to put a known file on a phone you are debugging over adb.'**
+  String get playFileCacheDetail;
+
+  /// Heading above live statistics for the playing stream.
+  ///
+  /// In en, this message translates to:
+  /// **'Stream health'**
+  String get playFileStreamHealth;
 }
 
 class _AppLocalizationsDelegate

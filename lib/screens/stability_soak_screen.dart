@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../usb/dac_capabilities.dart';
 import '../usb/stability_soak.dart';
+import '../l10n/app_localizations.dart';
 
 /// M8's stability soak: one rate, held for a long time, watched closely.
 ///
@@ -173,7 +174,7 @@ class _StabilitySoakScreenState extends State<StabilitySoakScreen> {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Report copied')),
+      SnackBar(content: Text(AppLocalizations.of(context).reportCopied)),
     );
   }
 
@@ -181,7 +182,7 @@ class _StabilitySoakScreenState extends State<StabilitySoakScreen> {
   Widget build(BuildContext context) {
     final caps = widget.caps;
     return Scaffold(
-      appBar: AppBar(title: const Text('Stability soak')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).soakTitle)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -211,7 +212,8 @@ class _StabilitySoakScreenState extends State<StabilitySoakScreen> {
   Widget _rates(DacCapabilities caps) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Rate', style: TextStyle(fontWeight: FontWeight.w600)),
+          Text(AppLocalizations.of(context).soakRate,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -232,7 +234,8 @@ class _StabilitySoakScreenState extends State<StabilitySoakScreen> {
   Widget _lengths() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Length', style: TextStyle(fontWeight: FontWeight.w600)),
+          Text(AppLocalizations.of(context).soakLength,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -252,7 +255,7 @@ class _StabilitySoakScreenState extends State<StabilitySoakScreen> {
   Widget _startButton() => FilledButton.icon(
         onPressed: _run,
         icon: const Icon(Icons.play_arrow),
-        label: Text('Soak ${_khz(_rate)} for ${_hms(_planned)}'),
+        label: Text(AppLocalizations.of(context).soakStart(_khz(_rate), _hms(_planned))),
       );
 
   Widget _progress() {
@@ -265,24 +268,24 @@ class _StabilitySoakScreenState extends State<StabilitySoakScreen> {
       children: [
         LinearProgressIndicator(value: _step == 'running' ? fraction : null),
         const SizedBox(height: 12),
-        Text('${_hms(_elapsed)} of ${_hms(_planned)}  ·  $_step',
+        Text(AppLocalizations.of(context).soakProgress(_hms(_elapsed), _hms(_planned), _step),
             style: const TextStyle(fontFamily: 'monospace')),
         if (last != null) ...[
           const SizedBox(height: 12),
-          _stat('Faults', '${last.faults}', bad: last.faults > 0),
-          _stat('Ring fill', '${last.ringFillPercent}%'),
+          _stat(AppLocalizations.of(context).soakFaults, '${last.faults}', bad: last.faults > 0),
+          _stat(AppLocalizations.of(context).soakRingFill, '${last.ringFillPercent}%'),
           _stat(
             'Measured rate',
             last.measuredRateHz > 0
                 ? '${last.measuredRateHz.toStringAsFixed(1)} Hz'
-                : 'not reported',
+                : AppLocalizations.of(context).notReported,
           ),
         ],
         const SizedBox(height: 16),
         TextButton.icon(
           onPressed: () => setState(() => _cancelled = true),
           icon: const Icon(Icons.stop),
-          label: const Text('Stop'),
+          label: Text(AppLocalizations.of(context).stop),
         ),
         const SizedBox(height: 8),
         const Text(
@@ -326,22 +329,25 @@ class _StabilitySoakScreenState extends State<StabilitySoakScreen> {
           ),
         ]),
         const SizedBox(height: 14),
-        _stat('Underruns', '${r.underruns}', bad: r.underruns > 0),
-        _stat('Transfer errors', '${r.transferErrors}',
+        _stat(AppLocalizations.of(context).soakUnderruns, '${r.underruns}', bad: r.underruns > 0),
+        _stat(AppLocalizations.of(context).soakTransferErrors, '${r.transferErrors}',
             bad: r.transferErrors > 0),
-        _stat('Packet errors', '${r.packetErrors}', bad: r.packetErrors > 0),
-        _stat('Rebuffers', '${r.rebuffers}', bad: r.rebuffers > 0),
-        _stat('Worst ring fill', '${r.worstRingFillPercent}%'),
+        _stat(AppLocalizations.of(context).soakPacketErrors, '${r.packetErrors}',
+            bad: r.packetErrors > 0),
+        _stat(AppLocalizations.of(context).soakRebuffers, '${r.rebuffers}', bad: r.rebuffers > 0),
+        _stat(AppLocalizations.of(context).soakWorstRingFill, '${r.worstRingFillPercent}%'),
         if (r.feedbackSeen) ...[
-          _stat('Worst deviation',
+          _stat(AppLocalizations.of(context).soakWorstDeviation,
               '${r.worstDeviationPercent!.toStringAsFixed(4)}%'),
-          _stat('Drift spread', '${r.rateSpreadPercent!.toStringAsFixed(4)}%'),
+          _stat(AppLocalizations.of(context).soakDriftSpread,
+              '${r.rateSpreadPercent!.toStringAsFixed(4)}%'),
         ] else
-          _stat('Measured rate', 'not reported'),
+          _stat(AppLocalizations.of(context).soakMeasuredRate, AppLocalizations.of(context).notReported),
         const SizedBox(height: 14),
         if (r.meetsBar)
-          const Text('Clears the ten-minute zero-dropout bar.',
-              style: TextStyle(color: Colors.greenAccent, fontSize: 12.5))
+          Text(AppLocalizations.of(context).soakMeetsBar,
+              style: const TextStyle(
+                  color: Colors.greenAccent, fontSize: 12.5))
         else if (r.isClean && r.actual < kSoakBar)
           const Text(
             'Short of the ten-minute bar, so it says nothing yet about the '
@@ -352,7 +358,7 @@ class _StabilitySoakScreenState extends State<StabilitySoakScreen> {
         FilledButton.tonalIcon(
           onPressed: _copy,
           icon: const Icon(Icons.copy),
-          label: const Text('Copy report'),
+          label: Text(AppLocalizations.of(context).copyReport),
         ),
       ],
     );

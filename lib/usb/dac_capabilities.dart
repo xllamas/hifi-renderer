@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../l10n/app_localizations.dart';
 
 /// One playable configuration on the DAC (a USB alt-setting).
 class DacFormat {
@@ -217,16 +218,18 @@ class DacCapabilities {
       pcmBitDepths.isNotEmpty && !pcmBitDepths.contains(16);
 
   /// Plain-language notes. These are the things a datasheet tends not to say.
-  List<CapabilityNote> get notes {
+  ///
+  /// Takes the strings rather than reading a context: this is a model, built
+  /// and tested without a widget tree, and the notes are prose a reader has to
+  /// understand rather than data.
+  List<CapabilityNote> notes(AppLocalizations t) {
     final out = <CapabilityNote>[];
 
     if (!isSupported) {
       out.add(CapabilityNote(
         severity: NoteSeverity.important,
-        title: 'This device cannot play audio',
-        detail: 'It advertises the USB audio class but offers no PCM output '
-            'over an isochronous endpoint. Capture-only devices look like this '
-            '\u2014 a USB microphone, or the recording half of a headset adapter.',
+        title: t.noteCannotPlayTitle,
+        detail: t.noteCannotPlayDetail,
       ));
       return out;
     }
@@ -234,42 +237,32 @@ class DacCapabilities {
     if (uacVersion == '1.0') {
       out.add(CapabilityNote(
         severity: NoteSeverity.info,
-        title: 'This device uses USB Audio Class 1.0',
-        detail: 'Supported, with the limits the class itself imposes: full-speed '
-            'USB caps the bandwidth, so UAC1 devices top out well below what a '
-            'UAC2 DAC offers. Playback is still bit-perfect at the rates it does '
-            'support \u2014 nothing is resampled.',
+        title: t.noteUac1Title,
+        detail: t.noteUac1Detail,
       ));
     }
 
     if (isAdaptiveOnly) {
       out.add(CapabilityNote(
         severity: NoteSeverity.info,
-        title: 'This device follows the phone\u0027s clock',
-        detail: 'Its endpoint is adaptive rather than asynchronous, so it adapts '
-            'to the rate the phone sends instead of running its own clock and '
-            'asking the phone to follow. Common on UAC1 hardware. Samples still '
-            'arrive unaltered; the timing reference is simply the phone\u0027s.',
+        title: t.noteAdaptiveTitle,
+        detail: t.noteAdaptiveDetail,
       ));
     }
 
     if (!volumeHostControllable) {
       out.add(CapabilityNote(
         severity: NoteSeverity.important,
-        title: 'Volume is controlled by the DAC, not this app',
+        title: t.noteVolumeDeviceTitle,
         detail: hidPresent && !hidHasOutputEndpoint
-            ? 'This device exposes no USB volume control. It does report its own '
-                'knob or remote to the phone, but that is one-way: nothing sent '
-                'from here can change its volume. Use the physical control.'
-            : 'This device exposes no USB volume control, so volume commands from '
-                'a DLNA controller cannot reach it. Use the physical control.',
+            ? t.noteVolumeOneWayDetail
+            : t.noteVolumeNoneDetail,
       ));
     } else {
       out.add(CapabilityNote(
         severity: NoteSeverity.good,
-        title: 'Volume can be set from this app',
-        detail: 'The DAC exposes a USB volume control ($volumeDetail), so DLNA '
-            'volume commands are passed straight to the hardware.',
+        title: t.noteVolumeAppTitle,
+        detail: t.noteVolumeAppDetail(volumeDetail),
       ));
     }
 
@@ -277,50 +270,46 @@ class DacCapabilities {
       final target = pcmBitDepths.first;
       out.add(CapabilityNote(
         severity: NoteSeverity.info,
-        title: '16-bit tracks are padded to $target-bit',
-        detail: 'This DAC offers no 16-bit mode, so CD-resolution files are '
-            'placed in a $target-bit container. The sample values are unchanged, '
-            'so playback is still bit-perfect.',
+        title: t.notePaddedTitle(target),
+        detail: t.notePaddedDetail(target),
       ));
     }
 
     if (isAsync && hasFeedback) {
       out.add(CapabilityNote(
         severity: NoteSeverity.good,
-        title: 'Asynchronous USB with its own clock',
-        detail: 'The DAC drives timing rather than following the phone, which is '
-            'the better arrangement for audio quality.',
+        title: t.noteAsyncGoodTitle,
+        detail: t.noteAsyncGoodDetail,
       ));
     } else if (isAsync && !hasFeedback) {
       out.add(CapabilityNote(
         severity: NoteSeverity.important,
-        title: 'Asynchronous, but no feedback endpoint found',
-        detail: 'Timing cannot be tracked precisely, so occasional dropouts are '
-            'possible on long playback.',
+        title: t.noteAsyncNoFeedbackTitle,
+        detail: t.noteAsyncNoFeedbackDetail,
       ));
     }
 
     if (supportsDsd) {
       out.add(CapabilityNote(
         severity: NoteSeverity.info,
-        title: 'DSD capable',
-        detail: 'This DAC accepts native DSD. The app does not play DSD yet.',
+        title: t.noteDsdTitle,
+        detail: t.noteDsdDetail,
       ));
     }
 
     if (configurations > 1) {
       out.add(CapabilityNote(
         severity: NoteSeverity.info,
-        title: 'Alternative USB mode available',
-        detail: 'The device offers $configurations USB configurations. Only the '
-            'active one is used; some DACs keep a compatibility mode in the other.',
+        title: t.noteAltConfigTitle,
+        detail: t.noteAltConfigDetail(configurations),
       ));
     }
 
     if (clockError.isNotEmpty) {
       out.add(CapabilityNote(
         severity: NoteSeverity.important,
-        title: 'Could not read the supported sample rates',
+        title: t.noteClockErrorTitle,
+        // The engine's own words. Diagnostic, and left in English on purpose.
         detail: clockError,
       ));
     }

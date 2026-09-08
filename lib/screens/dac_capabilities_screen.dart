@@ -94,7 +94,7 @@ class DacCapabilitiesScreen extends StatelessWidget {
         Text(AppLocalizations.of(context).dacCapsWorthKnowing,
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
-        ...c.notes.map((n) => _note(context, n)),
+        ...c.notes(AppLocalizations.of(context)).map((n) => _note(context, n)),
         const SizedBox(height: 20),
         _technical(context, c),
       ],

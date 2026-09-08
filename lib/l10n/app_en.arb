@@ -651,5 +651,289 @@
     "placeholders": {
       "value": {"type": "String", "example": "96"}
     }
+  },
+  "noteCannotPlayTitle": "This device cannot play audio",
+  "@noteCannotPlayTitle": {
+    "description": "Capability note for a USB device that identifies as audio hardware but has no playback output at all."
+  },
+
+  "noteCannotPlayDetail": "It advertises the USB audio class but offers no PCM output over an isochronous endpoint. Capture-only devices look like this — a USB microphone, or the recording half of a headset adapter.",
+  "@noteCannotPlayDetail": {
+    "description": "Explains a device with no playback output: it is a recording device. 'Isochronous endpoint' is the USB term for the channel audio streams over; keep it recognisable to anyone who knows USB."
+  },
+
+  "noteUac1Title": "This device uses USB Audio Class 1.0",
+  "@noteUac1Title": {
+    "description": "Capability note naming the older of the two USB audio specifications."
+  },
+
+  "noteUac1Detail": "Supported, with the limits the class itself imposes: full-speed USB caps the bandwidth, so UAC1 devices top out well below what a UAC2 DAC offers. Playback is still bit-perfect at the rates it does support — nothing is resampled.",
+  "@noteUac1Detail": {
+    "description": "Explains what USB Audio Class 1.0 costs and, importantly, what it does not: the ceiling is lower but the audio is still unaltered. 'Full-speed' is a USB speed grade, confusingly slower than 'high-speed'; keep the term."
+  },
+
+  "noteAdaptiveTitle": "This device follows the phone's clock",
+  "@noteAdaptiveTitle": {
+    "description": "Capability note for a DAC whose USB endpoint is adaptive rather than asynchronous, meaning the phone provides the timing reference."
+  },
+
+  "noteAdaptiveDetail": "Its endpoint is adaptive rather than asynchronous, so it adapts to the rate the phone sends instead of running its own clock and asking the phone to follow. Common on UAC1 hardware. Samples still arrive unaltered; the timing reference is simply the phone's.",
+  "@noteAdaptiveDetail": {
+    "description": "Explains adaptive versus asynchronous USB timing, and reassures that the audio data itself is unchanged either way."
+  },
+
+  "noteVolumeDeviceTitle": "Volume is controlled by the DAC, not this app",
+  "@noteVolumeDeviceTitle": {
+    "description": "Capability note for a DAC that exposes no volume control over USB."
+  },
+
+  "noteVolumeOneWayDetail": "This device exposes no USB volume control. It does report its own knob or remote to the phone, but that is one-way: nothing sent from here can change its volume. Use the physical control.",
+  "@noteVolumeOneWayDetail": {
+    "description": "For a DAC that tells the phone when its own knob moves but will not accept volume commands back. The asymmetry is the point."
+  },
+
+  "noteVolumeNoneDetail": "This device exposes no USB volume control, so volume commands from a DLNA controller cannot reach it. Use the physical control.",
+  "@noteVolumeNoneDetail": {
+    "description": "For a DAC with no USB volume control of any kind. Common on integrated amplifiers with a physical knob."
+  },
+
+  "noteVolumeAppTitle": "Volume can be set from this app",
+  "@noteVolumeAppTitle": {
+    "description": "Capability note for a DAC whose volume can be driven over USB."
+  },
+
+  "noteVolumeAppDetail": "The DAC exposes a USB volume control ({detail}), so DLNA volume commands are passed straight to the hardware.",
+  "@noteVolumeAppDetail": {
+    "description": "Explains that volume commands reach the hardware directly. The placeholder is a short technical description of the control, and stays in English.",
+    "placeholders": {
+      "detail": {"type": "String", "example": "feature unit 2"}
+    }
+  },
+
+  "notePaddedTitle": "16-bit tracks are padded to {bits}-bit",
+  "@notePaddedTitle": {
+    "description": "Capability note for a DAC with no 16-bit mode, so CD-resolution audio is carried in a wider container.",
+    "placeholders": {
+      "bits": {"type": "int", "example": "24"}
+    }
+  },
+
+  "notePaddedDetail": "This DAC offers no 16-bit mode, so CD-resolution files are placed in a {bits}-bit container. The sample values are unchanged, so playback is still bit-perfect.",
+  "@notePaddedDetail": {
+    "description": "Explains that padding a 16-bit sample into a wider container does not alter it — the reassurance is the point of the note.",
+    "placeholders": {
+      "bits": {"type": "int", "example": "24"}
+    }
+  },
+
+  "noteAsyncGoodTitle": "Asynchronous USB with its own clock",
+  "@noteAsyncGoodTitle": {
+    "description": "Capability note for the preferred timing arrangement, where the DAC drives the clock."
+  },
+
+  "noteAsyncGoodDetail": "The DAC drives timing rather than following the phone, which is the better arrangement for audio quality.",
+  "@noteAsyncGoodDetail": {
+    "description": "Explains why asynchronous USB is preferable: the DAC's own clock is steadier than one recovered from the phone."
+  },
+
+  "noteAsyncNoFeedbackTitle": "Asynchronous, but no feedback endpoint found",
+  "@noteAsyncNoFeedbackTitle": {
+    "description": "Capability note for a DAC that claims asynchronous timing but offers no channel to report its clock rate back."
+  },
+
+  "noteAsyncNoFeedbackDetail": "Timing cannot be tracked precisely, so occasional dropouts are possible on long playback.",
+  "@noteAsyncNoFeedbackDetail": {
+    "description": "Explains the practical consequence of a missing feedback endpoint: audio may break up over long sessions."
+  },
+
+  "noteDsdTitle": "DSD capable",
+  "@noteDsdTitle": {
+    "description": "Capability note for a DAC that accepts Direct Stream Digital."
+  },
+
+  "noteDsdDetail": "This DAC accepts native DSD. The app does not play DSD yet.",
+  "@noteDsdDetail": {
+    "description": "States plainly that the hardware supports DSD but the app does not send it, so nobody expects it to work."
+  },
+
+  "noteAltConfigTitle": "Alternative USB mode available",
+  "@noteAltConfigTitle": {
+    "description": "Capability note for a device offering more than one USB configuration."
+  },
+
+  "noteAltConfigDetail": "The device offers {count} USB configurations. Only the active one is used; some DACs keep a compatibility mode in the other.",
+  "@noteAltConfigDetail": {
+    "description": "Explains that a second USB configuration exists but is unused — often a legacy or compatibility mode.",
+    "placeholders": {
+      "count": {"type": "int", "example": "2"}
+    }
+  },
+
+  "noteClockErrorTitle": "Could not read the supported sample rates",
+  "@noteClockErrorTitle": {
+    "description": "Capability note shown when interrogating the DAC's clock failed. The detail beneath it is the raw error and stays in English."
+  },
+  "reportCopied": "Report copied",
+  "@reportCopied": {
+    "description": "Confirmation after a diagnostic report is copied to the clipboard. The report itself stays in English, being diagnostic output."
+  },
+
+  "copyReport": "Copy report",
+  "@copyReport": {
+    "description": "Button that copies a diagnostic report to the clipboard. Short: a compact action button."
+  },
+
+  "stop": "Stop",
+  "@stop": {
+    "description": "Button that halts a running test. Short: a compact action button."
+  },
+
+  "notReported": "not reported",
+  "@notReported": {
+    "description": "Value shown where a measurement was expected but the hardware gave none. Lower case: it stands in for a number in a results table."
+  },
+
+  "verifyTitle": "DAC verification",
+  "@verifyTitle": {
+    "description": "Title of the screen that plays a test tone at every sample rate a DAC claims, to find which it truly handles."
+  },
+
+  "verifyResults": "Results",
+  "@verifyResults": {
+    "description": "Heading above the per-rate verification results."
+  },
+
+  "verifyFollow": "Follow",
+  "@verifyFollow": {
+    "description": "Button that keeps the results list scrolled to the test currently running. Short: a compact button."
+  },
+
+  "soakTitle": "Stability soak",
+  "@soakTitle": {
+    "description": "Title of the screen that plays for a long stretch at one sample rate to find faults that only appear once the hardware is warm."
+  },
+
+  "soakRate": "Rate",
+  "@soakRate": {
+    "description": "Heading above the sample rate chooser. Short: it labels a row of chips."
+  },
+
+  "soakLength": "Length",
+  "@soakLength": {
+    "description": "Heading above the soak duration chooser. Short: it labels a row of chips."
+  },
+
+  "soakStart": "Soak {rate} for {duration}",
+  "@soakStart": {
+    "description": "Button that begins the soak, naming the chosen sample rate and how long it will run.",
+    "placeholders": {
+      "rate": {"type": "String", "example": "96 kHz"},
+      "duration": {"type": "String", "example": "10:00"}
+    }
+  },
+
+  "soakProgress": "{elapsed} of {planned}  ·  {step}",
+  "@soakProgress": {
+    "description": "Progress line during a soak: time so far, total planned, and what the test is doing. The step is a short status word from the engine and is not translated.",
+    "placeholders": {
+      "elapsed": {"type": "String", "example": "02:13"},
+      "planned": {"type": "String", "example": "10:00"},
+      "step": {"type": "String", "example": "running"}
+    }
+  },
+
+  "soakFaults": "Faults",
+  "@soakFaults": {
+    "description": "Results label: how many audible faults occurred. Any number above zero is a failure."
+  },
+
+  "soakRingFill": "Ring fill",
+  "@soakRingFill": {
+    "description": "Results label: how full the audio buffer stayed, as a percentage. A ring buffer feeds the DAC; if it empties, audio breaks up."
+  },
+
+  "soakMeasuredRate": "Measured rate",
+  "@soakMeasuredRate": {
+    "description": "Results label: the sample rate the DAC's own clock actually ran at, as opposed to the rate it was asked for."
+  },
+
+  "soakUnderruns": "Underruns",
+  "@soakUnderruns": {
+    "description": "Results label: times the buffer ran dry and the DAC had nothing to play. The standard audio term."
+  },
+
+  "soakTransferErrors": "Transfer errors",
+  "@soakTransferErrors": {
+    "description": "Results label: failed USB transfers."
+  },
+
+  "soakPacketErrors": "Packet errors",
+  "@soakPacketErrors": {
+    "description": "Results label: individual USB packets that failed within otherwise successful transfers."
+  },
+
+  "soakRebuffers": "Rebuffers",
+  "@soakRebuffers": {
+    "description": "Results label: times playback had to pause and refill the buffer."
+  },
+
+  "soakWorstRingFill": "Worst ring fill",
+  "@soakWorstRingFill": {
+    "description": "Results label: the lowest the buffer ever got, as a percentage. The closer to zero, the closer it came to breaking up."
+  },
+
+  "soakWorstDeviation": "Worst deviation",
+  "@soakWorstDeviation": {
+    "description": "Results label: the furthest the DAC's measured clock strayed from its nominal rate."
+  },
+
+  "soakDriftSpread": "Drift spread",
+  "@soakDriftSpread": {
+    "description": "Results label: the range between the fastest and slowest measured clock readings across the soak."
+  },
+
+  "soakMeetsBar": "Clears the ten-minute zero-dropout bar.",
+  "@soakMeetsBar": {
+    "description": "Verdict when a soak ran at least ten minutes with no faults at all. Ten minutes with zero dropouts is the standard this app holds a DAC to."
+  },
+
+  "soakShortOfBar": "Short of the ten-minute bar, so it says nothing yet about the faults that only appear once the hardware is warm.",
+  "@soakShortOfBar": {
+    "description": "Verdict when a soak was clean but too short to count. The point is that a brief clean run proves nothing: some faults only appear after the hardware warms up."
+  },
+
+  "playFileTitle": "Play a file",
+  "@playFileTitle": {
+    "description": "Title of the screen that plays one of the user's own files through the DAC and watches the stream for faults."
+  },
+
+  "playFileIntro": "Plays one of your own files through the DAC and watches the stream, which is the question the tone tests cannot ask: whether the material you actually own plays cleanly. Only the rates that material contains get tested.",
+  "@playFileIntro": {
+    "description": "Explains what this test adds over the synthetic tone tests: real music, at whatever rates the user's own library happens to use."
+  },
+
+  "playFileChoose": "Choose a file",
+  "@playFileChoose": {
+    "description": "Button that opens the file picker."
+  },
+
+  "playFileFormats": "FLAC, WAV, AIFF, MP3 and anything else the engine decodes.",
+  "@playFileFormats": {
+    "description": "Lists accepted formats. The format names are not translated."
+  },
+
+  "playFileCache": "Pushed to the app cache",
+  "@playFileCache": {
+    "description": "Heading above files copied onto the phone by a developer over a debugging cable, rather than chosen by the user."
+  },
+
+  "playFileCacheDetail": "The M2 harness. WAV only, and the fastest way to put a known file on a phone you are debugging over adb.",
+  "@playFileCacheDetail": {
+    "description": "Explains the developer-pushed file list. 'M2 harness' is this project's own test rig and 'adb' is the Android debugging tool; neither is translated."
+  },
+
+  "playFileStreamHealth": "Stream health",
+  "@playFileStreamHealth": {
+    "description": "Heading above live statistics for the playing stream."
   }
 }

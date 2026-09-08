@@ -8,6 +8,7 @@ import '../usb/dac_capabilities.dart';
 import '../usb/rate_sweep.dart';
 import 'stability_soak_screen.dart';
 import 'playback_test_screen.dart';
+import '../l10n/app_localizations.dart';
 
 /// M8: walk every rate the DAC claims and report what it actually did.
 ///
@@ -231,7 +232,7 @@ class _DacVerificationScreenState extends State<DacVerificationScreen> {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Report copied')),
+      SnackBar(content: Text(AppLocalizations.of(context).reportCopied)),
     );
   }
 
@@ -240,7 +241,7 @@ class _DacVerificationScreenState extends State<DacVerificationScreen> {
     final caps = _caps;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('DAC verification'),
+        title: Text(AppLocalizations.of(context).verifyTitle),
         actions: [
           IconButton(
             tooltip: 'Play one of my files',
@@ -304,7 +305,7 @@ class _DacVerificationScreenState extends State<DacVerificationScreen> {
                             builder: (_) => StabilitySoakScreen(caps: caps),
                           )),
                   icon: const Icon(Icons.timer_outlined),
-                  label: const Text('Stability soak'),
+                  label: Text(AppLocalizations.of(context).soakTitle),
                 ),
               ],
               const SizedBox(height: 20),
@@ -324,7 +325,7 @@ class _DacVerificationScreenState extends State<DacVerificationScreen> {
                   FilledButton.tonalIcon(
                     onPressed: _copy,
                     icon: const Icon(Icons.copy),
-                    label: const Text('Copy report'),
+                    label: Text(AppLocalizations.of(context).copyReport),
                   ),
                   const SizedBox(height: 12),
                   _note(
@@ -347,7 +348,8 @@ class _DacVerificationScreenState extends State<DacVerificationScreen> {
   /// somewhere the new rows are not.
   Widget _resultsHeader(BuildContext context) => Row(
         children: [
-          Text('Results', style: Theme.of(context).textTheme.titleMedium),
+          Text(AppLocalizations.of(context).verifyResults,
+              style: Theme.of(context).textTheme.titleMedium),
           const Spacer(),
           if (_sweeping && !_stick)
             TextButton.icon(
@@ -356,7 +358,7 @@ class _DacVerificationScreenState extends State<DacVerificationScreen> {
                 _followTail();
               },
               icon: const Icon(Icons.arrow_downward, size: 16),
-              label: const Text('Follow'),
+              label: Text(AppLocalizations.of(context).verifyFollow),
             ),
         ],
       );
@@ -403,7 +405,7 @@ class _DacVerificationScreenState extends State<DacVerificationScreen> {
             TextButton.icon(
               onPressed: () => setState(() => _cancelled = true),
               icon: const Icon(Icons.stop),
-              label: const Text('Stop'),
+              label: Text(AppLocalizations.of(context).stop),
             ),
         ],
       );

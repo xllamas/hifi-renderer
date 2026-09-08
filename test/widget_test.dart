@@ -894,19 +894,21 @@ void main() {
   });
 
   group('DacCapabilities', () {
-    test('flags a DAC with no host volume control', () {
+    test('flags a DAC with no host volume control', () async {
+      final t = await englishStrings();
       final c = DacCapabilities.parse(_al400);
       expect(c.ok, isTrue);
       expect(c.volumeHostControllable, isFalse);
-      final note = c.notes.firstWhere((n) => n.title.contains('Volume'));
+      final note = c.notes(t).firstWhere((n) => n.title.contains('Volume'));
       expect(note.detail, contains('one-way'));
     });
 
-    test('warns that 16-bit is padded when no 16-bit mode exists', () {
+    test('warns that 16-bit is padded when no 16-bit mode exists', () async {
+      final t = await englishStrings();
       final c = DacCapabilities.parse(_al400);
       expect(c.requiresPaddingFor16Bit, isTrue);
       expect(
-        c.notes.firstWhere((n) => n.title.contains('16-bit')).detail,
+        c.notes(t).firstWhere((n) => n.title.contains('16-bit')).detail,
         contains('bit-perfect'),
       );
     });
@@ -933,22 +935,24 @@ void main() {
       expect(c.pcmBitDepths, [16, 24]);
     });
 
-    test('notes that an adaptive device follows the phone clock', () {
+    test('notes that an adaptive device follows the phone clock', () async {
+      final t = await englishStrings();
       final c = DacCapabilities.parse(_uac1);
       expect(c.isAdaptiveOnly, isTrue);
       expect(
-        c.notes.any((n) => n.title.contains('clock')),
+        c.notes(t).any((n) => n.title.contains('clock')),
         isTrue,
       );
       expect(c.hasFeedback, isFalse);
     });
 
-    test('reports a capture-only device as unusable, whatever its class', () {
+    test('reports a capture-only device as unusable, whatever its class', () async {
+      final t = await englishStrings();
       final c = DacCapabilities.parse(_captureOnly);
       expect(c.ok, isTrue);
       expect(c.isSupported, isFalse);
       expect(
-        c.notes.first.detail,
+        c.notes(t).first.detail,
         contains('microphone'),
       );
     });
