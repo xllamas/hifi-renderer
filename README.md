@@ -8,10 +8,15 @@ cannot normally act as a hi-fi source. This app bypasses the Android audio stack
 entirely and streams to the DAC over raw USB, at the source file's native sample
 rate and bit depth.
 
-> **Status: early development.** The renderer is discoverable, plays FLAC, MP3
-> and AAC bit-perfectly to a USB DAC, and supports transport control, playlists,
-> seeking, boot-start and a home-screen widget. Not yet done: gapless
-> transitions, the no-DAC fallback and first-run onboarding.
+> **Status: working end to end on the reference hardware.** A DLNA or OpenHome
+> controller discovers the renderer and it plays FLAC, MP3, AAC and raw PCM
+> bit-perfectly to a USB DAC — with transport control, seeking, gapless
+> transitions within a rate, per-DAC volume memory, boot start, a home-screen
+> widget, first-run onboarding, an Oboe fallback when no DAC is attached, and
+> an interface in nine languages. AirPlay is in as a guest path: it plays, and
+> it says plainly that it is not bit-perfect. Not yet done: AirPlay clock sync
+> and retransmission, source arbitration between the owner's playlist and a
+> guest, and seeking inside a server-converted stream.
 
 ## How it works
 
@@ -22,8 +27,9 @@ from `getFileDescriptor()`, from native code. That is why this is a Flutter app
 with a substantial C++ and Kotlin core rather than a pure Dart one.
 
 ```
-Flutter / Dart  ── UI, configuration, DAC capability display
-Kotlin service  ── UPnP MediaRenderer, playlist, USB permission, always-on lifecycle
+Flutter / Dart  ── UI, configuration, DAC capability display, language choice
+Kotlin service  ── UPnP MediaRenderer + OpenHome, playlist, AirPlay receiver,
+                   USB permission, screen policy, always-on lifecycle
 C++ engine      ── decoders → ring buffer → USB isochronous sink (libusb)
                                           └ Oboe fallback (not bit-perfect)
 USB DAC
@@ -38,8 +44,9 @@ USB DAC
 | L16 / L24 | PcmDecoder (native) | What a server transcodes to; big-endian per RFC 2586 |
 | WAV / AIFF (streamed) | PcmDecoder (native) | Chunk list parsed, then the same raw samples |
 | MP3 | minimp3 (native) | Lossy source, but never resampled |
+| ALAC | Apple's reference decoder (native) | The AirPlay guest path; this phone offers no `audio/alac` at all |
 | AAC / M4A | Android MediaCodec | See below |
-| Anything else the platform knows | Android MediaCodec | Opus, Vorbis, ALAC where supported |
+| Anything else the platform knows | Android MediaCodec | Opus and Vorbis where the device supports them |
 
 The three raw-PCM rows share one decoder, because past the header they are the
 same thing. What differs is what must not be guessed: L16, L24 and AIFF are
@@ -134,6 +141,52 @@ convert instead; it is off by default, because it costs bit-perfect playback of
 every file the DAC could have played untouched, and it does not change the
 behaviour of a controller that does not consult the list.
 
+## Controllers, and who owns the playlist
+
+The renderer answers **UPnP AV/DLNA** and **OpenHome** at the same time, from
+one device description. A controller uses whichever it knows.
+
+AVTransport takes one track at a time, so with a DLNA controller the queue
+lives in the controller: close the app and the music stops at the end of the
+current track. OpenHome moves the playlist onto the renderer — the controller
+fills it once and is then free to leave the network, and advancing, repeat and
+shuffle all happen here with nothing else involved. That is what makes this an
+appliance rather than a speaker driven by a phone, and it is the last gap
+between the app and its original objective.
+
+## AirPlay: the guest path
+
+A house has guests, and a guest will not learn what DLNA is. AirPlay is the
+guest path: it appears in Control Centre beside real AirPlay devices, and a
+visitor sends audio to it without installing or configuring anything. The
+alternatives were assessed and closed — Bluetooth by measurement, Chromecast by
+Google — and the reasoning is in
+[`doc/protocols-beyond-dlna.md`](doc/protocols-beyond-dlna.md).
+
+It is written directly against Android's NSD and the engine's push-PCM entry
+point rather than ported from `shairport-sync`: mDNS, the RTSP handshake, RSA
+and AES, RTP and ALAC. Only Apple's reference ALAC decoder is vendored, because
+this phone's MediaCodec offers no `audio/alac` at all.
+
+**It is lossless, and it is not bit-perfect, and the app says so.** ALAC over
+RAOP is 44.1 kHz / 16-bit, whatever the sender started from — so anything else
+was resampled before it arrived, and nothing downstream can undo that. The
+now-playing screen reads `ALAC 16/44.1` beside an amber *AirPlay — sender
+resampled*, where a local FLAC on the same DAC reads `FLAC 16/44.1` beside the
+green tick. Bit-perfectness is composed by the one layer that sees both the
+sink and where the samples came from; a sink cannot answer it about a stream it
+did not originate.
+
+**The RAOP key is not in this repository.** A receiver has to prove it is an
+AirPort Express, using the private key recovered from that hardware years ago;
+its licence position is unclear and key material does not belong in source
+control. The build supplies it at
+`android/app/src/main/assets/airplay/raop_key.pkcs8`. Without it everything
+still compiles, advertises and answers RTSP — it declines the challenge, which
+is the honest behaviour for a receiver that cannot prove what it claims. See
+[`doc/airplay.md`](doc/airplay.md) for the conversion command and for what is
+measured.
+
 ## The home-screen widget
 
 A 4×2 widget carrying the same information as the now-playing screen: album art,
@@ -147,6 +200,45 @@ changes rather than on the system's widget alarm — which has a 30-minute floor
 and would be useless for a now-playing display. On a phone dedicated to this job
 the UI process spends most of its life destroyed, so a widget that depended on it
 would go stale exactly when it is the only thing on screen.
+
+## Languages
+
+The interface exists in nine: English, Spanish, Portuguese, French, German,
+Italian, Japanese, Korean and Chinese — ten translations, European and
+Brazilian Portuguese being separate ones.
+
+The default is the phone's own language, which is the right default for this
+appliance rather than a shortcut — the renderer is a box on a shelf, and the
+phone reading it may not be the phone that set it up. A guest who picks it up
+should find their own language with nobody having configured anything. The
+override in settings exists for the opposite case, just as real: a renderer set
+up on a spare phone inherits whatever language that phone happens to be in, and
+changing the whole phone to fix one app is a poor trade.
+
+The choice is stored on the Android side, because the service outlives the UI:
+the widget and the notification are drawn with no Flutter engine running and
+cannot ask Dart what language it settled on. For the same reason the engine
+sends the screen a **failure code**, never an English sentence — the wording
+lives once, in `lib/l10n/app_en.arb`, and the diagnostic detail stays as the
+engine wrote it, because that ends up in bug reports.
+
+## Staying up
+
+A renderer nobody can see is broken however well it decodes.
+
+The app watches its own SSDP traffic and rejoins the multicast group when it
+stops hearing any — a membership can lapse above the app, in the Wi-Fi driver
+or the access point's IGMP snooping, and every counter inside the process keeps
+looking healthy while the renderer is invisible. Silence is judged against how
+busy the network has actually been, so a genuinely quiet one is not condemned
+on the same clock as one running better than an announcement a second. Measured
+overnight: eight lapses in fourteen hours, cut from several minutes of
+invisibility each to about ninety seconds.
+
+The panel blanks after a few minutes of inactivity and wakes when playback
+starts, which is what makes it feel like an appliance rather than a phone left
+on a shelf. That is display policy only — the CPU is held awake separately,
+because a suspended process cannot meet isochronous deadlines.
 
 ## DAC verification
 
@@ -182,14 +274,31 @@ To build a genuinely single-ABI APK, use `--split-per-abi`. Note that
 `--target-platform` only restricts `libflutter.so`; it does **not** propagate to
 the CMake or prefab native libraries.
 
+**Run a release build on a device before shipping it.** Almost everything this
+app does across a boundary is resolved by name at runtime — JNI links C symbols
+to Kotlin method names, and jUPnP builds its service descriptions by reflecting
+over the OpenHome annotations — and none of it looks used to R8.
+`proguard-rules.pro` keeps what must not be renamed, and the failure mode if
+something is missed is not a broken build: it builds, installs, and then the
+renderer is invisible to controllers or dies with `UnsatisfiedLinkError` the
+first time a track plays.
+
 ## Documentation
 
 - [`doc/hifirend.md`](doc/hifirend.md) — the original objective and feature list
 - [`doc/implementation-plan.md`](doc/implementation-plan.md) — architecture, milestones, verification
 - [`doc/dac-capabilities-al400.md`](doc/dac-capabilities-al400.md) — measured capabilities of the reference DAC
+- [`doc/protocols-beyond-dlna.md`](doc/protocols-beyond-dlna.md) — the guest-path question, and why Bluetooth and Chromecast are closed
+- [`doc/airplay.md`](doc/airplay.md) — the AirPlay receiver: what is measured, what is missing, and the key
 
 ## Third-party code
 
 - [libusb](https://libusb.info) 1.0.28 (LGPL-2.1-or-later), vendored under
   `android/app/src/main/cpp/third_party/libusb`
+- [Apple ALAC](https://github.com/macosforge/alac) (Apache-2.0), vendored under
+  `android/app/src/main/cpp/third_party/alac`
+- [dr_libs](https://github.com/mackron/dr_libs) `dr_flac` and `dr_wav`
+  (public domain / MIT-0), and [minimp3](https://github.com/lieff/minimp3)
+  (CC0), vendored under `android/app/src/main/cpp/third_party`
 - [Oboe](https://github.com/google/oboe) (Apache-2.0), via Gradle
+- [jUPnP](https://github.com/jupnp/jupnp) 3.0.3 (CDDL-1.0), via Gradle
