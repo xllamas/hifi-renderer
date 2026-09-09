@@ -360,10 +360,12 @@ user cannot easily determine.
 
 ---
 
-## Status (2026-09-05)
+## Status (2026-09-08)
 
-Working end to end on the reference hardware: a DLNA controller discovers the
-renderer, sends a track, and it plays bit-perfectly to the USB DAC.
+Working end to end on the reference hardware: a DLNA **or OpenHome** controller
+discovers the renderer, sends a track, and it plays bit-perfectly to the USB
+DAC — and a guest can send to it over AirPlay without knowing that any of that
+exists. (The sender that has actually done so is a Mac; see below.)
 
 | Milestone | State |
 |---|---|
@@ -373,10 +375,17 @@ renderer, sends a track, and it plays bit-perfectly to the USB DAC.
 | M3 DLNA renderer | ✅ — discovery, transport, DIDL, LastChange eventing |
 | M4 full audio path | ✅ FLAC/MP3/AAC, L16/L24, WAV, AIFF, seek, volume, gapless, Oboe fallback |
 | M5 UI | ✅ now-playing, settings, DAC capabilities, first-run onboarding |
-| M6 appliance | ✅ foreground service, boot start, wake locks, vendor autostart |
+| M6 appliance | ✅ foreground service, boot start, wake locks, vendor autostart, screen policy — no MediaSession |
 | M7 widget | ✅ 4x2, art, transport, pushed from the service |
 | Device icon | ✅ launcher + DLNA iconList (PNG/JPEG, 48 and 120) |
 | M8 DAC verification | ✅ rate sweep, stability soak, file source, verdicts and reports |
+| M9 OpenHome | ✅ — the renderer owns the playlist and outlives the controller |
+| M10 AirPlay guest path | 🟡 — plays end to end, and says it is not bit-perfect; sync, retransmission and source arbitration outstanding |
+| Multicast watchdog | ✅ — the renderer stops disappearing; the rejoin costs the audio nothing |
+| Localisation | ✅ — nine languages, ten translations, service side included |
+
+M10 is the one row that is not a tick, and the shape of what is left is in
+[airplay.md](airplay.md) rather than here.
 
 ### Exercised on hardware
 
@@ -437,6 +446,44 @@ it ran on.
   ten minutes without losing the stream. Whether this AL400 would also survive
   ten minutes at 768 kHz is a question about that DAC, and the app is now the
   thing that answers it.
+- **A whole OpenHome playlist played with nothing connected**, 2026-09-06:
+  three tracks at three rates, the controller then exited, the DAC
+  reconfigured at each boundary and the list ran to its end — 0 underruns, 0
+  transfer errors, 0 bad packets. Confirmed the same day by the owner against a
+  NAS playlist with the controller killed outright.
+- **Fourteen hours in one process, watched**, overnight into 2026-09-07: pid
+  19413 never restarted, and the renderer answered a multicast M-SEARCH in the
+  morning with nobody having touched it. The multicast membership lapsed eight
+  times and every lapse was caught at ninety seconds and cured — 891 seconds
+  invisible in all, discoverable 98.2% of the night, against eight
+  disappearances lasting until somebody restarts the app. Two claims from the
+  original diagnosis died in the larger sample: the fault is clustered rather
+  than half-hourly, and it is not a quiet-hours phenomenon.
+- **The rejoin costs the audio nothing.** Forced twice with the debug trigger
+  against pink noise playing to the SMSL: 442,099 and 442,981 frames in a
+  ten-second window — 10.02 seconds of audio at 44.1 kHz — with 0 underruns and
+  0 transfer errors, and no re-fetch in the log. The whole cost is on the
+  control plane: the old description and control URLs die inside two seconds
+  and the renderer answers on its new port about half a second later.
+- **Switching the DAC on mid-track moves playback to it**, confirmed on the
+  phone. Two faults underneath it had been live for some time: the detach
+  handler stopped playback for *any* USB device going away, so anything else on
+  the powered hub re-enumerating killed the music — worth remembering as the
+  explanation for past unexplained stops.
+- **AirPlay from a real macOS sender**, 2026-09-07/08, same phone and SMSL DAC:
+  4,354 packets and 2,075,021 bytes decrypted with **zero undecryptable**, then
+  9,001 ALAC frames decoded to exactly 1408 bytes each, `underruns=0
+  xferErr=0`. The screen read `ALAC 16/44.1` beside an amber *AirPlay — sender
+  resampled* while a local FLAC on the same DAC read the green tick minutes
+  apart. Two things the test settled that no amount of reading would have: the
+  sender arrives over IPv6, and this phone has no `audio/alac` in
+  `media_codecs*.xml` at all, so the decoder had to be vendored.
+- **A Kotlin JVM test source set exists**: 124 tests across 13 files, covering
+  the watchdog's time comparisons, the screen idle policy, the failure-code
+  mapping, the OpenHome track list and skip rule and binding, and six of the
+  AirPlay parsers. These are the parts whose failure modes are severe and slow
+  — a watchdog that fires too eagerly or never fires shows up in neither a
+  quick manual check nor a build.
 
 ### Known gaps
 
@@ -472,15 +519,48 @@ it ran on.
   header and refuses without one, which also means MP3 has never been
   seekable. For raw L16 the byte offset is exactly computable, so this is
   cheap to fix and simply has not been.
-- **`bitPerfect` reports true on a transcoded stream.** Honest by the field's
-  own definition — nothing alters samples after the decoder — but the server
-  may well have resampled upstream, and the badge does not distinguish the two.
+- **`bitPerfect` reports true on a server-transcoded stream.** Honest by the
+  field's own definition — nothing alters samples after the decoder — but the
+  server may well have resampled upstream, and the badge does not distinguish
+  the two. Half of this gap closed on 2026-09-08: the field is now composed by
+  `StreamPlayer`, the only layer that sees both the sink and where the samples
+  came from, and `senderAltered` is declared at each call site rather than
+  inferred. The AirPlay path declares it true. Nothing yet declares it for a
+  server that converted upstream, which is the harder case because the renderer
+  is told a format rather than a history.
 - **The sweep cannot confirm the clock on an adaptive DAC.** Not a defect in
   the sweep; there is nothing to read. It is called out because a screen full
   of green ticks would otherwise be read as proof it cannot give.
-- **No JVM test source set.** `SinkFormats`, `Problem` and the transport are
-  untested except through the app. The Dart and native sides both have
-  harnesses now; Kotlin is the gap.
+- ~~**No JVM test source set.**~~ Opened with OpenHome on 2026-09-06 and grown
+  since: 124 tests now cover the watchdog, the screen idle policy, `Problem`,
+  the OpenHome services and the AirPlay parsers. What is still untested except
+  through the app is
+  `SinkFormats` and the AVTransport implementation itself — the two places
+  where a fault shows up as a controller behaving oddly rather than as
+  anything the phone logs.
+- **AirPlay's control and timing sockets are bound and drained, but unread.**
+  They are what separate "plays" from "plays without dropouts", and a guest
+  path that stutters is worse than none.
+- **AirPlay is not in the source arbitration.** It opens the output and pushes
+  PCM directly rather than going through the `claim` / `onSourceSelected` seam
+  that Playlist and UPnP AV share. A guest arriving mid-album is the case to
+  design, not the case to discover.
+- **The two-tier watchdog backoff is not verified in the field.** A rejoin that
+  worked is followed by a two-minute floor, one that achieved nothing by the
+  full ten minutes; that rule is covered by twelve unit tests and by replaying
+  the morning's real timestamps, where it turns a 466-second outage into 90.
+  The overnight soak that produced the eight-lapse record above ran on the flat
+  backoff that preceded it, so a second night is owed.
+- **M6 specified a MediaSession and there is none.** Nothing in the source
+  references it. The widget and the notification carry the transport instead,
+  so the visible gap is what a MediaSession would add beyond them —
+  lock-screen and Bluetooth-key control — rather than anything missing today.
+- **The release build is signed with the debug keys** and has never been run on
+  a device. `proguard-rules.pro` states what R8 must not rename, and the whole
+  point of that file is a failure mode that a successful build does not
+  reveal: the renderer is invisible to controllers, or dies with
+  `UnsatisfiedLinkError` at the first track. Until a release APK plays on the
+  Redmi, those rules are an argument rather than a result.
 
 ### What the second DAC taught us
 
@@ -617,23 +697,34 @@ DAC could have played untouched.
 
 ### Next up
 
-Every milestone in this plan is built, and M9 (OpenHome) closed the last gap
-between the app and `doc/hifirend.md`: local playlists that survive the
-controller leaving are now a thing the renderer owns rather than something
-approximated from what a controller happened to announce.
+Every milestone this plan named is built, bar the MediaSession inside M6.
+M9 (OpenHome) closed the last gap
+between the app and `doc/hifirend.md` — local playlists that survive the
+controller leaving are a thing the renderer owns rather than something
+approximated from what a controller happened to announce — and the guest path
+that `doc/protocols-beyond-dlna.md` argued for is built and plays, which is why
+the milestone table now carries an M10 the plan never named. **Bluetooth stays
+closed**, spiked and refused on facts, twice over.
 
-What is left is not a feature list: it is use. The app exists to be pointed at
-hardware nobody here owns, and the reports it produces are the only thing that
-can turn "works on two DACs in one room" into evidence.
+Four things are owed, roughly in the order they will bite.
 
-The open question beyond that is a second way in, assessed in
-`doc/protocols-beyond-dlna.md`. The short of it: this is an appliance in a
-home, and a home has guests who will not learn what DLNA is. That is a
-different product from the owner's, sharing one box — and the guest path does
-not compete with the bit-perfect claim, it protects it. **Bluetooth is closed**
-— spiked and refused on facts, twice over. AirPlay is the buildable guest path,
-and the first thing it owes is the appliance-shell extraction that OpenHome was
-able to skip.
+1. **AirPlay sync and retransmission.** The control and timing sockets are
+   already bound; reading them is the difference between a guest path that
+   plays and one that plays without dropouts, and a stuttering guest path is
+   worse than none.
+2. **Source arbitration for AirPlay**, through the `claim` /
+   `onSourceSelected` seam Playlist and UPnP AV already share. Then the
+   appliance-shell extraction the protocol doc says is owed — deliberately
+   deferred until there was a real second-shape protocol to extract *against*,
+   which there now is.
+3. **A release build, signed and run on the phone.** The R8 rules are the only
+   part of this project whose correctness a green build actively hides.
+4. **A second overnight soak**, to put the two-tier watchdog backoff in front
+   of a real pair of clustered lapses rather than a replay of them.
+
+Past that, what is left is not a feature list: it is use. The app exists to be
+pointed at hardware nobody here owns, and the reports it produces are the only
+thing that can turn "works on two DACs in one room" into evidence.
 
 ---
 
@@ -771,6 +862,14 @@ next track plays; a playlist of dead links stops after exactly three, leaving
 the remaining tracks untouched.
 
 ## Where things stand, end of 2026-09-07
+
+> **Read this as dated.** Of the three threads below, two are closed as of
+> 2026-09-08. The bit-perfect lie is fixed — `StreamPlayer` composes the field
+> now and the guest path declares `senderAltered`, verified on the Redmi
+> against a real sender. The USB output thread was already verified when it was
+> written. What survives is the first one: the two-tier backoff still wants a
+> night in front of real clustered lapses. Nothing below has been rewritten,
+> because what was believed at the time is the point of the section.
 
 Three threads are open, in the order they will bite.
 
