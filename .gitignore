@@ -53,3 +53,8 @@ android/app/src/main/assets/airplay/raop_key.pkcs8
 # gen-l10n writes this when a translation is missing a key; it is a build
 # artefact, and an empty one is the normal state.
 l10n_missing.txt
+
+# Play Store listing copy: short and full descriptions per locale. Kept out of
+# the repository because the Play Console is where it actually lives -- a copy
+# here would be edited in one place and published from the other.
+doc/play-store/
