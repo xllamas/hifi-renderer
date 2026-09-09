@@ -1,3 +1,32 @@
+import java.util.Properties
+
+// Release signing credentials, which are deliberately not in the repository.
+//
+// android/key.properties names the keystore and holds its passwords; it is
+// gitignored, as are *.jks and *.keystore. Nothing here carries a default,
+// because every possible default is wrong: a missing keystore must not
+// silently produce a debug-signed APK that looks like a release.
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasReleaseKeystore = keystorePropertiesFile.exists()
+val keystoreProperties = Properties().apply {
+    if (hasReleaseKeystore) keystorePropertiesFile.inputStream().use { load(it) }
+}
+
+// A half-filled key.properties is worse than an absent one: it fails deep
+// inside AGP with a message about a null path, several minutes into a build.
+// Check it here, where the error can name the file and the missing key.
+if (hasReleaseKeystore) {
+    val missing = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+        .filter { keystoreProperties.getProperty(it).isNullOrBlank() }
+    require(missing.isEmpty()) {
+        "android/key.properties is missing: ${missing.joinToString(", ")}"
+    }
+    val store = file(keystoreProperties.getProperty("storeFile"))
+    require(store.exists()) {
+        "android/key.properties points storeFile at ${store.path}, which does not exist"
+    }
+}
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -75,6 +104,19 @@ android {
         }
     }
 
+    signingConfigs {
+        // Created only when the credentials are present, so a clone without
+        // the keystore still configures and can build a debug APK.
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     testOptions {
         unitTests {
             // OpenHomeTrackList logs, and android.util.Log is a stub in a JVM
@@ -88,9 +130,20 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Signed with the upload key from android/key.properties. Without
+            // it the build still runs -- `flutter run --release` has to work
+            // for anyone who has cloned this -- but it is debug-signed, which
+            // Play rejects, so it says so rather than letting the artefact
+            // reach an upload form before anyone finds out.
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "hifirend: android/key.properties not found. The release build " +
+                    "will be signed with the DEBUG key and cannot be uploaded to Play."
+                )
+                signingConfigs.getByName("debug")
+            }
 
             // R8 needs telling what not to touch. Everything this app does
             // across a boundary -- jUPnP's annotated actions, the JNI bridge --
