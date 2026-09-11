@@ -214,6 +214,19 @@ class AppLocalizationsJa extends AppLocalizations {
   String get settingsRunSetupSubtitle => '権限を順番に確認する';
 
   @override
+  String get settingsLegal => '法的情報';
+
+  @override
+  String get settingsLicenses => 'オープンソースライセンス';
+
+  @override
+  String get settingsLicensesSubtitle => 'このアプリを支えているもの';
+
+  @override
+  String get settingsLicensesLegalese =>
+      'Apache License 2.0。ここに記載された LGPL、Apache、CDDL、BSD、CC0 およびパブリックドメインの条件で公開された成果物に基づいています。';
+
+  @override
   String get settingsLanguage => '言語';
 
   @override

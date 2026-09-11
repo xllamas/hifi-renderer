@@ -225,6 +225,19 @@ class AppLocalizationsIt extends AppLocalizations {
   String get settingsRunSetupSubtitle => 'Rivedi i permessi nell’ordine';
 
   @override
+  String get settingsLegal => 'Note legali';
+
+  @override
+  String get settingsLicenses => 'Licenze open source';
+
+  @override
+  String get settingsLicensesSubtitle => 'Su cosa si basa questa app';
+
+  @override
+  String get settingsLicensesLegalese =>
+      'Licenza Apache 2.0. Basata su lavori rilasciati secondo i termini LGPL, Apache, CDDL, BSD, CC0 e di pubblico dominio elencati qui.';
+
+  @override
   String get settingsLanguage => 'Lingua';
 
   @override

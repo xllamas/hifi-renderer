@@ -423,6 +423,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 8),
           _language(context),
+
+          const SizedBox(height: 28),
+          Text(AppLocalizations.of(context).settingsLegal,
+              style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.balance),
+              title: Text(AppLocalizations.of(context).settingsLicenses),
+              subtitle: Text(
+                  AppLocalizations.of(context).settingsLicensesSubtitle),
+              trailing: const Icon(Icons.chevron_right),
+              // The app's name is not localised anywhere else either -- it is
+              // what appears on the network and in controllers -- so the
+              // licence page is given the same one rather than a translation.
+              onTap: () => showLicensePage(
+                context: context,
+                applicationName: 'HiFi Renderer',
+                applicationLegalese:
+                    AppLocalizations.of(context).settingsLicensesLegalese,
+              ),
+            ),
+          ),
           const SizedBox(height: 16),
         ],
       ),

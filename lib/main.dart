@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'l10n/app_localizations.dart';
+import 'licenses.dart';
 import 'locale_setting.dart';
 import 'renderer_state.dart';
 import 'screens/now_playing_screen.dart';
@@ -12,7 +13,12 @@ import 'screens/onboarding_screen.dart';
 import 'screens/settings_screen.dart';
 import 'usb/dac_capabilities.dart';
 
-void main() => runApp(const HifiRendApp());
+void main() {
+  // Before runApp, because the licence page can be reached from settings
+  // at any time and the registry is consulted lazily when it opens.
+  registerThirdPartyLicenses();
+  runApp(const HifiRendApp());
+}
 
 class HifiRendApp extends StatefulWidget {
   const HifiRendApp({super.key});

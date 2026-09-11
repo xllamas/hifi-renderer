@@ -225,6 +225,19 @@ class AppLocalizationsEn extends AppLocalizations {
       'Walk through the permissions in order';
 
   @override
+  String get settingsLegal => 'Legal';
+
+  @override
+  String get settingsLicenses => 'Open source licences';
+
+  @override
+  String get settingsLicensesSubtitle => 'What this app is built on';
+
+  @override
+  String get settingsLicensesLegalese =>
+      'Apache License 2.0. Built on work released under the LGPL, Apache, CDDL, BSD, CC0 and public-domain terms listed here.';
+
+  @override
   String get settingsLanguage => 'Language';
 
   @override

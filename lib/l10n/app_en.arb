@@ -327,6 +327,26 @@
     "description": "Subtitle for re-running setup."
   },
 
+  "settingsLegal": "Legal",
+  "@settingsLegal": {
+    "description": "Section heading on the settings screen, above the open-source licences row."
+  },
+
+  "settingsLicenses": "Open source licences",
+  "@settingsLicenses": {
+    "description": "Row that opens the licence page listing this app's licence and every component it is built on."
+  },
+
+  "settingsLicensesSubtitle": "What this app is built on",
+  "@settingsLicensesSubtitle": {
+    "description": "Subtitle under the open-source licences row. Deliberately plain: it describes what the page shows, not a legal obligation."
+  },
+
+  "settingsLicensesLegalese": "Apache License 2.0. Built on work released under the LGPL, Apache, CDDL, BSD, CC0 and public-domain terms listed here.",
+  "@settingsLicensesLegalese": {
+    "description": "Shown at the foot of the licence page, under the app name. Names this app's own licence first, then the families of licence its components use."
+  },
+
   "settingsLanguage": "Language",
   "@settingsLanguage": {
     "description": "Section heading for choosing the interface language."

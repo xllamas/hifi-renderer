@@ -226,6 +226,19 @@ class AppLocalizationsFr extends AppLocalizations {
       'Passer les autorisations en revue, dans l’ordre';
 
   @override
+  String get settingsLegal => 'Mentions légales';
+
+  @override
+  String get settingsLicenses => 'Licences open source';
+
+  @override
+  String get settingsLicensesSubtitle => 'Ce sur quoi repose cette application';
+
+  @override
+  String get settingsLicensesLegalese =>
+      'Licence Apache 2.0. Fondée sur des travaux publiés sous les termes LGPL, Apache, CDDL, BSD, CC0 et du domaine public énumérés ici.';
+
+  @override
   String get settingsLanguage => 'Langue';
 
   @override

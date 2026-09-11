@@ -224,6 +224,19 @@ class AppLocalizationsPt extends AppLocalizations {
   String get settingsRunSetupSubtitle => 'Percorrer as permissões por ordem';
 
   @override
+  String get settingsLegal => 'Informação legal';
+
+  @override
+  String get settingsLicenses => 'Licenças de código aberto';
+
+  @override
+  String get settingsLicensesSubtitle => 'Aquilo em que esta aplicação assenta';
+
+  @override
+  String get settingsLicensesLegalese =>
+      'Licença Apache 2.0. Construída sobre trabalhos publicados ao abrigo dos termos LGPL, Apache, CDDL, BSD, CC0 e de domínio público aqui listados.';
+
+  @override
   String get settingsLanguage => 'Idioma';
 
   @override
@@ -884,6 +897,19 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get settingsRunSetupSubtitle => 'Percorrer as permissões em ordem';
+
+  @override
+  String get settingsLegal => 'Informações legais';
+
+  @override
+  String get settingsLicenses => 'Licenças de código aberto';
+
+  @override
+  String get settingsLicensesSubtitle => 'Em que este app se baseia';
+
+  @override
+  String get settingsLicensesLegalese =>
+      'Licença Apache 2.0. Construído sobre trabalhos publicados sob os termos LGPL, Apache, CDDL, BSD, CC0 e de domínio público listados aqui.';
 
   @override
   String get settingsLanguage => 'Idioma';

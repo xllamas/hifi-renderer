@@ -215,6 +215,19 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsRunSetupSubtitle => '권한을 순서대로 살펴보기';
 
   @override
+  String get settingsLegal => '법적 고지';
+
+  @override
+  String get settingsLicenses => '오픈 소스 라이선스';
+
+  @override
+  String get settingsLicensesSubtitle => '이 앱이 기반으로 삼은 것';
+
+  @override
+  String get settingsLicensesLegalese =>
+      'Apache License 2.0. 여기에 나열된 LGPL, Apache, CDDL, BSD, CC0 및 퍼블릭 도메인 조건으로 공개된 작업을 기반으로 합니다.';
+
+  @override
   String get settingsLanguage => '언어';
 
   @override

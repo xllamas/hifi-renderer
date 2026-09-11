@@ -455,6 +455,30 @@ abstract class AppLocalizations {
   /// **'Walk through the permissions in order'**
   String get settingsRunSetupSubtitle;
 
+  /// Section heading on the settings screen, above the open-source licences row.
+  ///
+  /// In en, this message translates to:
+  /// **'Legal'**
+  String get settingsLegal;
+
+  /// Row that opens the licence page listing this app's licence and every component it is built on.
+  ///
+  /// In en, this message translates to:
+  /// **'Open source licences'**
+  String get settingsLicenses;
+
+  /// Subtitle under the open-source licences row. Deliberately plain: it describes what the page shows, not a legal obligation.
+  ///
+  /// In en, this message translates to:
+  /// **'What this app is built on'**
+  String get settingsLicensesSubtitle;
+
+  /// Shown at the foot of the licence page, under the app name. Names this app's own licence first, then the families of licence its components use.
+  ///
+  /// In en, this message translates to:
+  /// **'Apache License 2.0. Built on work released under the LGPL, Apache, CDDL, BSD, CC0 and public-domain terms listed here.'**
+  String get settingsLicensesLegalese;
+
   /// Section heading for choosing the interface language.
   ///
   /// In en, this message translates to:

@@ -211,6 +211,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsRunSetupSubtitle => '按顺序逐项检查权限';
 
   @override
+  String get settingsLegal => '法律信息';
+
+  @override
+  String get settingsLicenses => '开源许可证';
+
+  @override
+  String get settingsLicensesSubtitle => '这款应用建立在什么之上';
+
+  @override
+  String get settingsLicensesLegalese =>
+      'Apache License 2.0。基于以此处列出的 LGPL、Apache、CDDL、BSD、CC0 及公共领域条款发布的作品构建。';
+
+  @override
   String get settingsLanguage => '语言';
 
   @override

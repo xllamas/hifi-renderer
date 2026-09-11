@@ -226,6 +226,19 @@ class AppLocalizationsDe extends AppLocalizations {
       'Die Berechtigungen der Reihe nach durchgehen';
 
   @override
+  String get settingsLegal => 'Rechtliches';
+
+  @override
+  String get settingsLicenses => 'Open-Source-Lizenzen';
+
+  @override
+  String get settingsLicensesSubtitle => 'Worauf diese App aufbaut';
+
+  @override
+  String get settingsLicensesLegalese =>
+      'Apache-Lizenz 2.0. Aufgebaut auf Arbeiten unter den hier aufgeführten LGPL-, Apache-, CDDL-, BSD-, CC0- und Public-Domain-Bedingungen.';
+
+  @override
   String get settingsLanguage => 'Sprache';
 
   @override

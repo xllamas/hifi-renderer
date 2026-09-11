@@ -67,6 +67,15 @@ flutter:
   # Generates AppLocalizations from lib/l10n/*.arb; see l10n.yaml.
   generate: true
 
+  # The licence texts the in-app notices page reads, bundled from where they
+  # actually live rather than copied, so the page cannot drift from the tree.
+  # See lib/licenses.dart.
+  assets:
+    - LICENSE
+    - NOTICE
+    - android/app/src/main/cpp/third_party/libusb/COPYING
+    - android/app/src/main/cpp/third_party/alac/LICENSE
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
