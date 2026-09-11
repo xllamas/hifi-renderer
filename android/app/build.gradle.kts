@@ -74,7 +74,16 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.hifirend"
+        // The identity Play knows the app by, and deliberately not the same
+        // as the namespace above.
+        //
+        // The Kotlin package stays com.hifirend because 23 JNI entry points
+        // are named for it -- Java_com_hifirend_NativeBridge_* is derived from
+        // the class's package, so renaming it silently unbinds every native
+        // call -- and proguard-rules.pro keeps classes by that name too.
+        // applicationId and namespace are independent by design; only this one
+        // has to match the Play Console listing.
+        applicationId = "com.acelery.hifirend"
         // 26 (Android 8.0): nothing in the feature set needs more, and this is where
         // NotificationChannel and AAudio become uniform. See doc/implementation-plan.md.
         minSdk = 26
