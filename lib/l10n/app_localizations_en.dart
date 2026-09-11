@@ -228,7 +228,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLegal => 'Legal';
 
   @override
-  String get settingsLicenses => 'Open source licences';
+  String get settingsLicenses => 'Open source licenses';
 
   @override
   String get settingsLicensesSubtitle => 'What this app is built on';

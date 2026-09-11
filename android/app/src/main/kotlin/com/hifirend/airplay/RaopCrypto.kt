@@ -20,7 +20,7 @@ import javax.crypto.Cipher
  *
  * So the key is not in this repository. It is loaded from an asset the build
  * has to supply, for three reasons: shipping key material in source control is
- * poor practice whatever its provenance; its licence position is genuinely
+ * poor practice whatever its provenance; its license position is genuinely
  * unclear, unlike the MIT code around it; and keeping it at arm's length makes
  * the choice to include it visible and deliberate rather than something that
  * arrived with a dependency. Without the asset everything here still compiles

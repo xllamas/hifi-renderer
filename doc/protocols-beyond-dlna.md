@@ -159,7 +159,7 @@ The push-PCM entry point it needs already exists: `nativeStartPcmStream` /
 for AirPlay 1**.
 
 To establish before committing:
-- **Licence.** Confirm `shairport-sync`'s terms. Not verified here; check.
+- **License.** Confirm `shairport-sync`'s terms. Not verified here; check.
 - **Legal posture.** RAOP receivers rest on a published private key — widely
   tolerated, not obviously licensed.
 - **Port surface.** It assumes ALSA/PulseAudio, Avahi, libconfig, libdaemon.
@@ -317,7 +317,7 @@ are already implemented:
 3. **Extract the appliance shell**, with that policy designed in.
 4. **Build the guest path: AirPlay.** No longer a choice between two — it is the
    only frictionless guest path that can actually be built, and it happens to be
-   lossless. Confirm the `shairport-sync` licence and legal posture first, as
+   lossless. Confirm the `shairport-sync` license and legal posture first, as
    the section above sets out.
 5. **Say that Bluetooth is unavailable, in the app.** Cheap, and it stops both
    classes of user hunting for a setting that cannot exist.

@@ -437,7 +437,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               trailing: const Icon(Icons.chevron_right),
               // The app's name is not localised anywhere else either -- it is
               // what appears on the network and in controllers -- so the
-              // licence page is given the same one rather than a translation.
+              // license page is given the same one rather than a translation.
               onTap: () => showLicensePage(
                 context: context,
                 applicationName: 'HiFi Renderer',

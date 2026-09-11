@@ -14,7 +14,7 @@ import 'screens/settings_screen.dart';
 import 'usb/dac_capabilities.dart';
 
 void main() {
-  // Before runApp, because the licence page can be reached from settings
+  // Before runApp, because the license page can be reached from settings
   // at any time and the registry is consulted lazily when it opens.
   registerThirdPartyLicenses();
   runApp(const HifiRendApp());

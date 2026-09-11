@@ -8,8 +8,8 @@ licensed under the Apache License, Version 2.0. See LICENSE.
 Third-party components
 ================================================================================
 
-The following components are redistributed under their own licences, which are
-unaffected by the Apache 2.0 licence above.
+The following components are redistributed under their own licenses, which are
+unaffected by the Apache 2.0 license above.
 
 --------------------------------------------------------------------------------
 libusb 1.0.28                                            GNU LGPL, version 2.1
@@ -34,7 +34,7 @@ Apple Lossless Audio Codec (ALAC) reference decoder     Apache License, Version 
 dr_wav, dr_flac (dr_libs)                       public domain or MIT-0, at your option
   android/app/src/main/cpp/third_party/dr_libs/
   Copyright (c) David Reid.
-  Licence statements are at the end of each header file.
+  License statements are at the end of each header file.
   Upstream:  https://github.com/mackron/dr_libs
 
 --------------------------------------------------------------------------------

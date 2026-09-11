@@ -12,8 +12,8 @@ owner, who has DLNA.
 The earlier analysis imagined porting `shairport-sync`. Two things were
 established before starting, both of which it flagged as open:
 
-- **Licence: MIT.** No copyleft problem, so vendoring any part of it is fine.
-  `alac.c`, `tinysvcmdns` and `tinyhttp` carry their own separate licences.
+- **License: MIT.** No copyleft problem, so vendoring any part of it is fine.
+  `alac.c`, `tinysvcmdns` and `tinyhttp` carry their own separate licenses.
 - **AirPlay 1 is still current enough.** `shairport-sync` still builds a
   "classic" AirPlay 1 receiver and describes the protocol as older but
   supported. **Confirmed against macOS on 2026-09-07**, and no longer an
@@ -40,7 +40,7 @@ included, depends on the key recovered from the device years ago.
 **It is not in this repository.** It is loaded from
 `android/app/src/main/assets/airplay/raop_key.pkcs8`, unencrypted PKCS#8 DER,
 which the build has to supply. Three reasons: key material does not belong in
-source control whatever its provenance; its licence position is genuinely
+source control whatever its provenance; its license position is genuinely
 unclear, unlike the MIT code around it; and keeping it at arm's length makes
 including it a deliberate act rather than something that arrives with a
 dependency.

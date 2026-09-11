@@ -179,7 +179,7 @@ did not originate.
 
 **The RAOP key is not in this repository.** A receiver has to prove it is an
 AirPort Express, using the private key recovered from that hardware years ago;
-its licence position is unclear and key material does not belong in source
+its license position is unclear and key material does not belong in source
 control. The build supplies it at
 `android/app/src/main/assets/airplay/raop_key.pkcs8`. Without it everything
 still compiles, advertises and answers RTSP — it declines the challenge, which
@@ -303,11 +303,11 @@ first time a track plays.
 - [Oboe](https://github.com/google/oboe) (Apache-2.0), via Gradle
 - [jUPnP](https://github.com/jupnp/jupnp) 3.0.3 (CDDL-1.0), via Gradle
 
-## Licence
+## License
 
 Apache License 2.0 — see [LICENSE](LICENSE). Third-party attributions are
 collected in [NOTICE](NOTICE).
 
-The strictest licence in the tree is libusb's LGPL-2.1, which reaches the native
+The strictest license in the tree is libusb's LGPL-2.1, which reaches the native
 library it is linked into but not this project's own code. Publishing the
 complete source here is what satisfies its relinking clause.
