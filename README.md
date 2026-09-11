@@ -302,3 +302,12 @@ first time a track plays.
   (CC0), vendored under `android/app/src/main/cpp/third_party`
 - [Oboe](https://github.com/google/oboe) (Apache-2.0), via Gradle
 - [jUPnP](https://github.com/jupnp/jupnp) 3.0.3 (CDDL-1.0), via Gradle
+
+## Licence
+
+Apache License 2.0 — see [LICENSE](LICENSE). Third-party attributions are
+collected in [NOTICE](NOTICE).
+
+The strictest licence in the tree is libusb's LGPL-2.1, which reaches the native
+library it is linked into but not this project's own code. Publishing the
+complete source here is what satisfies its relinking clause.

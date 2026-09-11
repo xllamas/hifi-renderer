@@ -1,0 +1,75 @@
+HiFi Renderer
+Copyright 2026 Xavier Llamas
+
+This product includes software developed as part of the HiFi Renderer project,
+licensed under the Apache License, Version 2.0. See LICENSE.
+
+================================================================================
+Third-party components
+================================================================================
+
+The following components are redistributed under their own licences, which are
+unaffected by the Apache 2.0 licence above.
+
+--------------------------------------------------------------------------------
+libusb 1.0.28                                            GNU LGPL, version 2.1
+  android/app/src/main/cpp/third_party/libusb/
+  Full text: android/app/src/main/cpp/third_party/libusb/COPYING
+  Upstream:  https://libusb.info/
+
+  libusb is linked into the native library libhifirend.so, which is what makes
+  isochronous USB audio possible at all -- Android's UsbDeviceConnection exposes
+  only control, bulk and interrupt transfers. Under LGPL 2.1 section 6, the
+  complete source of this application is published at the repository below, from
+  which a modified libusb can be relinked.
+
+--------------------------------------------------------------------------------
+Apple Lossless Audio Codec (ALAC) reference decoder     Apache License, Version 2.0
+  android/app/src/main/cpp/third_party/alac/
+  Full text: android/app/src/main/cpp/third_party/alac/LICENSE
+  Copyright (c) 2011 Apple Inc. All rights reserved.
+  Upstream:  https://macosforge.github.io/alac/
+
+--------------------------------------------------------------------------------
+dr_wav, dr_flac (dr_libs)                       public domain or MIT-0, at your option
+  android/app/src/main/cpp/third_party/dr_libs/
+  Copyright (c) David Reid.
+  Licence statements are at the end of each header file.
+  Upstream:  https://github.com/mackron/dr_libs
+
+--------------------------------------------------------------------------------
+minimp3                                                  CC0 1.0 (public domain)
+  android/app/src/main/cpp/third_party/minimp3/
+  Copyright (c) lieff.
+  Upstream:  https://github.com/lieff/minimp3
+
+--------------------------------------------------------------------------------
+Oboe 1.9.3                                       Apache License, Version 2.0
+  Copyright (c) The Android Open Source Project.
+  Resolved as a Gradle dependency; used only for the non-bit-perfect fallback
+  path when no USB DAC is attached.
+  Upstream:  https://github.com/google/oboe
+
+--------------------------------------------------------------------------------
+jUPnP 3.0.3                       Common Development and Distribution License 1.0
+  Resolved as a Gradle dependency. Provides the UPnP/DLNA MediaRenderer stack.
+  Upstream:  https://github.com/jupnp/jupnp
+
+--------------------------------------------------------------------------------
+Eclipse Jetty 9.4.53                     Apache License 2.0 or Eclipse Public License 1.0
+  Resolved as a Gradle dependency. Serves the device description and SOAP
+  endpoints.
+  Upstream:  https://eclipse.dev/jetty/
+
+--------------------------------------------------------------------------------
+Kotlin stdlib, kotlinx-coroutines, AndroidX Core, SLF4J   Apache License, Version 2.0
+  Resolved as Gradle dependencies.
+
+--------------------------------------------------------------------------------
+Flutter and Dart                                  BSD 3-Clause "New" License
+  Copyright (c) The Flutter Authors. Copyright (c) The Dart project authors.
+  Upstream:  https://github.com/flutter/flutter
+
+================================================================================
+
+Source: https://github.com/xllamas/hifi-renderer
