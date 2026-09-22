@@ -304,8 +304,7 @@ class HttpStreamPlayback(private val context: Context) {
         lastEngineError = null
         fetchFailure = null
         engineRunning = false
-        RendererState.lastError = null
-        RendererState.lastErrorDetail = null
+        RendererState.report(null)
 
         // No DAC, or one we cannot open, is not a failure: the engine falls
         // back to Android's own output. A file descriptor of -1 is how that is
@@ -715,10 +714,7 @@ class HttpStreamPlayback(private val context: Context) {
             }
             lastEngineError = j.optString("error").takeIf { it.isNotBlank() }
             lastEngineError?.let {
-                val described = com.hifirend.upnp.Problem.describe(it)
-                RendererState.lastError = described.code
-                RendererState.lastErrorArgs = described.args
-                RendererState.lastErrorDetail = described.detail
+                RendererState.report(com.hifirend.upnp.Problem.describe(it))
             }
         } catch (_: Throwable) {
             // Status is telemetry; never let it disturb playback.

@@ -185,5 +185,7 @@
   "errDacConnectionLost": "レンダラーが DAC との接続を失いました。",
   "errTrackCouldNotBePlayed": "このトラックは再生できませんでした。",
   "errRateUnplayable": "この DAC は {rate} を再生できません。対応する最高周波数は {ceiling} です。",
-  "errStoppedAfterFailures": "{count, plural, other{{count} 曲続けて再生できなかったため停止しました。}}"
+  "errStoppedAfterFailures": "{count, plural, other{{count} 曲続けて再生できなかったため停止しました。}}",
+  "errRateNotOffered": "この DAC は {rate} に対応していません。",
+  "errTracksSkipped": "{count, plural, other{再生できなかったため、{count} 曲をスキップしました。}}"
 }

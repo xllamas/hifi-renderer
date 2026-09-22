@@ -1026,5 +1026,21 @@
     "placeholders": {
       "count": {"type": "int", "example": "3"}
     }
+  },
+
+  "errRateNotOffered": "This DAC does not support {rate}.",
+  "@errRateNotOffered": {
+    "description": "Shown when a track is refused before being fetched because its sample rate is within the DAC's range but not one of the rates it offers (for example 88.2 kHz on a DAC that lists 96 kHz). The value arrives already formatted, as in '88.2 kHz'.",
+    "placeholders": {
+      "rate": {"type": "String", "example": "88.2 kHz"}
+    }
+  },
+
+  "errTracksSkipped": "{count, plural, =1{One track was skipped because it could not be played.} other{{count} tracks were skipped because they could not be played.}}",
+  "@errTracksSkipped": {
+    "description": "Shown when a playlist reaches its end after stepping over tracks that could not be played. The reason for the last failure is shown on the line beneath it.",
+    "placeholders": {
+      "count": {"type": "int", "example": "2"}
+    }
   }
 }

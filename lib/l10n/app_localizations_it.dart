@@ -695,4 +695,21 @@ class AppLocalizationsIt extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String errRateNotOffered(String rate) {
+    return 'Questo DAC non supporta $rate.';
+  }
+
+  @override
+  String errTracksSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count brani sono stati saltati perché non è stato possibile riprodurli.',
+      one: 'Un brano è stato saltato perché non è stato possibile riprodurlo.',
+    );
+    return '$_temp0';
+  }
 }

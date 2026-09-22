@@ -185,5 +185,7 @@
   "errDacConnectionLost": "渲染器与 DAC 的连接已断开。",
   "errTrackCouldNotBePlayed": "无法播放这首曲目。",
   "errRateUnplayable": "此 DAC 无法播放 {rate}；它的最高采样率是 {ceiling}。",
-  "errStoppedAfterFailures": "{count, plural, other{连续 {count} 首曲目无法播放，已停止。}}"
+  "errStoppedAfterFailures": "{count, plural, other{连续 {count} 首曲目无法播放，已停止。}}",
+  "errRateNotOffered": "此 DAC 不支持 {rate}。",
+  "errTracksSkipped": "{count, plural, other{有 {count} 首曲目无法播放，已跳过。}}"
 }

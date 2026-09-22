@@ -1233,6 +1233,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, other{Stopped after {count} tracks in a row could not be played.}}'**
   String errStoppedAfterFailures(int count);
+
+  /// Shown when a track is refused before being fetched because its sample rate is within the DAC's range but not one of the rates it offers (for example 88.2 kHz on a DAC that lists 96 kHz). The value arrives already formatted, as in '88.2 kHz'.
+  ///
+  /// In en, this message translates to:
+  /// **'This DAC does not support {rate}.'**
+  String errRateNotOffered(String rate);
+
+  /// Shown when a playlist reaches its end after stepping over tracks that could not be played. The reason for the last failure is shown on the line beneath it.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{One track was skipped because it could not be played.} other{{count} tracks were skipped because they could not be played.}}'**
+  String errTracksSkipped(int count);
 }
 
 class _AppLocalizationsDelegate

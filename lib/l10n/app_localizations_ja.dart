@@ -662,4 +662,19 @@ class AppLocalizationsJa extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String errRateNotOffered(String rate) {
+    return 'この DAC は $rate に対応していません。';
+  }
+
+  @override
+  String errTracksSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '再生できなかったため、$count 曲をスキップしました。',
+    );
+    return '$_temp0';
+  }
 }

@@ -59,6 +59,11 @@ class RendererStatus {
   /// The technical message behind [lastError], when there is one.
   final String? lastErrorDetail;
 
+  /// Why the last track failed, when [lastError] is a summary ("stopped after
+  /// 3 tracks…") rather than a reason. A code, like [lastError].
+  final String? lastErrorCause;
+  final List<int> lastErrorCauseArgs;
+
   /// How many tracks the renderer's own playlist holds, and where in it we
   /// are (1-based). Zero length means there is no local playlist to move
   /// through -- a DLNA controller sends one track at a time, so the renderer
@@ -107,6 +112,8 @@ class RendererStatus {
     this.lastError,
     this.lastErrorArgs = const [],
     this.lastErrorDetail,
+    this.lastErrorCause,
+    this.lastErrorCauseArgs = const [],
     this.playlistLength = 0,
     this.playlistPosition = 0,
     this.playlistRepeat = false,
@@ -147,6 +154,11 @@ class RendererStatus {
                 .toList() ??
             const [],
         lastErrorDetail: j['lastErrorDetail'] as String?,
+        lastErrorCause: j['lastErrorCause'] as String?,
+        lastErrorCauseArgs: (j['lastErrorCauseArgs'] as List?)
+                ?.map((e) => (e as num).toInt())
+                .toList() ??
+            const [],
         playlistLength: (j['playlistLength'] as num?)?.toInt() ?? 0,
         playlistPosition: (j['playlistPosition'] as num?)?.toInt() ?? 0,
         playlistRepeat: j['playlistRepeat'] as bool? ?? false,
@@ -183,6 +195,18 @@ class RendererStatus {
   String? errorMessage(AppLocalizations t) {
     final code = lastError;
     if (code == null) return null;
+    return _sentence(t, code, lastErrorArgs);
+  }
+
+  /// The reason beneath a summary headline, in the reader's language, or null
+  /// when the headline already is the reason.
+  String? errorCauseMessage(AppLocalizations t) {
+    final code = lastErrorCause;
+    if (code == null || lastError == null) return null;
+    return _sentence(t, code, lastErrorCauseArgs);
+  }
+
+  static String _sentence(AppLocalizations t, String code, List<int> args) {
     switch (code) {
       case 'serverUnreachable':
         return t.errServerUnreachable;
@@ -197,12 +221,17 @@ class RendererStatus {
       case 'dacConnectionLost':
         return t.errDacConnectionLost;
       case 'rateUnplayable':
-        if (lastErrorArgs.length < 2) return t.errTrackCouldNotBePlayed;
-        return t.errRateUnplayable(
-            formatKhz(lastErrorArgs[0]), formatKhz(lastErrorArgs[1]));
+        if (args.length < 2) return t.errTrackCouldNotBePlayed;
+        return t.errRateUnplayable(formatKhz(args[0]), formatKhz(args[1]));
+      case 'rateNotOffered':
+        if (args.isEmpty) return t.errTrackCouldNotBePlayed;
+        return t.errRateNotOffered(formatKhz(args.first));
       case 'stoppedAfterFailures':
-        if (lastErrorArgs.isEmpty) return t.errTrackCouldNotBePlayed;
-        return t.errStoppedAfterFailures(lastErrorArgs.first);
+        if (args.isEmpty) return t.errTrackCouldNotBePlayed;
+        return t.errStoppedAfterFailures(args.first);
+      case 'tracksSkipped':
+        if (args.isEmpty) return t.errTrackCouldNotBePlayed;
+        return t.errTracksSkipped(args.first);
       default:
         return t.errTrackCouldNotBePlayed;
     }
@@ -270,6 +299,8 @@ class RendererStatus {
         lastError: lastError,
         lastErrorArgs: lastErrorArgs,
         lastErrorDetail: lastErrorDetail,
+        lastErrorCause: lastErrorCause,
+        lastErrorCauseArgs: lastErrorCauseArgs,
         playlistLength: playlistLength,
         playlistPosition: playlistPosition,
         playlistRepeat: playlistRepeat,

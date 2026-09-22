@@ -185,5 +185,7 @@
   "errDacConnectionLost": "Der Renderer hat die Verbindung zum DAC verloren.",
   "errTrackCouldNotBePlayed": "Dieser Titel konnte nicht wiedergegeben werden.",
   "errRateUnplayable": "Dieser DAC kann {rate} nicht wiedergeben; seine höchste Abtastrate ist {ceiling}.",
-  "errStoppedAfterFailures": "{count, plural, other{Angehalten, nachdem {count} Titel nacheinander nicht wiedergegeben werden konnten.}}"
+  "errStoppedAfterFailures": "{count, plural, other{Angehalten, nachdem {count} Titel nacheinander nicht wiedergegeben werden konnten.}}",
+  "errRateNotOffered": "Dieser DAC unterstützt {rate} nicht.",
+  "errTracksSkipped": "{count, plural, =1{Ein Titel wurde übersprungen, weil er nicht wiedergegeben werden konnte.} other{{count} Titel wurden übersprungen, weil sie nicht wiedergegeben werden konnten.}}"
 }

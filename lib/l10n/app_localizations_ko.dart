@@ -663,4 +663,19 @@ class AppLocalizationsKo extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String errRateNotOffered(String rate) {
+    return '이 DAC은 $rate를 지원하지 않습니다.';
+  }
+
+  @override
+  String errTracksSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '재생할 수 없어 $count곡을 건너뛰었습니다.',
+    );
+    return '$_temp0';
+  }
 }

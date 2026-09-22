@@ -50,8 +50,7 @@ class OpenHomeSkipTest {
     fun reset() {
         // The rate guard is a different refusal path; keep it out of the way.
         RendererState.dacRates = emptyList()
-        RendererState.lastError = null
-        RendererState.lastErrorDetail = null
+        RendererState.report(null)
     }
 
     @Test
@@ -95,7 +94,56 @@ class OpenHomeSkipTest {
             com.hifirend.upnp.Problem.STRIKES, RendererState.lastError)
         assertEquals(listOf(3), RendererState.lastErrorArgs)
         assertTrue(RendererState.lastErrorDetail != null)
+        // ...and why the last one failed goes beneath it. "Stopped" alone
+        // left the listener nothing to act on.
+        assertEquals(
+            com.hifirend.upnp.Problem.UNDECODABLE, RendererState.lastErrorCause)
     }
+
+    @Test
+    fun `refusals before fetching still say why, beneath the summary`() {
+        // A refusal has no engine detail, so before the cause was carried the
+        // screen said "stopped after 3 tracks" and nothing else at all.
+        RendererState.dacRates = kotlin.collections.listOf(44100, 48000)
+        val list = OpenHomeTrackList()
+        var after = 0
+        for (u in kotlin.collections.listOf("a", "b", "c")) {
+            after = list.insert(after, u, didlAt(192000))!!
+        }
+        val engine = FakeEngine()
+        OpenHomePlaylist(list, engine).playAction()
+
+        assertEquals(emptyList<String>(), engine.played)   // nothing fetched
+        assertEquals(com.hifirend.upnp.Problem.STRIKES, RendererState.lastError)
+        assertEquals(com.hifirend.upnp.Problem.RATE_UNPLAYABLE, RendererState.lastErrorCause)
+        assertEquals(kotlin.collections.listOf(192000, 48000), RendererState.lastErrorCauseArgs)
+    }
+
+    @Test
+    fun `a track announced at 44000 Hz is fetched, not refused`() {
+        // BubbleUPnP announces some Qobuz tracks as 44000 Hz; the FLAC says
+        // 44100. Refusing on the announcement made them unplayable here.
+        RendererState.dacRates = kotlin.collections.listOf(44100, 48000, 96000)
+        val list = OpenHomeTrackList()
+        list.insert(0, "q", didlAt(44000))
+        val engine = FakeEngine()
+        val pl = OpenHomePlaylist(list, engine)
+
+        pl.playAction()
+
+        assertEquals(kotlin.collections.listOf("q"), engine.played)
+        assertEquals("Playing", pl.transportState)
+        assertEquals(null, RendererState.lastError)
+    }
+
+    private fun didlAt(rate: Int) =
+        """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" """ +
+            """xmlns:dc="http://purl.org/dc/elements/1.1/" """ +
+            """xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">""" +
+            """<item id="1" parentID="0" restricted="1"><dc:title>t</dc:title>""" +
+            """<upnp:class>object.item.audioItem.musicTrack</upnp:class>""" +
+            """<res protocolInfo="http-get:*:audio/flac:*" sampleFrequency="$rate">x</res>""" +
+            """</item></DIDL-Lite>"""
 
     @Test
     fun `a track that plays through clears the run of failures`() {
@@ -122,10 +170,13 @@ class OpenHomeSkipTest {
         pl.onTrackFinished()          // b fails, nothing after it
 
         assertEquals("Stopped", pl.transportState)
-        assertTrue(
-            "headline was: ${RendererState.lastError}",
-            RendererState.lastError!!.contains("One track was skipped"),
-        )
+        assertEquals(com.hifirend.upnp.Problem.SKIPPED, RendererState.lastError)
+        assertEquals(listOf(1), RendererState.lastErrorArgs)
+        // A code the screen can translate, with the reason beneath it -- this
+        // used to be an English sentence, which the screen did not recognise
+        // and replaced with "This track could not be played".
+        assertEquals(
+            com.hifirend.upnp.Problem.UNDECODABLE, RendererState.lastErrorCause)
     }
 
     @Test

@@ -185,5 +185,7 @@
   "errDacConnectionLost": "Le lecteur a perdu la connexion avec le DAC.",
   "errTrackCouldNotBePlayed": "Cette piste n’a pas pu être lue.",
   "errRateUnplayable": "Ce DAC ne peut pas lire du {rate} ; sa fréquence maximale est {ceiling}.",
-  "errStoppedAfterFailures": "{count, plural, other{Arrêté après {count} pistes d’affilée impossibles à lire.}}"
+  "errStoppedAfterFailures": "{count, plural, other{Arrêté après {count} pistes d’affilée impossibles à lire.}}",
+  "errRateNotOffered": "Ce DAC ne prend pas en charge le {rate}.",
+  "errTracksSkipped": "{count, plural, =1{Une piste a été ignorée car elle n’a pas pu être lue.} other{{count} pistes ont été ignorées car elles n’ont pas pu être lues.}}"
 }

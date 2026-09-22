@@ -106,6 +106,19 @@ class NowPlayingScreen extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                         color: Colors.white),
                   ),
+                  // The reason, when the headline only summarises: "stopped
+                  // after 3 tracks" is useless without why they failed.
+                  if (status.errorCauseMessage(AppLocalizations.of(context))
+                      case final cause?) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      cause,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 15, height: 1.25, color: Colors.white70),
+                    ),
+                  ],
                   if (status.lastErrorDetail != null) ...[
                     const SizedBox(height: 5),
                     Text(

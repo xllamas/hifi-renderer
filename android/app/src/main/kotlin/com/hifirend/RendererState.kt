@@ -138,6 +138,32 @@ object RendererState {
     /** The technical message behind [lastError], or null when there is none. */
     @Volatile var lastErrorDetail: String? = null
 
+    /**
+     * What went wrong with the last track, when [lastError] is a summary
+     * rather than a reason -- "stopped after 3 tracks in a row could not be
+     * played" says the source looks gone, but not *why* each one failed. A
+     * refusal before fetching has no engine detail to fall back on, so without
+     * this the screen had nothing to say about the cause at all.
+     */
+    @Volatile var lastErrorCause: String? = null
+    @Volatile var lastErrorCauseArgs: List<Int> = emptyList()
+
+    /**
+     * Puts [headline] on the screen, with [cause] beneath it when the headline
+     * is a summary. Null clears it. Every field is set together, so no writer
+     * can leave a previous failure's cause or arguments behind.
+     */
+    fun report(
+        headline: com.hifirend.upnp.Problem.Described?,
+        cause: com.hifirend.upnp.Problem.Described? = null,
+    ) {
+        lastError = headline?.code
+        lastErrorArgs = headline?.args ?: emptyList()
+        lastErrorDetail = cause?.detail ?: headline?.detail
+        lastErrorCause = cause?.code
+        lastErrorCauseArgs = cause?.args ?: emptyList()
+    }
+
     val isPlaying: Boolean get() = transportState == "PLAYING"
 
     /** e.g. "FLAC 24/96" — what the spec asks the main screen to show. */
@@ -212,6 +238,8 @@ object RendererState {
         append(",\"lastError\":").append(q(lastError))
         append(",\"lastErrorArgs\":").append(lastErrorArgs.joinToString(",", "[", "]"))
         append(",\"lastErrorDetail\":").append(q(lastErrorDetail))
+        append(",\"lastErrorCause\":").append(q(lastErrorCause))
+        append(",\"lastErrorCauseArgs\":").append(lastErrorCauseArgs.joinToString(",", "[", "]"))
         append("}")
     }
 }

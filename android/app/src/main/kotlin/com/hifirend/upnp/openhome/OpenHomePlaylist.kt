@@ -82,6 +82,13 @@ class OpenHomePlaylist(
     /** Tracks skipped since playback last started, for the end-of-list report. */
     @Volatile private var skippedThisRun = 0
 
+    /**
+     * Why the most recent skipped track failed, so the end-of-list report can
+     * say *why* tracks were skipped and not only how many. A successful start
+     * clears the banner, which is why this has to be kept here.
+     */
+    @Volatile private var lastFailure: Problem.Described? = null
+
     // ---- Transport ---------------------------------------------------------
 
     @UpnpAction(name = "Play")
@@ -354,9 +361,7 @@ class OpenHomePlaylist(
         // The track is away. A problem from an earlier track is history now,
         // and leaving it set would put a stale banner back on the screen the
         // moment this playlist stopped for any reason at all.
-        RendererState.lastError = null
-        RendererState.lastErrorArgs = emptyList()
-        RendererState.lastErrorDetail = null
+        RendererState.report(null)
         setTransportState("Playing")
     }
 
@@ -421,14 +426,14 @@ class OpenHomePlaylist(
     private fun clearFailureRun() {
         consecutiveFailures = 0
         skippedThisRun = 0
+        lastFailure = null
     }
 
     private fun skipAfterFailure(problem: Problem.Described) {
         consecutiveFailures++
         skippedThisRun++
-        RendererState.lastError = problem.code
-        RendererState.lastErrorArgs = problem.args
-        RendererState.lastErrorDetail = problem.detail
+        lastFailure = problem
+        RendererState.report(problem)
         playback?.stop()
 
         val failedTitle = list.current()?.track?.title ?: list.current()?.uri
@@ -436,12 +441,10 @@ class OpenHomePlaylist(
             Log.e(TAG, "OH giving up after $consecutiveFailures tracks in a row failed")
             // Say what actually happened. "Stopped" with the last track's
             // technical message would suggest one bad file, when the shape of
-            // the failure -- three in a row -- says the source is gone.
-            Problem.stoppedAfterFailures(consecutiveFailures).let {
-                RendererState.lastError = it.code
-                RendererState.lastErrorArgs = it.args
-            }
-            RendererState.lastErrorDetail = problem.detail
+            // the failure -- three in a row -- says the source is gone. The
+            // last track's reason still goes beneath it: "stopped" alone gives
+            // the listener nothing to act on.
+            RendererState.report(Problem.stoppedAfterFailures(consecutiveFailures), problem)
             setTransportState("Stopped")
             return
         }
@@ -464,12 +467,10 @@ class OpenHomePlaylist(
      */
     private fun endOfPlaylist() {
         if (skippedThisRun > 0) {
-            val n = skippedThisRun
-            RendererState.lastError =
-                if (n == 1) "One track was skipped because it could not be played."
-                else "$n tracks were skipped because they could not be played."
+            RendererState.report(Problem.tracksSkipped(skippedThisRun), lastFailure)
         }
         skippedThisRun = 0
+        lastFailure = null
         consecutiveFailures = 0
         setTransportState("Stopped")
     }
@@ -481,11 +482,8 @@ class OpenHomePlaylist(
         }
     }
 
-    private fun unplayableRate(announced: Int): Problem.Described? {
-        val rates = RendererState.dacRates
-        if (rates.isEmpty() || announced <= 0 || rates.contains(announced)) return null
-        return Problem.rateUnplayable(announced, rates.max())
-    }
+    private fun unplayableRate(announced: Int): Problem.Described? =
+        Problem.forAnnouncedRate(announced, RendererState.dacRates)
 
     private fun khz(hz: Int): String {
         val k = hz / 1000.0

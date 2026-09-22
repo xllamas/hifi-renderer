@@ -185,5 +185,7 @@
   "errDacConnectionLost": "O renderizador perdeu a conexão com o DAC.",
   "errTrackCouldNotBePlayed": "Não foi possível tocar esta faixa.",
   "errRateUnplayable": "Este DAC não consegue tocar a {rate}; a taxa máxima dele é {ceiling}.",
-  "errStoppedAfterFailures": "{count, plural, other{Parado depois que {count} faixas seguidas não puderam ser tocadas.}}"
+  "errStoppedAfterFailures": "{count, plural, other{Parado depois que {count} faixas seguidas não puderam ser tocadas.}}",
+  "errRateNotOffered": "Este DAC não é compatível com {rate}.",
+  "errTracksSkipped": "{count, plural, =1{Uma faixa foi pulada porque não pôde ser tocada.} other{{count} faixas foram puladas porque não puderam ser tocadas.}}"
 }

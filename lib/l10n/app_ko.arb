@@ -185,5 +185,7 @@
   "errDacConnectionLost": "렌더러가 DAC과의 연결을 잃었습니다.",
   "errTrackCouldNotBePlayed": "이 트랙을 재생할 수 없었습니다.",
   "errRateUnplayable": "이 DAC은 {rate}를 재생할 수 없습니다. 지원하는 최고 레이트는 {ceiling}입니다.",
-  "errStoppedAfterFailures": "{count, plural, other{{count}곡을 연달아 재생하지 못해 정지했습니다.}}"
+  "errStoppedAfterFailures": "{count, plural, other{{count}곡을 연달아 재생하지 못해 정지했습니다.}}",
+  "errRateNotOffered": "이 DAC은 {rate}를 지원하지 않습니다.",
+  "errTracksSkipped": "{count, plural, other{재생할 수 없어 {count}곡을 건너뛰었습니다.}}"
 }

@@ -185,5 +185,7 @@
   "errDacConnectionLost": "El reproductor perdió la conexión con el DAC.",
   "errTrackCouldNotBePlayed": "No se pudo reproducir esta pista.",
   "errRateUnplayable": "Este DAC no puede reproducir a {rate}; su frecuencia máxima es {ceiling}.",
-  "errStoppedAfterFailures": "{count, plural, other{Parado tras no poder reproducir {count} pistas seguidas.}}"
+  "errStoppedAfterFailures": "{count, plural, other{Parado tras no poder reproducir {count} pistas seguidas.}}",
+  "errRateNotOffered": "Este DAC no admite {rate}.",
+  "errTracksSkipped": "{count, plural, =1{Se omitió una pista porque no se pudo reproducir.} other{Se omitieron {count} pistas porque no se pudieron reproducir.}}"
 }

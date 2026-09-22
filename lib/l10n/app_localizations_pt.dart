@@ -691,6 +691,23 @@ class AppLocalizationsPt extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String errRateNotOffered(String rate) {
+    return 'Este DAC não suporta $rate.';
+  }
+
+  @override
+  String errTracksSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count faixas foram ignoradas porque não puderam ser reproduzidas.',
+      one: 'Uma faixa foi ignorada porque não pôde ser reproduzida.',
+    );
+    return '$_temp0';
+  }
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).
@@ -1376,6 +1393,22 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
       locale: localeName,
       other:
           'Parado depois que $count faixas seguidas não puderam ser tocadas.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String errRateNotOffered(String rate) {
+    return 'Este DAC não é compatível com $rate.';
+  }
+
+  @override
+  String errTracksSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count faixas foram puladas porque não puderam ser tocadas.',
+      one: 'Uma faixa foi pulada porque não pôde ser tocada.',
     );
     return '$_temp0';
   }

@@ -652,4 +652,19 @@ class AppLocalizationsZh extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String errRateNotOffered(String rate) {
+    return '此 DAC 不支持 $rate。';
+  }
+
+  @override
+  String errTracksSkipped(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '有 $count 首曲目无法播放，已跳过。',
+    );
+    return '$_temp0';
+  }
 }

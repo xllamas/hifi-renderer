@@ -1094,6 +1094,35 @@ void main() {
           '{"lastError":"rateUnplayable","lastErrorArgs":[44100,96000]}');
       expect(s.errorMessage(t), 'This DAC cannot play 44.1 kHz; its highest rate is 96 kHz.');
     });
+
+    test('a rate the DAC skips is not described as above its ceiling', () {
+      final s = RendererStatus.parse(
+          '{"lastError":"rateNotOffered","lastErrorArgs":[88200]}');
+      expect(s.errorMessage(t), 'This DAC does not support 88.2 kHz.');
+    });
+
+    test('a summary headline carries the reason beneath it', () {
+      // "Stopped after 3 tracks" said the source looked gone and nothing
+      // about why; a refusal before fetching has no engine detail either, so
+      // the screen had no cause to show at all.
+      final s = RendererStatus.parse(
+          '{"lastError":"stoppedAfterFailures","lastErrorArgs":[3],'
+          '"lastErrorCause":"rateUnplayable","lastErrorCauseArgs":[192000,48000]}');
+      expect(s.errorMessage(t), 'Stopped after 3 tracks in a row could not be played.');
+      expect(s.errorCauseMessage(t),
+          'This DAC cannot play 192 kHz; its highest rate is 48 kHz.');
+    });
+
+    test('skipped tracks are a translatable headline, not an English sentence', () {
+      final one = RendererStatus.parse(
+          '{"lastError":"tracksSkipped","lastErrorArgs":[1],'
+          '"lastErrorCause":"serverUnreachable"}');
+      expect(one.errorMessage(t), 'One track was skipped because it could not be played.');
+      expect(one.errorCauseMessage(t), t.errServerUnreachable);
+      final two = RendererStatus.parse('{"lastError":"tracksSkipped","lastErrorArgs":[2]}');
+      expect(two.errorMessage(t), '2 tracks were skipped because they could not be played.');
+      expect(two.errorCauseMessage(t), isNull);
+    });
   });
 
   group('Layout in every language', () {
@@ -1408,6 +1437,31 @@ void main() {
       expect(find.textContaining('FLAC'), findsNothing);
       expect(find.text('bit-perfect'), findsNothing);
       expect(find.text('Dead 3'), findsOneWidget);
+    });
+
+    testWidgets('the banner shows why the tracks failed, not only that they did',
+        (tester) async {
+      final stopped = RendererStatus.parse(
+        '{"rendererName":"Living Room","transportState":"STOPPED",'
+        '"title":"Dead 3","dacConnected":true,"dacName":"SMSL USB AUDIO",'
+        '"dacCount":1,"lastError":"stoppedAfterFailures","lastErrorArgs":[3],'
+        '"lastErrorCause":"rateNotOffered","lastErrorCauseArgs":[88200]}',
+      );
+
+      await tester.pumpWidget(localizedApp(
+        home: NowPlayingScreen(
+          status: stopped,
+          onOpenSettings: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPrevious: () {},
+          onVolumeChanged: (_) {},
+        ),
+      ));
+
+      expect(find.text('Stopped after 3 tracks in a row could not be played.'),
+          findsOneWidget);
+      expect(find.text('This DAC does not support 88.2 kHz.'), findsOneWidget);
     });
 
     testWidgets('a paused renderer keeps its badge, because the stream is open',

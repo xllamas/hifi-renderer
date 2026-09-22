@@ -95,4 +95,42 @@ class ProblemTest {
             Problem.describe("something nobody has seen before").code,
         )
     }
+
+    private val al400 = listOf(44100, 48000, 88200, 96000, 176400, 192000, 352800, 384000, 705600, 768000)
+
+    @Test
+    fun `an announced rate that is not a real rate is left to the decoder`() {
+        // BubbleUPnP's Qobuz metadata said 44000; the FLAC said 44100.
+        assertEquals(null, Problem.forAnnouncedRate(44000, al400))
+        assertEquals(null, Problem.forAnnouncedRate(44000, listOf(44100, 48000)))
+    }
+
+    @Test
+    fun `a rate above the DAC's ceiling says what the ceiling is`() {
+        val d = Problem.forAnnouncedRate(192000, listOf(44100, 48000))!!
+        assertEquals(Problem.RATE_UNPLAYABLE, d.code)
+        assertEquals(listOf(192000, 48000), d.args)
+    }
+
+    @Test
+    fun `a real rate the DAC skips is not reported as being above its ceiling`() {
+        val d = Problem.forAnnouncedRate(88200, listOf(44100, 48000, 96000))!!
+        assertEquals(Problem.RATE_NOT_OFFERED, d.code)
+        assertEquals(listOf(88200), d.args)
+    }
+
+    @Test
+    fun `offered rates, silence and unknown capabilities refuse nothing`() {
+        assertEquals(null, Problem.forAnnouncedRate(44100, al400))
+        assertEquals(null, Problem.forAnnouncedRate(0, al400))
+        assertEquals(null, Problem.forAnnouncedRate(192000, emptyList()))
+    }
+
+    @Test
+    fun `every rate audio is recorded at counts as real`() {
+        for (hz in listOf(8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000,
+                176400, 192000, 352800, 384000, 705600, 768000, 2822400)) {
+            assertTrue("$hz", Problem.isRealRate(hz))
+        }
+    }
 }

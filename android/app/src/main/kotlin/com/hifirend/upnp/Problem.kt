@@ -1,5 +1,9 @@
 package com.hifirend.upnp
 
+import android.util.Log
+
+private const val TAG = "hifirend"
+
 /**
  * Turns an engine failure into something worth putting on the now-playing
  * screen.
@@ -47,18 +51,63 @@ object Problem {
     const val DAC_LOST = "dacConnectionLost"
     const val UNKNOWN = "trackCouldNotBePlayed"
     const val RATE_UNPLAYABLE = "rateUnplayable"
+    const val RATE_NOT_OFFERED = "rateNotOffered"
     const val STRIKES = "stoppedAfterFailures"
+    const val SKIPPED = "tracksSkipped"
 
     /**
-     * A track refused before it was fetched, because the DAC cannot clock its
-     * rate. Both rates travel as hertz and are formatted for display on the
-     * other side, where the reader's conventions are known.
+     * A track refused before it was fetched, because its rate is above
+     * anything the DAC can clock. Both rates travel as hertz and are formatted
+     * for display on the other side, where the reader's conventions are known.
      */
     fun rateUnplayable(announcedHz: Int, ceilingHz: Int) =
         Described(RATE_UNPLAYABLE, listOf(announcedHz, ceilingHz))
 
+    /**
+     * A track refused before it was fetched, because its rate is within the
+     * DAC's range but not one it offers -- 88.2 kHz on a DAC that lists 96.
+     * Saying "its highest rate is 768 kHz" here would read as nonsense.
+     */
+    fun rateNotOffered(announcedHz: Int) = Described(RATE_NOT_OFFERED, listOf(announcedHz))
+
     /** The playlist gave up after this many tracks failed one after another. */
     fun stoppedAfterFailures(count: Int) = Described(STRIKES, listOf(count))
+
+    /** The playlist reached its end having stepped over this many tracks. */
+    fun tracksSkipped(count: Int) = Described(SKIPPED, listOf(count))
+
+    /**
+     * Whether [hz] is a rate audio is actually recorded at: a multiple of
+     * either clock family, 11 025 Hz (44.1k, 88.2k, DSD64...) or 8 kHz (48k,
+     * 96k, 32k...).
+     *
+     * Exists because of a real report. BubbleUPnP announced some Qobuz tracks
+     * as `sampleFrequency="44000"`; the FLAC itself said 44100. Taken at its
+     * word, that was refused as a rate the DAC does not offer, and tracks that
+     * played fine in the Qobuz app would not play here at all.
+     */
+    fun isRealRate(hz: Int) = hz > 0 && (hz % 11025 == 0 || hz % 8000 == 0)
+
+    /**
+     * Why a track announced at [announcedHz] cannot play on a DAC offering
+     * [dacRates], or null when there is no reason to think it cannot.
+     *
+     * The announced rate is the server's claim, not a measurement, so it is
+     * only acted on when it is plausible; anything else is left to the
+     * decoder, which reads the rate from the stream itself.
+     */
+    fun forAnnouncedRate(announcedHz: Int, dacRates: List<Int>): Described? {
+        if (dacRates.isEmpty() || announcedHz <= 0) return null   // nothing to go on
+        if (dacRates.contains(announcedHz)) return null
+        if (!isRealRate(announcedHz)) {
+            Log.w(TAG, "ignoring announced rate $announcedHz Hz: not a real audio rate; " +
+                "the stream's own header will decide")
+            return null
+        }
+        val ceiling = dacRates.max()
+        return if (announcedHz > ceiling) rateUnplayable(announcedHz, ceiling)
+        else rateNotOffered(announcedHz)
+    }
 
     fun describe(technical: String): Described {
         val m = technical.lowercase()
