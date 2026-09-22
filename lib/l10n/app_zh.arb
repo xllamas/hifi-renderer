@@ -87,7 +87,7 @@
   "onboardingVendorKnownDetail": "此厂商的手机通常会在 Android 之外另加一套后台应用限制，这是渲染器重启后无法恢复的常见原因。应用无法检测这些设置——只知道此厂商有这样一个界面——也无法判断你在那里授予了什么，因此这一步永远不会打勾。",
   "onboardingVendorUnknownDetail": "我们不知道这台手机对应的设置界面。如果渲染器在空闲时停止，或重启后没有恢复，请在手机自带的电池设置中查找「自启动」「后台应用」或「受保护的应用」。",
   "onboardingDac": "你的 DAC",
-  "onboardingDacDetail": "随时接上 USB DAC 即可。首次接入时 Android 会请求授权，所以这里无需操作——渲染器会跟随当前连接的 DAC，而不是为某一台专门配置。",
+  "onboardingDacDetail": "随时接上 USB DAC 即可。接入时 Android 会请求授权——在该提示中勾选“始终打开”，之后就不会再询问——渲染器会跟随当前连接的 DAC，而不是为某一台专门配置。",
   "onboardingDone": "完成",
   "onboardingFinishAnyway": "仍然完成",
   "onboardingAllGranted": "应用能够检查的项目都已授予。",

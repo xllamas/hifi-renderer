@@ -320,7 +320,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get onboardingDacDetail =>
-      'USB DAC은 원할 때 연결하면 됩니다. 처음 연결할 때 Android가 권한을 묻기 때문에 여기서 할 일은 없습니다. 렌더러는 특정 DAC에 맞춰 설정되는 것이 아니라, 그때 연결된 DAC을 따라갑니다.';
+      'USB DAC은 원할 때 연결하면 됩니다. 연결하면 Android가 권한을 묻는데, 그 창에서 \'항상 열기\'를 체크하면 더 이상 묻지 않습니다. 렌더러는 특정 DAC에 맞춰 설정되는 것이 아니라, 그때 연결된 DAC을 따라갑니다.';
 
   @override
   String get onboardingDone => '완료';

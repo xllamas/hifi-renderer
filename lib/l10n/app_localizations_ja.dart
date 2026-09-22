@@ -319,7 +319,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get onboardingDacDetail =>
-      'USB DAC はいつ接続してもかまいません。初めて接続したときに Android が許可を求めるので、ここで行うことはありません。レンダラーは特定の DAC 用に設定されるのではなく、そのとき接続されている DAC に合わせて動きます。';
+      'USB DAC はいつ接続してもかまいません。接続すると Android が許可を求めますが、その確認で「常に開く」にチェックを入れれば以後は尋ねられません。レンダラーは特定の DAC 用に設定されるのではなく、そのとき接続されている DAC に合わせて動きます。';
 
   @override
   String get onboardingDone => '完了';

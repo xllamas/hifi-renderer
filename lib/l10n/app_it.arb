@@ -87,7 +87,7 @@
   "onboardingVendorKnownDetail": "I telefoni di questo produttore aggiungono di solito restrizioni proprie per le app in background, distinte da quelle di Android, e sono il motivo abituale per cui un riproduttore non torna dopo un riavvio. L’app non può rilevarle — sa soltanto che questo produttore ha una schermata del genere — né può sapere se vi hai concesso qualcosa, quindi questo passaggio non viene mai spuntato.",
   "onboardingVendorUnknownDetail": "Non conosciamo alcuna schermata di impostazioni per questo telefono. Se il riproduttore si ferma quando è inattivo o non torna dopo un riavvio, cerca «avvio automatico», «app in background» o «app protette» nelle impostazioni della batteria del tuo telefono.",
   "onboardingDac": "Il tuo DAC",
-  "onboardingDacDetail": "Collega il DAC USB quando vuoi. Android chiede il permesso la prima volta che viene collegato, quindi qui non c’è nulla da fare, e il riproduttore si adatta al DAC collegato invece di essere configurato per uno in particolare.",
+  "onboardingDacDetail": "Collega il DAC USB quando vuoi. Android chiede il permesso al collegamento — spunta «apri sempre» in quella richiesta e smetterà di chiedere — e il riproduttore si adatta al DAC collegato invece di essere configurato per uno in particolare.",
   "onboardingDone": "Fatto",
   "onboardingFinishAnyway": "Termina comunque",
   "onboardingAllGranted": "È concesso tutto ciò che l’app può verificare.",

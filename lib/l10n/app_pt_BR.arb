@@ -87,7 +87,7 @@
   "onboardingVendorKnownDetail": "Celulares deste fabricante costumam adicionar restrições próprias para apps em segundo plano, separadas das do Android, e são o motivo mais comum de um renderizador não voltar depois de reiniciar. O app não consegue detectá-las — sabe apenas que este fabricante tem uma tela desse tipo — nem consegue saber se você concedeu algo lá, então esta etapa nunca fica marcada.",
   "onboardingVendorUnknownDetail": "Não conhecemos nenhuma tela de configurações para este celular. Se o renderizador parar quando estiver ocioso ou não voltar depois de reiniciar, procure «inicialização automática», «apps em segundo plano» ou «apps protegidos» nas configurações de bateria do seu celular.",
   "onboardingDac": "Seu DAC",
-  "onboardingDacDetail": "Conecte o DAC USB quando quiser. O Android pede permissão na primeira vez que ele é conectado, então não há nada a fazer aqui — e o renderizador se adapta ao DAC que estiver conectado, em vez de ser configurado para um específico.",
+  "onboardingDacDetail": "Conecte o DAC USB quando quiser. O Android pede permissão quando ele é conectado — marque \"sempre abrir\" nesse aviso e ele para de perguntar — e o renderizador se adapta ao DAC que estiver conectado, em vez de ser configurado para um específico.",
   "onboardingDone": "Concluído",
   "onboardingFinishAnyway": "Concluir mesmo assim",
   "onboardingAllGranted": "Tudo o que o app consegue verificar está concedido.",

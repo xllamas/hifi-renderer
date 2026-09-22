@@ -333,7 +333,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get onboardingDacDetail =>
-      'Ligue o DAC USB quando quiser. O Android pede permissão na primeira vez que é ligado, pelo que não há nada a fazer aqui — e o reprodutor adapta-se ao DAC que estiver ligado, em vez de ser configurado para um em particular.';
+      'Ligue o DAC USB quando quiser. O Android pede permissão ao ligá-lo — assinale «abrir sempre» nesse aviso e deixa de perguntar — e o reprodutor adapta-se ao DAC que estiver ligado, em vez de ser configurado para um em particular.';
 
   @override
   String get onboardingDone => 'Concluído';
@@ -1024,7 +1024,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get onboardingDacDetail =>
-      'Conecte o DAC USB quando quiser. O Android pede permissão na primeira vez que ele é conectado, então não há nada a fazer aqui — e o renderizador se adapta ao DAC que estiver conectado, em vez de ser configurado para um específico.';
+      'Conecte o DAC USB quando quiser. O Android pede permissão quando ele é conectado — marque \"sempre abrir\" nesse aviso e ele para de perguntar — e o renderizador se adapta ao DAC que estiver conectado, em vez de ser configurado para um específico.';
 
   @override
   String get onboardingDone => 'Concluído';

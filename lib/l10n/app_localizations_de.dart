@@ -336,7 +336,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get onboardingDacDetail =>
-      'Schließe den USB-DAC an, wann du möchtest. Android fragt beim ersten Anschließen nach der Berechtigung, hier ist also nichts zu tun — und der Renderer richtet sich nach dem DAC, der gerade angeschlossen ist, statt auf einen bestimmten eingestellt zu sein.';
+      'Schließe den USB-DAC an, wann du möchtest. Android fragt beim Anschließen nach der Berechtigung — setze dort den Haken bei „immer öffnen“, dann fragt es nicht mehr — und der Renderer richtet sich nach dem DAC, der gerade angeschlossen ist, statt auf einen bestimmten eingestellt zu sein.';
 
   @override
   String get onboardingDone => 'Fertig';

@@ -333,7 +333,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingDacDetail =>
-      'Plug the USB DAC in when you are ready. Android asks for permission the first time it is attached, so there is nothing to do here — and the renderer follows whatever DAC is connected rather than being configured for one.';
+      'Plug the USB DAC in when you are ready. Android asks for permission when it is attached — tick \"always open\" in that prompt and it stops asking — and the renderer follows whatever DAC is connected rather than being configured for one.';
 
   @override
   String get onboardingDone => 'Done';

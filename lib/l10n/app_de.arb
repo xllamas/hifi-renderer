@@ -87,7 +87,7 @@
   "onboardingVendorKnownDetail": "Telefone dieses Herstellers bringen meist eigene Einschränkungen für Hintergrund-Apps mit, getrennt von denen Androids, und sie sind der übliche Grund, warum ein Renderer nach einem Neustart nicht zurückkommt. Die App kann sie nicht erkennen — sie weiß nur, dass dieser Hersteller einen solchen Bildschirm hat — und sie kann auch nicht feststellen, ob du dort etwas erteilt hast. Dieser Schritt wird deshalb nie abgehakt.",
   "onboardingVendorUnknownDetail": "Für dieses Telefon kennen wir keinen Einstellungsbildschirm. Wenn der Renderer im Leerlauf stehen bleibt oder nach einem Neustart nicht zurückkommt, suche in den Akku-Einstellungen deines Telefons nach „Autostart“, „Hintergrund-Apps“ oder „Geschützte Apps“.",
   "onboardingDac": "Dein DAC",
-  "onboardingDacDetail": "Schließe den USB-DAC an, wann du möchtest. Android fragt beim ersten Anschließen nach der Berechtigung, hier ist also nichts zu tun — und der Renderer richtet sich nach dem DAC, der gerade angeschlossen ist, statt auf einen bestimmten eingestellt zu sein.",
+  "onboardingDacDetail": "Schließe den USB-DAC an, wann du möchtest. Android fragt beim Anschließen nach der Berechtigung — setze dort den Haken bei „immer öffnen“, dann fragt es nicht mehr — und der Renderer richtet sich nach dem DAC, der gerade angeschlossen ist, statt auf einen bestimmten eingestellt zu sein.",
   "onboardingDone": "Fertig",
   "onboardingFinishAnyway": "Trotzdem beenden",
   "onboardingAllGranted": "Alles, was die App prüfen kann, ist erteilt.",

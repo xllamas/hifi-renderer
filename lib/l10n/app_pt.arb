@@ -87,7 +87,7 @@
   "onboardingVendorKnownDetail": "Os telemóveis deste fabricante costumam acrescentar restrições próprias para aplicações em segundo plano, distintas das do Android, e são o motivo habitual para um reprodutor não voltar depois de reiniciar. A aplicação não as consegue detetar — sabe apenas que este fabricante tem um ecrã desse género — nem consegue saber se concedeu ali alguma coisa, pelo que este passo nunca fica assinalado.",
   "onboardingVendorUnknownDetail": "Não conhecemos nenhum ecrã de definições para este telemóvel. Se o reprodutor parar quando está inativo ou não voltar depois de reiniciar, procure «arranque automático», «aplicações em segundo plano» ou «aplicações protegidas» nas definições de bateria do seu telemóvel.",
   "onboardingDac": "O seu DAC",
-  "onboardingDacDetail": "Ligue o DAC USB quando quiser. O Android pede permissão na primeira vez que é ligado, pelo que não há nada a fazer aqui — e o reprodutor adapta-se ao DAC que estiver ligado, em vez de ser configurado para um em particular.",
+  "onboardingDacDetail": "Ligue o DAC USB quando quiser. O Android pede permissão ao ligá-lo — assinale «abrir sempre» nesse aviso e deixa de perguntar — e o reprodutor adapta-se ao DAC que estiver ligado, em vez de ser configurado para um em particular.",
   "onboardingDone": "Concluído",
   "onboardingFinishAnyway": "Concluir mesmo assim",
   "onboardingAllGranted": "Está concedido tudo o que a aplicação consegue verificar.",

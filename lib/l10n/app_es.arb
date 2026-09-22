@@ -87,7 +87,7 @@
   "onboardingVendorKnownDetail": "Los teléfonos de este fabricante suelen añadir sus propias restricciones para apps en segundo plano, aparte de las de Android, y son el motivo habitual de que un reproductor no vuelva tras reiniciar. La app no puede detectarlas —solo sabe que este fabricante tiene esa pantalla— ni puede saber si has concedido algo allí, así que este paso nunca se marca.",
   "onboardingVendorUnknownDetail": "No conocemos ninguna pantalla de ajustes para este teléfono. Si el reproductor se detiene al quedarse inactivo o no vuelve tras reiniciar, busca «inicio automático», «apps en segundo plano» o «apps protegidas» en los ajustes de batería de tu teléfono.",
   "onboardingDac": "Tu DAC",
-  "onboardingDacDetail": "Conecta el DAC USB cuando quieras. Android pide permiso la primera vez que se enchufa, así que aquí no hay nada que hacer, y el reproductor se adapta al DAC que esté conectado en lugar de configurarse para uno concreto.",
+  "onboardingDacDetail": "Conecta el DAC USB cuando quieras. Android pide permiso al enchufarlo —marca «abrir siempre» en ese aviso y dejará de preguntar— y el reproductor se adapta al DAC que esté conectado en lugar de configurarse para uno concreto.",
   "onboardingDone": "Hecho",
   "onboardingFinishAnyway": "Terminar igualmente",
   "onboardingAllGranted": "Está concedido todo lo que la app puede comprobar.",

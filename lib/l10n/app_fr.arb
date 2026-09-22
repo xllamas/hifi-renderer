@@ -87,7 +87,7 @@
   "onboardingVendorKnownDetail": "Les téléphones de ce fabricant ajoutent en général leurs propres restrictions pour les apps en arrière-plan, distinctes de celles d’Android, et c’est la raison habituelle pour laquelle un lecteur ne revient pas après un redémarrage. L’app ne peut pas les détecter — elle sait seulement que ce fabricant possède un tel écran — ni savoir si vous y avez accordé quoi que ce soit : cette étape ne se coche donc jamais.",
   "onboardingVendorUnknownDetail": "Nous ne connaissons aucun écran de réglages pour ce téléphone. Si le lecteur s’arrête au repos ou ne revient pas après un redémarrage, cherchez « démarrage automatique », « applications en arrière-plan » ou « applications protégées » dans les réglages de batterie de votre téléphone.",
   "onboardingDac": "Votre DAC",
-  "onboardingDacDetail": "Branchez le DAC USB quand vous voulez. Android demande l’autorisation la première fois qu’il est connecté : il n’y a donc rien à faire ici, et le lecteur s’adapte au DAC branché plutôt que d’être configuré pour l’un d’eux.",
+  "onboardingDacDetail": "Branchez le DAC USB quand vous voulez. Android demande l’autorisation à la connexion — cochez « toujours ouvrir » dans cette demande et il cessera de demander — et le lecteur s’adapte au DAC branché plutôt que d’être configuré pour l’un d’eux.",
   "onboardingDone": "Terminé",
   "onboardingFinishAnyway": "Terminer quand même",
   "onboardingAllGranted": "Tout ce que l’app peut vérifier est accordé.",

@@ -635,10 +635,10 @@ abstract class AppLocalizations {
   /// **'Your DAC'**
   String get onboardingDac;
 
-  /// Explains that the DAC needs no setup: the renderer adapts to whichever one is plugged in.
+  /// Explains that the DAC needs no setup: Android asks once on attach, its prompt can be told not to ask again, and the renderer adapts to whichever DAC is plugged in. The quoted phrase refers to the checkbox in Android's own USB dialog, so use the wording Android uses in the target language.
   ///
   /// In en, this message translates to:
-  /// **'Plug the USB DAC in when you are ready. Android asks for permission the first time it is attached, so there is nothing to do here — and the renderer follows whatever DAC is connected rather than being configured for one.'**
+  /// **'Plug the USB DAC in when you are ready. Android asks for permission when it is attached — tick \"always open\" in that prompt and it stops asking — and the renderer follows whatever DAC is connected rather than being configured for one.'**
   String get onboardingDacDetail;
 
   /// Button that closes setup when everything checkable has been granted.

@@ -314,7 +314,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get onboardingDacDetail =>
-      '随时接上 USB DAC 即可。首次接入时 Android 会请求授权，所以这里无需操作——渲染器会跟随当前连接的 DAC，而不是为某一台专门配置。';
+      '随时接上 USB DAC 即可。接入时 Android 会请求授权——在该提示中勾选“始终打开”，之后就不会再询问——渲染器会跟随当前连接的 DAC，而不是为某一台专门配置。';
 
   @override
   String get onboardingDone => '完成';

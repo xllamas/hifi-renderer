@@ -334,7 +334,7 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get onboardingDacDetail =>
-      'Collega il DAC USB quando vuoi. Android chiede il permesso la prima volta che viene collegato, quindi qui non c’è nulla da fare, e il riproduttore si adatta al DAC collegato invece di essere configurato per uno in particolare.';
+      'Collega il DAC USB quando vuoi. Android chiede il permesso al collegamento — spunta «apri sempre» in quella richiesta e smetterà di chiedere — e il riproduttore si adatta al DAC collegato invece di essere configurato per uno in particolare.';
 
   @override
   String get onboardingDone => 'Fatto';
