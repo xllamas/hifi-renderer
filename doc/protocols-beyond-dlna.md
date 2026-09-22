@@ -192,6 +192,12 @@ Proprietary, licensed hardware partners only, no public specification. And it
 serves the owner, not guests — who already reaches Tidal through BubbleUPnP
 Server proxying into DLNA, the path the session logs show working.
 
+### Qobuz Connect -- assessed separately, 2026-09-18
+
+Easy to build and it serves both classes of user, but every open implementation
+runs on Qobuz's own app secret, which its API terms forbid. Not shippable without
+Qobuz's agreement. See [qobuz-connect.md](qobuz-connect.md).
+
 ---
 
 ## The owner-lane options, demoted
