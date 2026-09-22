@@ -276,6 +276,21 @@ class AppLocalizationsZh extends AppLocalizations {
       '没有这一项，屏幕熄灭一段时间后 Android 会挂起应用，播放会在曲目中途中断。';
 
   @override
+  String get onboardingUsbPrompt => '不再让 Android 询问 DAC';
+
+  @override
+  String get onboardingUsbPromptGranted =>
+      '已授予。下次连接 DAC 时，在 Android 的提示中勾选“始终打开”，之后就不会再询问。';
+
+  @override
+  String get onboardingUsbPromptWhy =>
+      '没有麦克风权限时，每次打开 DAC，Android 都会询问是否打开本应用，而且不提供“不再询问”的选项。请授予权限，然后在下次连接 DAC 时勾选“始终打开”。本应用从不录音。';
+
+  @override
+  String get onboardingUsbPromptInSettings =>
+      'Android 已不再询问 — 请在那里的“权限”中允许麦克风。';
+
+  @override
   String onboardingVendorKnown(String vendor) {
     return '自启动（$vendor）';
   }

@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -32,8 +33,10 @@ object Onboarding {
     private const val PREFS = "hifirend_onboarding"
     private const val KEY_SEEN = "seen"
     private const val KEY_ASKED_NOTIFICATIONS = "asked_notifications"
+    private const val KEY_ASKED_MICROPHONE = "asked_microphone"
 
     const val NOTIFICATION_REQUEST = 4801
+    const val MICROPHONE_REQUEST = 4802
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -85,6 +88,40 @@ object Onboarding {
     }
 
     /**
+     * Whether Android will offer "always open" when a DAC is attached.
+     *
+     * The app never records. But for a USB device that describes an audio
+     * input -- most DACs do -- SystemUI's attach dialog drops its "always
+     * open" checkbox unless the app holds RECORD_AUDIO, and without that
+     * checkbox the dialog comes back every time the DAC is switched on.
+     */
+    fun microphoneGranted(context: Context): Boolean =
+        context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Asks for RECORD_AUDIO, or opens the app's details page once Android has
+     * stopped showing the dialog. Same shape and same return values as
+     * [requestNotifications].
+     */
+    fun requestMicrophone(activity: Activity): String {
+        if (microphoneGranted(activity)) return "granted"
+
+        val askedBefore = prefs(activity).getBoolean(KEY_ASKED_MICROPHONE, false)
+        val wouldShowDialog = !askedBefore ||
+            activity.shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)
+
+        if (wouldShowDialog) {
+            prefs(activity).edit().putBoolean(KEY_ASKED_MICROPHONE, true).apply()
+            activity.requestPermissions(
+                arrayOf(Manifest.permission.RECORD_AUDIO), MICROPHONE_REQUEST)
+            return "requested"
+        }
+        return if (openFirst(activity, listOf(appDetails(activity)), "app details")) "settings"
+        else "unavailable"
+    }
+
+    /**
      * The app's own notification settings. Falls back to the app detail page,
      * and then gives up rather than crashing: this is an Intent that a vendor
      * ROM is entirely capable of not having.
@@ -93,17 +130,25 @@ object Onboarding {
         val candidates = listOf(
             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
-            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                .setData(android.net.Uri.parse("package:${context.packageName}")),
+            appDetails(context),
         )
+        return openFirst(context, candidates, "notification settings")
+    }
+
+    private fun appDetails(context: Context) =
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            .setData(android.net.Uri.parse("package:${context.packageName}"))
+
+    /** Starts the first of [candidates] this device can resolve. */
+    private fun openFirst(context: Context, candidates: List<Intent>, what: String): Boolean {
         for (intent in candidates) {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             if (intent.resolveActivity(context.packageManager) == null) continue
             return runCatching { context.startActivity(intent); true }
-                .onFailure { Log.w(TAG, "notification settings refused: ${it.message}") }
+                .onFailure { Log.w(TAG, "$what refused: ${it.message}") }
                 .getOrDefault(false)
         }
-        Log.w(TAG, "no notification settings screen on this device")
+        Log.w(TAG, "no $what screen on this device")
         return false
     }
 }

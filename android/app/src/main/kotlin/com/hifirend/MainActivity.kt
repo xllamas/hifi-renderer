@@ -75,6 +75,9 @@ class MainActivity : FlutterActivity() {
      * no dialog at all. That is the only route to permission surviving an
      * unplug -- a grant from requestPermission() lasts just for the one
      * attachment, which is why hot-plugging otherwise prompts every time.
+     *
+     * The checkbox is only offered when the app holds RECORD_AUDIO, if the
+     * DAC describes an audio input (most do); see Onboarding.microphoneGranted.
      */
     private fun noteUsbAttachIntent(intent: Intent?) {
         if (intent?.action != UsbManager.ACTION_USB_DEVICE_ATTACHED) return
@@ -213,6 +216,8 @@ class MainActivity : FlutterActivity() {
                             """{"hasRun":${Onboarding.hasRun(applicationContext)}""" +
                             ""","notifications":${
                                 Onboarding.notificationsEnabled(applicationContext)}""" +
+                            ""","microphone":${
+                                Onboarding.microphoneGranted(applicationContext)}""" +
                             ""","ignoringBatteryOptimizations":${
                                 VendorAutostart.isIgnoringBatteryOptimizations(this)}""" +
                             ""","manufacturer":"${VendorAutostart.manufacturer()}"""" +
@@ -226,6 +231,8 @@ class MainActivity : FlutterActivity() {
                     }
                     "requestNotifications" ->
                         result.success(Onboarding.requestNotifications(this))
+                    "requestMicrophone" ->
+                        result.success(Onboarding.requestMicrophone(this))
                     "openNotificationSettings" ->
                         result.success(Onboarding.openNotificationSettings(this))
                     "setOnboardingDone" -> {

@@ -77,6 +77,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   Widget build(BuildContext context) {
     final notifications = _flag('notifications');
     final battery = _flag('ignoringBatteryOptimizations');
+    final microphone = _flag('microphone');
     final hasVendor = _flag('hasVendorSettings');
     final ready = notifications && battery;
 
@@ -145,11 +146,37 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             },
           ),
 
+          // Left out of `ready` on purpose. It spares a tap, not a failure, and
+          // a microphone permission is one some owners will rightly decline.
+          _step(
+            n: 3,
+            done: microphone,
+            title: AppLocalizations.of(context).onboardingUsbPrompt,
+            detail: microphone
+                ? AppLocalizations.of(context).onboardingUsbPromptGranted
+                : AppLocalizations.of(context).onboardingUsbPromptWhy,
+            action: microphone
+                ? null
+                : AppLocalizations.of(context).onboardingAllow,
+            onAction: () async {
+              final t = AppLocalizations.of(context);
+              final what =
+                  await _channel.invokeMethod<String>('requestMicrophone');
+              if (!mounted) return;
+              if (what == 'unavailable') {
+                _say(t.settingsCouldNotOpen);
+              } else if (what == 'settings') {
+                _say(t.onboardingUsbPromptInSettings);
+              }
+              _refresh();
+            },
+          ),
+
           // Not a checkable step. These screens report nothing back, so the
           // app cannot know whether the user granted anything -- and claiming
           // a tick it has not earned would be worse than leaving it open.
           _step(
-            n: 3,
+            n: 4,
             done: null,
             title: hasVendor
                 ? (_manufacturer.isEmpty
@@ -176,7 +203,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
 
           _step(
-            n: 4,
+            n: 5,
             done: null,
             title: AppLocalizations.of(context).onboardingDac,
             detail: AppLocalizations.of(context).onboardingDacDetail,

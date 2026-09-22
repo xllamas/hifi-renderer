@@ -282,6 +282,21 @@ class AppLocalizationsKo extends AppLocalizations {
       '이것이 없으면 화면이 꺼진 뒤 얼마 지나 Android가 앱을 중단시키고, 재생이 트랙 도중에 멈춥니다.';
 
   @override
+  String get onboardingUsbPrompt => 'DAC에 대해 Android가 묻지 않게 하기';
+
+  @override
+  String get onboardingUsbPromptGranted =>
+      '허용됨. 다음에 DAC이 연결될 때 Android 확인 창에서 \'항상 열기\'를 체크하면 더 이상 묻지 않습니다.';
+
+  @override
+  String get onboardingUsbPromptWhy =>
+      '마이크 권한이 없으면 Android는 DAC을 켤 때마다 앱을 열지 묻고, 묻지 않게 하는 옵션도 보여 주지 않습니다. 권한을 허용한 뒤, 다음에 DAC이 연결될 때 \'항상 열기\'를 체크하세요. 앱은 절대 녹음하지 않습니다.';
+
+  @override
+  String get onboardingUsbPromptInSettings =>
+      'Android가 더 이상 묻지 않습니다 — 그 화면의 권한에서 마이크를 허용하세요.';
+
+  @override
   String onboardingVendorKnown(String vendor) {
     return '자동 실행 ($vendor)';
   }

@@ -575,6 +575,30 @@ abstract class AppLocalizations {
   /// **'Without this, Android suspends the app when the screen has been off for a while, and playback stops mid-track.'**
   String get onboardingBatteryWhy;
 
+  /// Step title for the optional microphone permission, whose only purpose is to stop Android's USB prompt appearing every time the DAC is switched on.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop Android asking about the DAC'**
+  String get onboardingUsbPrompt;
+
+  /// Shown once the microphone permission has been given. The quoted phrase refers to the checkbox in Android's own USB dialog, so use the wording Android uses in the target language.
+  ///
+  /// In en, this message translates to:
+  /// **'Granted. The next time the DAC connects, tick \"always open\" in Android\'s prompt and it will not ask again.'**
+  String get onboardingUsbPromptGranted;
+
+  /// Explains why an audio player asks for the microphone: without it Android hides the 'always open' checkbox for DACs that describe an audio input. Must make clear the app never records. The quoted phrase refers to Android's own checkbox.
+  ///
+  /// In en, this message translates to:
+  /// **'Without microphone permission, Android asks whether to open the app every time the DAC is switched on, and leaves out the option to stop asking. Allow it, then tick \"always open\" the next time the DAC connects. The app never records anything.'**
+  String get onboardingUsbPromptWhy;
+
+  /// Shown when Android will no longer show the microphone permission prompt, so the user must grant it in the app details screen that was just opened.
+  ///
+  /// In en, this message translates to:
+  /// **'Android stopped asking — allow the microphone under Permissions there.'**
+  String get onboardingUsbPromptInSettings;
+
   /// Step title naming the phone maker's own autostart setting.
   ///
   /// In en, this message translates to:

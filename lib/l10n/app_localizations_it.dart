@@ -295,6 +295,21 @@ class AppLocalizationsIt extends AppLocalizations {
       'Senza questo, Android sospende l’app quando lo schermo è spento da un po’ e la riproduzione si interrompe a metà brano.';
 
   @override
+  String get onboardingUsbPrompt => 'Evitare che Android chieda del DAC';
+
+  @override
+  String get onboardingUsbPromptGranted =>
+      'Concesso. La prossima volta che il DAC si collega, spunta «apri sempre» nella richiesta di Android e non chiederà più.';
+
+  @override
+  String get onboardingUsbPromptWhy =>
+      'Senza il permesso del microfono, Android chiede se aprire l’app ogni volta che il DAC viene acceso, senza offrire l’opzione per smettere di chiedere. Concedilo, poi spunta «apri sempre» la prossima volta che il DAC si collega. L’app non registra mai nulla.';
+
+  @override
+  String get onboardingUsbPromptInSettings =>
+      'Android ha smesso di chiedere — consenti il microfono in Autorizzazioni lì.';
+
+  @override
   String onboardingVendorKnown(String vendor) {
     return 'Avvio automatico ($vendor)';
   }

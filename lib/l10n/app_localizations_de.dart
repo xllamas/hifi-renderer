@@ -296,6 +296,22 @@ class AppLocalizationsDe extends AppLocalizations {
       'Ohne dies hält Android die App an, wenn der Bildschirm eine Weile aus war, und die Wiedergabe bricht mitten im Titel ab.';
 
   @override
+  String get onboardingUsbPrompt =>
+      'Android nicht mehr nach dem DAC fragen lassen';
+
+  @override
+  String get onboardingUsbPromptGranted =>
+      'Erteilt. Wenn der DAC das nächste Mal verbunden wird, setze in der Android-Abfrage den Haken bei „immer öffnen“, dann fragt Android nicht mehr.';
+
+  @override
+  String get onboardingUsbPromptWhy =>
+      'Ohne Mikrofonberechtigung fragt Android bei jedem Einschalten des DACs, ob die App geöffnet werden soll, und bietet keine Möglichkeit, das abzustellen. Erlaube sie und setze beim nächsten Verbinden des DACs den Haken bei „immer öffnen“. Die App nimmt niemals etwas auf.';
+
+  @override
+  String get onboardingUsbPromptInSettings =>
+      'Android fragt nicht mehr — erlaube dort unter Berechtigungen das Mikrofon.';
+
+  @override
   String onboardingVendorKnown(String vendor) {
     return 'Autostart ($vendor)';
   }

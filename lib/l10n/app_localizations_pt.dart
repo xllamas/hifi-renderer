@@ -294,6 +294,21 @@ class AppLocalizationsPt extends AppLocalizations {
       'Sem isto, o Android suspende a aplicação quando o ecrã está apagado há algum tempo, e a reprodução para a meio da faixa.';
 
   @override
+  String get onboardingUsbPrompt => 'Impedir que o Android pergunte pelo DAC';
+
+  @override
+  String get onboardingUsbPromptGranted =>
+      'Concedido. Da próxima vez que o DAC se ligar, assinale «abrir sempre» no aviso do Android e ele deixa de perguntar.';
+
+  @override
+  String get onboardingUsbPromptWhy =>
+      'Sem a permissão do microfone, o Android pergunta se deve abrir a app sempre que o DAC é ligado, e não oferece a opção de deixar de perguntar. Conceda-a e assinale «abrir sempre» da próxima vez que o DAC se ligar. A app nunca grava nada.';
+
+  @override
+  String get onboardingUsbPromptInSettings =>
+      'O Android deixou de perguntar — permita o microfone em Autorizações aí.';
+
+  @override
   String onboardingVendorKnown(String vendor) {
     return 'Arranque automático ($vendor)';
   }
@@ -967,6 +982,22 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get onboardingBatteryWhy =>
       'Sem isso, o Android suspende o app depois de um tempo com a tela apagada, e a reprodução para no meio da faixa.';
+
+  @override
+  String get onboardingUsbPrompt =>
+      'Impedir que o Android pergunte sobre o DAC';
+
+  @override
+  String get onboardingUsbPromptGranted =>
+      'Concedido. Na próxima vez que o DAC conectar, marque \"sempre abrir\" no aviso do Android e ele não vai perguntar de novo.';
+
+  @override
+  String get onboardingUsbPromptWhy =>
+      'Sem a permissão do microfone, o Android pergunta se deve abrir o app toda vez que o DAC é ligado, e não oferece a opção de parar de perguntar. Conceda a permissão e marque \"sempre abrir\" na próxima vez que o DAC conectar. O app nunca grava nada.';
+
+  @override
+  String get onboardingUsbPromptInSettings =>
+      'O Android parou de perguntar — permita o microfone em Permissões por lá.';
 
   @override
   String onboardingVendorKnown(String vendor) {

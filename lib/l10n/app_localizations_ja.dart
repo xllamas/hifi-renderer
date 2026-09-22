@@ -281,6 +281,21 @@ class AppLocalizationsJa extends AppLocalizations {
       'これがないと、画面が消えてしばらくすると Android がアプリを停止させ、再生がトラックの途中で止まります。';
 
   @override
+  String get onboardingUsbPrompt => 'DAC について Android に尋ねさせない';
+
+  @override
+  String get onboardingUsbPromptGranted =>
+      '許可済みです。次に DAC が接続されたとき、Android の確認で「常に開く」にチェックを入れると、以後は尋ねられません。';
+
+  @override
+  String get onboardingUsbPromptWhy =>
+      'マイクの権限がないと、Android は DAC の電源を入れるたびにアプリを開くか尋ね、尋ねないようにする選択肢も表示しません。許可したうえで、次に DAC が接続されたときに「常に開く」にチェックを入れてください。アプリが録音することはありません。';
+
+  @override
+  String get onboardingUsbPromptInSettings =>
+      'Android は確認を求めなくなりました — その画面の「権限」でマイクを許可してください。';
+
+  @override
   String onboardingVendorKnown(String vendor) {
     return '自動起動（$vendor）';
   }

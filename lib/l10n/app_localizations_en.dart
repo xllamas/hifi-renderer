@@ -295,6 +295,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'Without this, Android suspends the app when the screen has been off for a while, and playback stops mid-track.';
 
   @override
+  String get onboardingUsbPrompt => 'Stop Android asking about the DAC';
+
+  @override
+  String get onboardingUsbPromptGranted =>
+      'Granted. The next time the DAC connects, tick \"always open\" in Android\'s prompt and it will not ask again.';
+
+  @override
+  String get onboardingUsbPromptWhy =>
+      'Without microphone permission, Android asks whether to open the app every time the DAC is switched on, and leaves out the option to stop asking. Allow it, then tick \"always open\" the next time the DAC connects. The app never records anything.';
+
+  @override
+  String get onboardingUsbPromptInSettings =>
+      'Android stopped asking — allow the microphone under Permissions there.';
+
+  @override
   String onboardingVendorKnown(String vendor) {
     return 'Autostart ($vendor)';
   }
