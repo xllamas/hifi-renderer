@@ -77,16 +77,20 @@ object Problem {
     fun tracksSkipped(count: Int) = Described(SKIPPED, listOf(count))
 
     /**
-     * Whether [hz] is a rate audio is actually recorded at: a multiple of
-     * either clock family, 11 025 Hz (44.1k, 88.2k, DSD64...) or 8 kHz (48k,
-     * 96k, 32k...).
+     * Whether [hz] is a rate audio is actually recorded at: a power-of-two
+     * multiple of a base rate, 11 025 Hz (44.1k, 88.2k, DSD64...), 12 kHz
+     * (48k, 96k, 192k...) or 8 kHz (8k, 16k, 32k).
      *
      * Exists because of a real report. BubbleUPnP announced some Qobuz tracks
      * as `sampleFrequency="44000"`; the FLAC itself said 44100. Taken at its
      * word, that was refused as a rate the DAC does not offer, and tracks that
-     * played fine in the Qobuz app would not play here at all.
+     * played fine in the Qobuz app would not play here at all. It did it again
+     * with 88000 for an 88.2k track, which a plain multiple-of-8000 test let
+     * through as real, so the multiple has to be a power of two.
      */
-    fun isRealRate(hz: Int) = hz > 0 && (hz % 11025 == 0 || hz % 8000 == 0)
+    fun isRealRate(hz: Int) = hz > 0 && intArrayOf(8000, 11025, 12000).any { base ->
+        hz % base == 0 && (hz / base).let { it and (it - 1) == 0 }
+    }
 
     /**
      * Why a track announced at [announcedHz] cannot play on a DAC offering

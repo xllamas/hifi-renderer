@@ -1,6 +1,7 @@
 package com.hifirend.upnp
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -131,6 +132,15 @@ class ProblemTest {
         for (hz in listOf(8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000,
                 176400, 192000, 352800, 384000, 705600, 768000, 2822400)) {
             assertTrue("$hz", Problem.isRealRate(hz))
+        }
+    }
+
+    @Test
+    fun `rounded announcements are not real rates`() {
+        // BubbleUPnP rounds 44.1k and 88.2k tracks to these.
+        for (hz in listOf(44000, 88000, 176000, 352000)) {
+            assertFalse("$hz", Problem.isRealRate(hz))
+            assertEquals("$hz", null, Problem.forAnnouncedRate(hz, al400))
         }
     }
 }
