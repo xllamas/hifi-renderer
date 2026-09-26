@@ -70,11 +70,18 @@ public:
         // simply appended behind it. Whether that is actually possible is not
         // known until the header has been read, so the decision is deferred to
         // the decode loop -- here we only avoid destroying what it may reuse.
-        const bool keepSink = gapless && sink_ && sinkStarted_;
+        format_ = formatFromMime(mime);
+        // A manual skip from one DSD track to another also keeps the stream,
+        // with what was buffered dropped. Tearing it down makes the DAC leave
+        // DSD mode and re-enter it, which is a click; a stream that carries on
+        // sending idle frames between the two tracks does not.
+        const bool dsdToDsd = cfgDsd_ && format_ == SourceFormat::Dsd;
+        const bool keepSink = (gapless || dsdToDsd) && sink_ && sinkStarted_;
         if (keepSink) {
             handover_.store(true);
             stopSourceLocked();
             handover_.store(false);
+            if (!gapless) sink_->flush();
         } else {
             stopLocked();
         }

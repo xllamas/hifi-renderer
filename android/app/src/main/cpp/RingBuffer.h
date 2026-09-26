@@ -53,6 +53,12 @@ public:
         return n;
     }
 
+    // Consumer side: drops everything buffered. Only the consumer may move the
+    // read index, which is why this is not clear().
+    void discardAll() {
+        read_.store(write_.load(std::memory_order_acquire), std::memory_order_release);
+    }
+
     void clear() {
         read_.store(0, std::memory_order_relaxed);
         write_.store(0, std::memory_order_relaxed);

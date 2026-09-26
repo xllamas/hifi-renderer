@@ -293,6 +293,17 @@ bool UsbSink::setSampleRateUac1(uint32_t hz, std::string *error) {
     return true;
 }
 
+void UsbSink::flush() {
+    if (!ring_ || !running_.load(std::memory_order_acquire)) {
+        if (ring_) ring_->clear();
+        return;
+    }
+    flushPending_.store(true, std::memory_order_release);
+    // Wait for the callback to do it, or new audio written next would be
+    // discarded along with the old.
+    for (int i = 0; i < 200 && flushPending_.load(std::memory_order_acquire); i++) usleep(1000);
+}
+
 void UsbSink::silence(uint8_t *dst, size_t bytes) {
     // PCM zeros would drop a DAC out of DSD mode, so DoP gets idle frames.
     if (dopOn_.load(std::memory_order_acquire)) dop_.idle(dst, bytes);
@@ -306,6 +317,8 @@ void UsbSink::fillTransfer(libusb_transfer *t) {
 
     uint8_t *buf = t->buffer;
     int offset = 0;
+
+    if (flushPending_.exchange(false, std::memory_order_acq_rel)) ring_->discardAll();
 
     for (int p = 0; p < kPacketsPerTransfer; p++) {
         // Carry the fractional sample count across packets. At 44.1 kHz this is

@@ -56,6 +56,13 @@ public:
      */
     virtual void setDop(bool /*dop*/) {}
 
+    /**
+     * Drops audio buffered but not yet sent, with the stream left running.
+     * For a track change on a stream that must not be torn down. The caller
+     * has stopped writing. Sinks with nothing to preserve ignore it.
+     */
+    virtual void flush() {}
+
     virtual void setPaused(bool paused) = 0;
     virtual void setStalled(bool stalled) = 0;
     virtual void setSourceEnded(bool ended) = 0;

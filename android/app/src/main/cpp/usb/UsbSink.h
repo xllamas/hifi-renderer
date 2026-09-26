@@ -81,6 +81,7 @@ public:
         dop_.configure(channels_, bytesPerFrame_ / (channels_ > 0 ? channels_ : 1));
         dopOn_.store(dop, std::memory_order_release);
     }
+    void flush() override;
     void setPaused(bool paused) override { paused_.store(paused, std::memory_order_release); }
     bool paused() const { return paused_.load(std::memory_order_acquire); }
 
@@ -190,6 +191,9 @@ private:
     // DSD as DoP: every frame sent, decoded or idle, gets its marker from
     // one counter here. See DopFraming.
     std::atomic<bool> dopOn_{false};
+    // The consumer owns the ring's read index, so a flush is a request the
+    // transfer callback carries out.
+    std::atomic<bool> flushPending_{false};
     DopFraming dop_;
     std::atomic<bool> sourceEnded_{false};
     std::atomic<bool> stalled_{false};
