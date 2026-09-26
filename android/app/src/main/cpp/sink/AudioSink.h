@@ -49,6 +49,13 @@ public:
     virtual size_t ringSpace() const = 0;
     virtual size_t ringAvailable() const = 0;
 
+    /**
+     * The stream carries DSD as DoP. Called after configure, before start. A
+     * sink that can do something about it keeps the DoP markers unbroken
+     * through its own silence; the rest need not care.
+     */
+    virtual void setDop(bool /*dop*/) {}
+
     virtual void setPaused(bool paused) = 0;
     virtual void setStalled(bool stalled) = 0;
     virtual void setSourceEnded(bool ended) = 0;

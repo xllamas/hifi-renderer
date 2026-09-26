@@ -494,6 +494,7 @@ private:
             cfgBits_ = bits;
             cfgChannels_ = channels;
             cfgDsd_ = dsd != nullptr;
+            sink_->setDop(cfgDsd_);
         }
 
         const int subslot = sink_->deviceSubslot();

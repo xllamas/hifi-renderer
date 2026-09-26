@@ -293,6 +293,12 @@ bool UsbSink::setSampleRateUac1(uint32_t hz, std::string *error) {
     return true;
 }
 
+void UsbSink::silence(uint8_t *dst, size_t bytes) {
+    // PCM zeros would drop a DAC out of DSD mode, so DoP gets idle frames.
+    if (dopOn_.load(std::memory_order_acquire)) dop_.idle(dst, bytes);
+    else memset(dst, 0, bytes);
+}
+
 void UsbSink::fillTransfer(libusb_transfer *t) {
     const uint32_t q16 = samplesPerFrameQ16_.load(std::memory_order_relaxed);
     const double perPacket = q16 / 65536.0;
@@ -316,17 +322,18 @@ void UsbSink::fillTransfer(libusb_transfer *t) {
         // an underrun -- counting it as one would bury real faults in noise.
         if (paused_.load(std::memory_order_acquire) ||
             stalled_.load(std::memory_order_acquire)) {
-            memset(buf + offset, 0, static_cast<size_t>(want));
+            silence(buf + offset, static_cast<size_t>(want));
             t->iso_packet_desc[p].length = static_cast<unsigned int>(want);
             offset += want;
             continue;
         }
 
         size_t got = ring_->read(buf + offset, static_cast<size_t>(want));
+        if (dopOn_.load(std::memory_order_acquire)) dop_.restamp(buf + offset, got);
         if (got < static_cast<size_t>(want)) {
             // Underrun: emit silence rather than a short packet. A short packet
             // would slew the DAC's clock recovery; silence merely costs a gap.
-            memset(buf + offset + got, 0, static_cast<size_t>(want) - got);
+            silence(buf + offset + got, static_cast<size_t>(want) - got);
             // Not a fault once the source has ended: there is nothing left to
             // starve on, and counting it would swamp real dropouts.
             if (!sourceEnded_.load(std::memory_order_acquire)) {

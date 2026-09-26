@@ -24,11 +24,18 @@ ${CXX:-c++} -std=c++17 -Wall -Wextra \
 
 ${CXX:-c++} -std=c++17 -Wall -Wextra \
     -I "$cpp" -I "$here/shim" \
+    -o "$out/dop_framing_test" \
+    "$here/dop_framing_test.cpp"
+
+${CXX:-c++} -std=c++17 -Wall -Wextra \
+    -I "$cpp" -I "$here/shim" \
     -o "$out/tone_source_test" \
     "$here/tone_source_test.cpp" "$cpp/ToneSource.cpp"
 
 "$out/pcm_decoder_test"
 echo
 "$out/dsd_decoder_test"
+echo
+"$out/dop_framing_test"
 echo
 "$out/tone_source_test"

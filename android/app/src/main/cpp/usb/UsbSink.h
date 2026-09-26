@@ -8,6 +8,7 @@
 
 #include "../RingBuffer.h"
 #include "../sink/AudioSink.h"
+#include "DopFraming.h"
 #include "UacCapabilities.h"
 
 struct libusb_context;
@@ -76,6 +77,10 @@ public:
      * isochronous stream open also avoids re-negotiating the alt-setting on
      * resume, which the DAC would render as a click.
      */
+    void setDop(bool dop) override {
+        dop_.configure(channels_, bytesPerFrame_ / (channels_ > 0 ? channels_ : 1));
+        dopOn_.store(dop, std::memory_order_release);
+    }
     void setPaused(bool paused) override { paused_.store(paused, std::memory_order_release); }
     bool paused() const { return paused_.load(std::memory_order_acquire); }
 
@@ -148,6 +153,7 @@ private:
     void checkVolumeReadback(int16_t written);
     bool volumeValueSane(int16_t raw) const;
     bool setSampleRateUac1(uint32_t hz, std::string *error);
+    void silence(uint8_t *dst, size_t bytes);
     void eventLoop();
     void monitorLoop();
 
@@ -181,6 +187,10 @@ private:
 
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};
+    // DSD as DoP: every frame sent, decoded or idle, gets its marker from
+    // one counter here. See DopFraming.
+    std::atomic<bool> dopOn_{false};
+    DopFraming dop_;
     std::atomic<bool> sourceEnded_{false};
     std::atomic<bool> stalled_{false};
     // Raw device units (1/256 dB). 0x8000 means "silence" in the spec.
