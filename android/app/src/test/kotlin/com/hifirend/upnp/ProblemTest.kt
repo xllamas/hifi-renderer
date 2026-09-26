@@ -143,4 +143,23 @@ class ProblemTest {
             assertEquals("$hz", null, Problem.forAnnouncedRate(hz, al400))
         }
     }
+
+    @Test
+    fun `DSD is not judged by its announced rate, which servers state three ways`() {
+        // DSD256 announced as its bit rate divided by eight would look like
+        // 1.4112 MHz, past every DAC, though its DoP rate is 705.6 kHz.
+        for (hz in listOf(2822400, 352800, 176400, 1411200, 11289600)) {
+            for (mime in listOf("audio/x-dsf", "audio/x-dff", "audio/x-dsd", "audio/dsd")) {
+                assertEquals("$hz $mime", null, Problem.forAnnouncedRate(hz, al400, mime))
+                assertEquals("$hz $mime", null,
+                    Problem.forAnnouncedRate(hz, listOf(44100, 48000), mime))
+            }
+        }
+    }
+
+    @Test
+    fun `the same rate is still refused for PCM`() {
+        assertEquals(Problem.RATE_UNPLAYABLE,
+            Problem.forAnnouncedRate(1411200, al400, "audio/flac")!!.code)
+    }
 }

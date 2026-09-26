@@ -65,7 +65,7 @@ considering later; not in scope now.
    be padded into a 24- or 32-bit subslot. Zero-padding preserves sample values
    exactly, so this stays bit-perfect — but it is a required conversion, not optional.
 3. Set the rate with `SET_CUR` on clock entity **41** (host-programmable per `bmControls`).
-4. Pick alt 2 for 24-bit, alt 1 for 32-bit; alt 3 is DSD and stays deferred.
+4. Pick alt 2 for 24-bit, alt 1 for 32-bit. Alt 3 (native DSD) stays refused on principle; DSD plays as DoP over an ordinary PCM alt-setting instead -- see `dsd-implementation.md`.
 5. Capability ceiling is far above the plan's assumption: **768 kHz**, both the 44.1
    and 48 kHz families.
 

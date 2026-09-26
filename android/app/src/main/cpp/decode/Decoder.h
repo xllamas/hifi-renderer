@@ -35,7 +35,7 @@ protected:
     int bits_ = 0;
 };
 
-enum class SourceFormat { Flac, Mp3, Pcm, Unknown };
+enum class SourceFormat { Flac, Mp3, Pcm, Dsd, Unknown };
 
 /**
  * Chooses a decoder from the MIME type the controller or server reported.

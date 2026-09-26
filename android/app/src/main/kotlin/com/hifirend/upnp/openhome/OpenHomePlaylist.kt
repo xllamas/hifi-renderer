@@ -346,7 +346,7 @@ class OpenHomePlaylist(
         if (explicit) clearFailureRun()
         list.setCurrent(track.id, anchorShuffle = explicit)
         publishTrack()
-        unplayableRate(track.track.sampleFrequency)?.let { why ->
+        unplayableRate(track.track.sampleFrequency, track.track.mimeType)?.let { why ->
             Log.i(TAG, "OH refusing before fetch: $why")
             skipAfterFailure(why)
             return
@@ -388,7 +388,7 @@ class OpenHomePlaylist(
      */
     fun onSourceExhausted(): Boolean {
         val n = list.next() ?: return false
-        if (unplayableRate(n.track.sampleFrequency) != null) return false
+        if (unplayableRate(n.track.sampleFrequency, n.track.mimeType) != null) return false
         val previousId = list.currentId
         list.setCurrent(n.id)
         val result = playback?.playGapless(n.uri, n.track.mimeType)
@@ -482,8 +482,8 @@ class OpenHomePlaylist(
         }
     }
 
-    private fun unplayableRate(announced: Int): Problem.Described? =
-        Problem.forAnnouncedRate(announced, RendererState.dacRates)
+    private fun unplayableRate(announced: Int, mime: String?): Problem.Described? =
+        Problem.forAnnouncedRate(announced, RendererState.dacRates, mime)
 
     private fun khz(hz: Int): String {
         val k = hz / 1000.0

@@ -248,7 +248,7 @@ class RendererAvTransport(
     fun onSourceExhausted(): Boolean {
         val next = queue.advance() ?: return false
         Log.i(TAG, "gapless advance to ${next.uri}")
-        unplayableRate(next.track.sampleFrequency)?.let { why ->
+        unplayableRate(next.track.sampleFrequency, next.track.mimeType)?.let { why ->
             // Refusing mid-handover would leave the tail playing with no way
             // to report it, so let the tail finish and fail the normal way.
             Log.i(TAG, "next track cannot play ($why); not handing over")
@@ -272,7 +272,7 @@ class RendererAvTransport(
             // The same refusal as an explicit Play. A playlist reaching a
             // track the DAC cannot clock should say so, not fetch megabytes of
             // it first, and not look like the renderer simply stopped.
-            unplayableRate(next.track.sampleFrequency)?.let { why ->
+            unplayableRate(next.track.sampleFrequency, next.track.mimeType)?.let { why ->
                 Log.i(TAG, "auto-advance refused before fetch: $why")
                 com.hifirend.RendererState.report(why)
                 playback?.stop()
@@ -326,7 +326,8 @@ class RendererAvTransport(
         // server's own claim rather than a measurement, so it is only acted on
         // when it is present and unambiguous; the decoder stays the authority
         // for everything else.
-        unplayableRate(queue.current?.track?.sampleFrequency ?: 0)?.let { why ->
+        unplayableRate(queue.current?.track?.sampleFrequency ?: 0,
+                       queue.current?.track?.mimeType)?.let { why ->
             Log.i(TAG, "refusing before fetch: $why")
             com.hifirend.RendererState.report(why)
             transportState = TransportState.STOPPED
@@ -354,8 +355,8 @@ class RendererAvTransport(
      * A plain-language reason the announced track cannot play, or null when
      * there is no reason to think it cannot.
      */
-    private fun unplayableRate(announced: Int): Problem.Described? =
-        Problem.forAnnouncedRate(announced, com.hifirend.RendererState.dacRates)
+    private fun unplayableRate(announced: Int, mime: String?): Problem.Described? =
+        Problem.forAnnouncedRate(announced, com.hifirend.RendererState.dacRates, mime)
 
     private fun khz(hz: Int): String {
         val k = hz / 1000.0

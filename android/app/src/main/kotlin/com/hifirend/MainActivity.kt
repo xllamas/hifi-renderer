@@ -363,6 +363,7 @@ class MainActivity : FlutterActivity() {
             "mp3" -> "audio/mpeg"
             "wav", "wave" -> "audio/wav"
             "aif", "aiff", "aifc" -> "audio/aiff"
+            "dsf", "dff" -> "audio/x-dsd"
             "m4a", "mp4" -> "audio/mp4"
             "aac" -> "audio/aac"
             "ogg", "oga" -> "audio/ogg"

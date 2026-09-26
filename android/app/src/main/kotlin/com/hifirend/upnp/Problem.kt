@@ -93,6 +93,20 @@ object Problem {
     }
 
     /**
+     * Whether [mime] names DSD, whose announced rate says nothing dependable.
+     *
+     * Servers state it three ways: the DSD bit rate (2 822 400 for DSD64), that
+     * divided by eight (352 800, which is what one server here sends), or the
+     * DoP rate the DAC is clocked at (176 400). Only the last is comparable
+     * with the DAC's rates, so the announcement is not acted on and the
+     * decoder's read of the file header decides.
+     */
+    fun isDsd(mime: String?): Boolean {
+        val m = mime?.lowercase() ?: return false
+        return m.contains("dsd") || m.contains("dsf") || m.contains("dff")
+    }
+
+    /**
      * Why a track announced at [announcedHz] cannot play on a DAC offering
      * [dacRates], or null when there is no reason to think it cannot.
      *
@@ -100,7 +114,8 @@ object Problem {
      * only acted on when it is plausible; anything else is left to the
      * decoder, which reads the rate from the stream itself.
      */
-    fun forAnnouncedRate(announcedHz: Int, dacRates: List<Int>): Described? {
+    fun forAnnouncedRate(announcedHz: Int, dacRates: List<Int>, mime: String? = null): Described? {
+        if (isDsd(mime)) return null   // see isDsd
         if (dacRates.isEmpty() || announcedHz <= 0) return null   // nothing to go on
         if (dacRates.contains(announcedHz)) return null
         if (!isRealRate(announcedHz)) {

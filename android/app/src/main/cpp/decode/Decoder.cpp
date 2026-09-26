@@ -14,6 +14,11 @@ SourceFormat formatFromMime(const std::string &mimeRaw) {
     mime.reserve(mimeRaw.size());
     for (char c : mimeRaw) mime += static_cast<char>(std::tolower(c));
 
+    // DSF and DFF, played as DoP. "dsd" also catches audio/dsd and the
+    // x-dsf / x-dff spellings some servers use.
+    if (contains(mime, "dsd") || contains(mime, "dsf") || contains(mime, "dff")) {
+        return SourceFormat::Dsd;
+    }
     if (contains(mime, "flac")) return SourceFormat::Flac;
     if (contains(mime, "mpeg") || contains(mime, "mp3")) return SourceFormat::Mp3;
     // L16 and L24 are headerless PCM; WAV and AIFF are PCM behind a chunk
@@ -32,6 +37,7 @@ const char *formatName(SourceFormat f) {
         case SourceFormat::Flac: return "FLAC";
         case SourceFormat::Mp3:  return "MP3";
         case SourceFormat::Pcm:  return "PCM";
+        case SourceFormat::Dsd:  return "DSD";
         default:                 return "unknown";
     }
 }

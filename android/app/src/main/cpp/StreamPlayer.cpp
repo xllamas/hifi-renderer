@@ -25,6 +25,7 @@
 
 #include "NetworkStream.h"
 #include "decode/Decoder.h"
+#include "decode/DsdDecoder.h"
 #include "decode/FlacDecoder.h"
 #include "decode/Mp3Decoder.h"
 #include "decode/PcmDecoder.h"
@@ -373,6 +374,8 @@ private:
         cfgRate_ = 0;
         cfgBits_ = 0;
         cfgChannels_ = 0;
+        cfgDsd_ = false;
+        dopPhase_ = 0;
         pcmMode_ = false;
         pcmStarted_ = false;
     }
@@ -388,7 +391,17 @@ private:
         // hi-fi source almost always is, then MP3.
         std::unique_ptr<Decoder> decoder;
         std::string err;
-        if (format_ == SourceFormat::Pcm) {
+        DsdDecoder *dsd = nullptr;
+        if (format_ == SourceFormat::Dsd) {
+            // DSD is packed as DoP, whose marker has to alternate unbroken
+            // into a track that follows without a gap; the phase is carried
+            // from the last one. A stream that does not continue starts on
+            // whichever marker it likes, so a stale phase costs nothing.
+            auto d = std::make_unique<DsdDecoder>(dopPhase_);
+            dsd = d.get();
+            decoder = std::move(d);
+            if (!decoder->open(stream_.get(), &err)) decoder.reset();
+        } else if (format_ == SourceFormat::Pcm) {
             // Raw PCM announces nothing: for L16 and L24 the rate and channel
             // count are in the MIME type and nowhere else, which is why the
             // type is handed to the decoder rather than only classified by it.
@@ -437,8 +450,14 @@ private:
         // rate or depth has to be negotiated with the hardware, and the sink
         // cannot be reconfigured underneath a running stream -- which is why
         // gapless is possible within an album and not across a rate change.
+        //
+        // DSD and PCM of the same shape do not count as the same: the DAC is
+        // in one mode or the other, and DoP data read as PCM is loud noise
+        // until it has locked on -- or, the other way, PCM into a DAC that
+        // is still listening for markers.
         const bool continuing = sinkStarted_ && cfgRate_ == rate &&
-                                cfgBits_ == bits && cfgChannels_ == channels;
+                                cfgBits_ == bits && cfgChannels_ == channels &&
+                                cfgDsd_ == (dsd != nullptr);
 
         if (continuing) {
             // The tail of the previous track is still in the ring; these
@@ -474,6 +493,7 @@ private:
             cfgRate_ = rate;
             cfgBits_ = bits;
             cfgChannels_ = channels;
+            cfgDsd_ = dsd != nullptr;
         }
 
         const int subslot = sink_->deviceSubslot();
@@ -488,6 +508,7 @@ private:
             uint64_t got = decoder->read(pcm.data(), kChunk);
             if (got == 0) return false;
             framesDecoded_.fetch_add(got, std::memory_order_relaxed);
+            if (dsd) dopPhase_ = dsd->markerPhase();
             const size_t samples = static_cast<size_t>(got) * channels;
             uint8_t *out = wire.data();
             for (size_t i = 0; i < samples; i++) {
@@ -618,6 +639,9 @@ private:
     uint32_t cfgRate_ = 0;
     int cfgBits_ = 0;
     int cfgChannels_ = 0;
+    bool cfgDsd_ = false;
+    /** Which DoP marker the next DSD frame carries; see decodeLoop. */
+    int dopPhase_ = 0;
     bool sinkStarted_ = false;
     int lastFd_ = -1;
     std::atomic<uint32_t> positionBase_{0};

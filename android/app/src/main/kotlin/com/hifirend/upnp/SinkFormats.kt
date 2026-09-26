@@ -38,6 +38,20 @@ object SinkFormats {
     )
 
     /**
+     * DSD files, played as DoP -- 24-bit PCM at a sixteenth of the DSD rate.
+     * Servers disagree on the name, so all three common ones are offered.
+     */
+    private val DSD = listOf("audio/x-dsd", "audio/x-dsf", "audio/x-dff")
+
+    /**
+     * Whether a DAC clocking [rates] can carry DSD64, the slowest DSD, which
+     * arrives as DoP at 176.4 kHz. Not a property of the decoder: on a DAC
+     * that stops at 96 kHz a DSD file is unplayable, and offering it would
+     * only have the server send it and the track fail after the fetch.
+     */
+    fun canCarryDop(rates: List<Int>) = rates.any { it >= 176400 }
+
+    /**
      * [caps] is the probe's capability JSON, or null when the DAC has not been
      * read (no device, or no permission yet) -- in which case the full list is
      * advertised, because refusing to name a format we can decode would leave
@@ -62,6 +76,9 @@ object SinkFormats {
 
         if (allowNativeFormats) {
             entries += NATIVE
+            // Unlike the rest, gated on the DAC: with none read, or one that
+            // cannot clock 176.4 kHz, there is nothing DoP could reach.
+            if (canCarryDop(rates)) entries += DSD
         }
 
         // LPCM, qualified by rate. L16 is 16-bit and L24 is 24-bit by

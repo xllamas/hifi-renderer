@@ -339,7 +339,7 @@ void main() {
           switch (call.method) {
             'listTestFiles' => '',
             'pickAudioFile' =>
-              '{"uri":"content://x/2","name":"x.dsf","mime":"audio/dsd"}',
+              '{"uri":"content://x/2","name":"x.ogg","mime":"audio/ogg"}',
             'playFile' =>
               '{"ok":false,"message":"Stop playback before testing a file."}',
             _ => null,

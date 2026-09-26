@@ -12,6 +12,7 @@ add_library(hifirend SHARED
     StreamPlayer.cpp
     ToneSource.cpp
     decode/Decoder.cpp
+    decode/DsdDecoder.cpp
     decode/FlacDecoder.cpp
     decode/Mp3Decoder.cpp
     decode/PcmDecoder.cpp
