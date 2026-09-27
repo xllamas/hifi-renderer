@@ -184,6 +184,12 @@ class HttpStreamPlayback(private val context: Context) {
         if (len <= 0 || dur <= 0) {
             return """{"ok":false,"message":"Cannot seek: track length unknown."}"""
         }
+        // Said before the header fetch, and in its own words: a DSD file has no
+        // FLAC header to be missing, and it cannot be entered mid-file at all --
+        // DSF and DFF both put the format in a header that a byte range skips.
+        if (com.hifirend.upnp.Problem.isDsd(lastKnownMime)) {
+            return """{"ok":false,"message":"Cannot seek: seeking within DSD files is not supported."}"""
+        }
         val header = ensureHeader(uri)
             ?: return """{"ok":false,"message":"Cannot seek: this stream has no readable FLAC header."}"""
 
