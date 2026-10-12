@@ -41,6 +41,9 @@ private const val TAG = "hifirend"
     UpnpStateVariable(name = "IdArray", datatype = "bin.base64", sendEvents = true),
     UpnpStateVariable(name = "TracksMax", datatype = "ui4", sendEvents = true),
     UpnpStateVariable(name = "ProtocolInfo", datatype = "string", sendEvents = true),
+    // Vendor extension (X_ prefix, which OpenHome controllers ignore): stop at the end of the
+    // track that is playing now. Evented so a controller that connects later sees it armed.
+    UpnpStateVariable(name = "X_StopAfterCurrent", datatype = "boolean", sendEvents = true),
     // Argument-only variables. UPnP requires every action argument to name a
     // related state variable even when nothing ever subscribes to it, so these
     // exist purely to satisfy the description; sendEvents = false keeps them
@@ -119,6 +122,7 @@ class OpenHomePlaylist(
     fun stopAction() {
         Log.i(TAG, "OH.Playlist.Stop")
         clearFailureRun()
+        setStopAfter(false)
         playback?.stop()
         setTransportState("Stopped")
     }
@@ -257,6 +261,7 @@ class OpenHomePlaylist(
     @UpnpAction(name = "DeleteAll")
     fun deleteAll() {
         Log.i(TAG, "OH.Playlist.DeleteAll")
+        setStopAfter(false)
         list.deleteAll()
         clearFailureRun()
         playback?.stop()
@@ -331,6 +336,32 @@ class OpenHomePlaylist(
     @UpnpAction(name = "Shuffle", out = [UpnpOutputArgument(name = "Value", stateVariable = "Shuffle")])
     fun getShuffle(): Boolean = list.shuffle
 
+    /**
+     * Stop after the track playing now ("pause at the end of this track").
+     *
+     * When that track ends the playlist moves on to the next one but does not start it, so Play
+     * carries on from there; nothing is lost and nothing is repeated. The flag belongs to the
+     * track that is playing: it is cleared once used, and by anything that starts, skips,
+     * stops or empties the playlist, so a stale flag never stops a later track by surprise.
+     * Controllers set it *after* choosing what to play.
+     */
+    @UpnpAction(name = "X_SetStopAfterCurrent")
+    fun setStopAfterCurrent(@UpnpInputArgument(name = "Value", stateVariable = "X_StopAfterCurrent") value: Boolean?) {
+        setStopAfter(value ?: false)
+    }
+
+    @UpnpAction(name = "X_StopAfterCurrent", out = [UpnpOutputArgument(name = "Value", stateVariable = "X_StopAfterCurrent")])
+    fun getX_StopAfterCurrent(): Boolean = stopAfterArmed
+
+    @Volatile
+    private var stopAfterArmed: Boolean = false
+
+    private fun setStopAfter(armed: Boolean) {
+        if (stopAfterArmed == armed) return
+        stopAfterArmed = armed
+        fire("X_StopAfterCurrent", armed)
+    }
+
     // ---- Engine-driven transitions ----------------------------------------
 
     /**
@@ -344,6 +375,7 @@ class OpenHomePlaylist(
         // Someone asking for a track by hand is a fresh start: they have seen
         // whatever went wrong and are telling us to go again.
         if (explicit) clearFailureRun()
+        setStopAfter(false)
         list.setCurrent(track.id, anchorShuffle = explicit)
         publishTrack()
         unplayableRate(track.track.sampleFrequency, track.track.mimeType)?.let { why ->
@@ -371,6 +403,18 @@ class OpenHomePlaylist(
         // are meant to catch a dead source, not to accumulate over an evening.
         consecutiveFailures = 0
         val n = list.next()
+        if (stopAfterArmed) {
+            setStopAfter(false)
+            if (n != null) {
+                // Park on the next track without starting it, so Play resumes there.
+                list.setCurrent(n.id)
+                publishTrack()
+                playback?.stop()
+                Log.i(TAG, "OH stopped after the requested track; next is ${n.uri}")
+                setTransportState("Stopped")
+                return
+            }
+        }
         if (n == null) {
             Log.i(TAG, "OH playlist exhausted; stopping")
             playback?.stop()
@@ -387,6 +431,9 @@ class OpenHomePlaylist(
      * false means "could not", and the normal end-of-track path then runs.
      */
     fun onSourceExhausted(): Boolean {
+        // A requested stop must not be bridged by a gapless hand-over; the normal
+        // end-of-track path (onTrackFinished) applies it.
+        if (stopAfterArmed) return false
         val n = list.next() ?: return false
         if (unplayableRate(n.track.sampleFrequency, n.track.mimeType) != null) return false
         val previousId = list.currentId

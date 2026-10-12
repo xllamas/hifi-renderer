@@ -488,7 +488,7 @@ class HttpStreamPlayback(private val context: Context) {
             if (code !in 200..299) {
                 Log.e(TAG, "stream: HTTP $code for $attempting")
                 noteFetchFailure(mine, "the server answered HTTP $code for this track")
-                NativeBridge.endStream()
+                if (generation == mine) NativeBridge.endStream()
                 return
             }
             // A ranged request answers 206 with only the remaining length, so
@@ -518,7 +518,7 @@ class HttpStreamPlayback(private val context: Context) {
 
             // Give the decoder the real header first so STREAMINFO is known,
             // then the ranged audio. dr_flac resynchronises to the next frame.
-            if (header != null) {
+            if (header != null && generation == mine) {
                 NativeBridge.pushStreamData(header, header.size)
                 Log.i(TAG, "stream: prepended ${header.size}-byte FLAC header")
             }
@@ -565,7 +565,9 @@ class HttpStreamPlayback(private val context: Context) {
         } finally {
             runCatching { stream?.close() }
             runCatching { conn?.disconnect() }
-            NativeBridge.endStream()
+            // Only the fetch that still owns the stream may end it. A late one would
+            // end the *next* track's stream before its first byte arrived.
+            if (generation == mine) NativeBridge.endStream()
         }
     }
 
@@ -811,6 +813,13 @@ class HttpStreamPlayback(private val context: Context) {
     }
 
     fun stop() {
+        // Everything started before this point -- the fetch thread, the watcher -- now
+        // belongs to a stream that no longer exists. Without a new generation here a
+        // fetch that was mid-read when the next track started (every seek, every
+        // jump to another track) kept feeding the old file's bytes into the new
+        // stream, or ended it before it began; the decoder then reported
+        // "not a decodable FLAC stream" for a perfectly good file.
+        generation++
         fetching.set(false)
         aac.stop()
         NativeBridge.stopStream()
