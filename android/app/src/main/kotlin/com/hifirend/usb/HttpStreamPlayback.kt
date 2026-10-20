@@ -387,7 +387,7 @@ class HttpStreamPlayback(private val context: Context) {
             // MediaCodec fetches the URL itself, so the HTTP pipe is unused here.
             currentUri = uri
             var failure: String? = null
-            val ok = aac.start(uri, fd, seekSeconds) { failure = it }
+            val ok = aac.start(uri, fd, seekSeconds, gapless) { failure = it }
             if (!ok) {
                 stop()
                 return """{"ok":false,"message":"${(failure ?: "platform decoder failed").replace("\"", "\\\"")}"}"""

@@ -24,11 +24,20 @@ private const val TAG = "hifirend"
  */
 class AacDecoder {
 
-    private val running = AtomicBoolean(false)
+    // One flag per decode thread. A single shared flag let a new track's start
+    // switch the previous thread back on, or leave it waiting on a flag nobody
+    // would ever clear.
+    private var running = AtomicBoolean(false)
     private var thread: Thread? = null
 
-    fun start(uri: String, fd: Int, seekSeconds: Int, onFailure: (String) -> Unit): Boolean {
-        stop()
+    /**
+     * @param gapless the previous track is still draining in the engine and
+     *        this one is appended behind it. The old decoder is released by the
+     *        engine when the new stream takes over, so it is not stopped first.
+     */
+    fun start(uri: String, fd: Int, seekSeconds: Int, gapless: Boolean = false,
+              onFailure: (String) -> Unit): Boolean {
+        if (!gapless) stop()
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(uri, mapOf("User-Agent" to "HiFiRenderer/1.0 DLNADOC/1.50"))
@@ -60,27 +69,37 @@ class AacDecoder {
         // MediaCodec is a decoder, not the mixer: this is the file's own audio
         // at the file's own rate, so the path stays eligible for bit-perfect.
         val started = NativeBridge.startPcmStream(fd, rate, channels, seekSeconds,
-            senderAltered = false)
+            senderAltered = false, gapless = gapless)
         if (!started.contains("\"ok\":true")) {
             extractor.release()
             onFailure(started)
             return false
         }
 
+        // The engine has now taken the stream over, which is what releases the
+        // previous decoder from its wait for the tail to drain.
+        val previous = thread
+        val previousFlag = running
+        previousFlag.set(false)
+        previous?.join(1500)
+        if (previous?.isAlive == true) Log.w(TAG, "aac: previous decoder did not exit in time")
+        val flag = AtomicBoolean(true)
+        running = flag
+
         extractor.selectTrack(track)
         if (seekSeconds > 0) {
             extractor.seekTo(seekSeconds * 1_000_000L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
         }
 
-        running.set(true)
-        thread = Thread({ decodeLoop(extractor, format, mime) }, "aac-decode").apply {
+        thread = Thread({ decodeLoop(extractor, format, mime, flag) }, "aac-decode").apply {
             isDaemon = true
             start()
         }
         return true
     }
 
-    private fun decodeLoop(extractor: MediaExtractor, format: MediaFormat, mime: String) {
+    private fun decodeLoop(extractor: MediaExtractor, format: MediaFormat, mime: String,
+                           running: AtomicBoolean) {
         var codec: MediaCodec? = null
         try {
             codec = MediaCodec.createDecoderByType(mime).apply {
@@ -117,13 +136,17 @@ class AacDecoder {
                         out.get(bytes, 0, info.size)
                         // Blocks while the ring is full, which is the
                         // backpressure keeping memory bounded.
-                        if (!NativeBridge.pushPcm(bytes, bytes.size)) break
+                        if (!NativeBridge.pushPcm(bytes, bytes.size)) {
+                            Log.w(TAG, "aac: engine refused PCM; ending decode")
+                            break
+                        }
                     }
                     codec.releaseOutputBuffer(outIndex, false)
                     if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
                 }
             }
             if (running.get()) NativeBridge.pcmEndOfStream()
+            else Log.i(TAG, "aac: decoder stopped before the end of the track")
         } catch (e: Throwable) {
             Log.e(TAG, "aac: decode failed: ${e::class.java.simpleName}: ${e.message}")
         } finally {
@@ -136,6 +159,9 @@ class AacDecoder {
 
     fun stop() {
         running.set(false)
+        // A decoder waiting for the tail to drain is waiting on the engine, not
+        // on this flag; stopping the engine is what lets it return.
+        NativeBridge.stopStream()
         thread?.join(1500)
         thread = null
     }

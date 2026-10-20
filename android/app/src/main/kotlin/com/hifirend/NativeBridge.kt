@@ -43,7 +43,7 @@ object NativeBridge {
     private external fun nativeGetDacVolume(): Int
     private external fun nativeSetDacVolume(percent: Int): Boolean
     private external fun nativeForgetVolumeLearning()
-    private external fun nativeStartPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int, senderAltered: Boolean): String
+    private external fun nativeStartPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int, senderAltered: Boolean, gapless: Boolean): String
     private external fun nativePushPcm(data: ByteArray, len: Int): Boolean
     private external fun nativePcmEndOfStream()
     private external fun nativeAlacConfigure(
@@ -136,9 +136,9 @@ object NativeBridge {
      * inheriting a bit-perfect claim nobody had made on its behalf.
      */
     fun startPcmStream(fd: Int, rate: Int, channels: Int, seekSeconds: Int,
-                       senderAltered: Boolean): String =
+                       senderAltered: Boolean, gapless: Boolean = false): String =
         loadError?.let { """{"ok":false,"message":"native library failed to load"}""" }
-            ?: nativeStartPcmStream(fd, rate, channels, seekSeconds, senderAltered)
+            ?: nativeStartPcmStream(fd, rate, channels, seekSeconds, senderAltered, gapless)
 
     fun pushPcm(data: ByteArray, len: Int): Boolean =
         if (isLoaded) nativePushPcm(data, len) else false

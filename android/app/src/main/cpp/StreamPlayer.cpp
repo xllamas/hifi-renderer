@@ -132,8 +132,35 @@ public:
      * the caller knows which is which.
      */
     std::string startPcm(int fd, uint32_t rate, int channels, int seekSeconds,
-                         bool senderAltered) {
+                         bool senderAltered, bool gapless = false) {
         std::lock_guard<std::mutex> lock(mutex_);
+
+        // A gapless change of PCM track keeps the running sink and its ring:
+        // the previous track's tail is still in there. Tearing it down here
+        // is what cut the tail off and reconfigured a sink the old decoder
+        // was still using. Bumping the generation is what releases that
+        // decoder from pcmEndOfStream's wait.
+        const bool keepSink = gapless && sink_ && pcmMode_ && pcmStarted_ &&
+                              rate_.load() == rate && pcmChannels_ == channels;
+        if (keepSink) {
+            pcmGeneration_.fetch_add(1);
+            senderAltered_ = senderAltered;
+            positionBase_.store(seekSeconds);
+            framesDecoded_.store(0);
+            finished_.store(false);
+            readyForNext_.store(false);
+            error_.clear();
+            sink_->setSourceEnded(false);
+            sink_->setPaused(false);
+            running_.store(true);
+            LOGI("gapless: continuing into the running PCM stream (%u Hz, %dch)",
+                 rate, channels);
+            return "{\"ok\":true}";
+        }
+        if (gapless) {
+            LOGI("gapless: PCM stream cannot continue (%s); restarting",
+                 sink_ ? "format changed" : "no running stream");
+        }
         stopLocked();
 
         std::string err;
@@ -153,6 +180,7 @@ public:
         sourceChannels_ = channels;
         format_ = SourceFormat::Pcm;
         pcmStarted_ = false;
+        readyForNext_.store(false);
         positionBase_.store(seekSeconds);
         framesDecoded_.store(0);
         rate_.store(rate);
@@ -164,31 +192,50 @@ public:
         return "{\"ok\":true}";
     }
 
-    /** 16-bit little-endian interleaved PCM from the platform decoder. */
+    /**
+     * 16-bit little-endian interleaved PCM from the platform decoder.
+     *
+     * The mutex is taken per write attempt and never held across a sleep: a
+     * full ring is normal backpressure, and holding the lock through it
+     * stalled every other call into the engine, status polls included.
+     */
     bool pushPcm(const uint8_t *data, size_t n) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!sink_ || !running_.load()) return false;
-
-        const int subslot = sink_->deviceSubslot();
-        const int shiftDown = 32 - (subslot * 8);
-        const size_t samples = n / 2;
-        pcmScratch_.resize(samples * subslot);
-        uint8_t *out = pcmScratch_.data();
-        for (size_t i = 0; i < samples; i++) {
-            const int16_t s16 = static_cast<int16_t>(data[i * 2] | (data[i * 2 + 1] << 8));
-            const uint32_t v = (static_cast<uint32_t>(static_cast<int32_t>(s16) << 16)) >> shiftDown;
-            for (int b = 0; b < subslot; b++) {
-                *out++ = static_cast<uint8_t>((v >> (8 * b)) & 0xFF);
+        int subslot;
+        uint64_t generation;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!sink_ || !running_.load()) return false;
+            generation = pcmGeneration_.load();
+            subslot = sink_->deviceSubslot();
+            const int shiftDown = 32 - (subslot * 8);
+            const size_t samples = n / 2;
+            pcmScratch_.resize(samples * subslot);
+            uint8_t *out = pcmScratch_.data();
+            for (size_t i = 0; i < samples; i++) {
+                const int16_t s16 = static_cast<int16_t>(data[i * 2] | (data[i * 2 + 1] << 8));
+                const uint32_t v = (static_cast<uint32_t>(static_cast<int32_t>(s16) << 16)) >> shiftDown;
+                for (int b = 0; b < subslot; b++) {
+                    *out++ = static_cast<uint8_t>((v >> (8 * b)) & 0xFF);
+                }
             }
+            framesDecoded_.fetch_add(samples / std::max(pcmChannels_, 1), std::memory_order_relaxed);
         }
-        framesDecoded_.fetch_add(samples / std::max(pcmChannels_, 1), std::memory_order_relaxed);
 
-        size_t toWrite = pcmScratch_.size(), written = 0;
-        while (written < toWrite && running_.load()) {
-            written += sink_->write(pcmScratch_.data() + written, toWrite - written);
+        size_t written = 0;
+        const size_t toWrite = pcmScratch_.size();
+        while (written < toWrite) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (!sink_ || !running_.load() || pcmGeneration_.load() != generation) {
+                    return false;
+                }
+                written += sink_->write(pcmScratch_.data() + written, toWrite - written);
+            }
             if (written < toWrite) usleep(1000);
         }
 
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!sink_ || pcmGeneration_.load() != generation) return false;
         // Same pre-roll rule as every other path: fill before opening the
         // stream, or the track starts with a burst of silence.
         if (!pcmStarted_ && sink_->ringAvailable() >= sink_->ringSpace()) {
@@ -206,31 +253,47 @@ public:
         return true;
     }
 
-    /** MediaCodec reached the end of the track. */
+    /**
+     * MediaCodec reached the end of the track.
+     *
+     * Waits for the tail to drain, but not under the lock: this used to hold
+     * the mutex for the whole drain, so every action that touched the engine
+     * (and the next track's startPcm) queued behind it, and the UPnP layer
+     * timed out on the lock the stuck action was holding. A newer generation
+     * means another track took over the stream, and this one must leave it
+     * alone.
+     */
     void pcmEndOfStream() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!sink_) return;
-        if (!pcmStarted_) {   // very short track: never hit the pre-roll mark
-            std::string err;
-            if (sink_->start(&err)) pcmStarted_ = true;
+        uint64_t generation;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!sink_) return;
+            generation = pcmGeneration_.load();
+            if (!pcmStarted_) {   // very short track: never hit the pre-roll mark
+                std::string err;
+                if (sink_->start(&err)) pcmStarted_ = true;
+            }
+            sink_->setSourceEnded(true);
+
+            // Announce it here, not after the drain. The ring still holds a second
+            // or so of audio, and that is exactly the budget the next track has to
+            // be fetched, opened and decoded into the same ring behind this one.
+            // Waiting until the ring is empty -- which is what "finished" means --
+            // spends that budget on silence before anyone is even told.
+            readyForNext_.store(true, std::memory_order_release);
         }
-        sink_->setSourceEnded(true);
 
-        // Announce it here, not after the drain. The ring still holds a second
-        // or so of audio, and that is exactly the budget the next track has to
-        // be fetched, opened and decoded into the same ring behind this one.
-        // Waiting until the ring is empty -- which is what "finished" means --
-        // spends that budget on silence before anyone is even told.
-        readyForNext_.store(true, std::memory_order_release);
-
-        while (running_.load() && !handover_.load() && sink_->ringAvailable() > 0) {
+        for (;;) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (!sink_ || pcmGeneration_.load() != generation) return;
+                if (!running_.load() || sink_->ringAvailable() == 0) break;
+            }
             usleep(5000);
         }
-        if (handover_.load()) {
-            LOGI("handing over to the next track with %zu bytes still to play",
-                 sink_->ringAvailable());
-            return;
-        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!sink_ || pcmGeneration_.load() != generation) return;
         sink_->setPaused(true);
         finished_.store(true, std::memory_order_release);
     }
@@ -371,6 +434,7 @@ private:
     }
 
     void stopLocked() {
+        pcmGeneration_.fetch_add(1);
         stopSourceLocked();
         if (sink_) {
             sink_->stop();
@@ -658,6 +722,8 @@ private:
     std::string mime_;
     bool pcmMode_ = false;
     bool pcmStarted_ = false;
+    /** Bumped whenever the PCM stream is replaced or stopped; see pcmEndOfStream. */
+    std::atomic<uint64_t> pcmGeneration_{0};
     /**
      * Whether whoever handed us these samples had already changed them.
      *
@@ -705,12 +771,13 @@ Java_com_hifirend_NativeBridge_nativePushStreamData(JNIEnv *env, jobject,
 JNIEXPORT jstring JNICALL
 Java_com_hifirend_NativeBridge_nativeStartPcmStream(JNIEnv *env, jobject, jint fd, jint rate,
                                                     jint channels, jint seekSeconds,
-                                                    jboolean senderAltered) {
+                                                    jboolean senderAltered,
+                                                    jboolean gapless) {
     return env->NewStringUTF(
         StreamPlayer::instance()
             .startPcm(static_cast<int>(fd), static_cast<uint32_t>(rate),
                       static_cast<int>(channels), static_cast<int>(seekSeconds),
-                      senderAltered == JNI_TRUE)
+                      senderAltered == JNI_TRUE, gapless == JNI_TRUE)
             .c_str());
 }
 
